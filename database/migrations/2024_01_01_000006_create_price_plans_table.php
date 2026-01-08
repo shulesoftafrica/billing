@@ -18,7 +18,7 @@ return new class extends Migration
             $table->enum('billing_type', ['one_time', 'recurring', 'usage']);
             $table->enum('billing_interval', ['monthly', 'yearly'])->nullable();
             $table->decimal('amount', 15, 2);
-            $table->char('currency', 3);
+            $table->foreignId('currency_id')->constrained('currencies')->onDelete('restrict');
             $table->boolean('active');
             $table->timestamps();
         });

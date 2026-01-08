@@ -5,6 +5,11 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\OrganizationController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\CustomerAddressController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\PricePlanController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -14,3 +19,24 @@ Route::get('/user', function (Request $request) {
 Route::apiResource('currencies', CurrencyController::class);
 Route::apiResource('countries', CountryController::class);
 Route::apiResource('organizations', OrganizationController::class);
+Route::apiResource('users', UserController::class);
+Route::apiResource('customers', CustomerController::class);
+Route::apiResource('products', ProductController::class);
+
+// Customer addresses nested routes
+Route::prefix('customers/{customer}')->group(function () {
+    Route::get('addresses', [CustomerAddressController::class, 'index']);
+    Route::post('addresses', [CustomerAddressController::class, 'store']);
+    Route::get('addresses/{address}', [CustomerAddressController::class, 'show']);
+    Route::put('addresses/{address}', [CustomerAddressController::class, 'update']);
+    Route::delete('addresses/{address}', [CustomerAddressController::class, 'destroy']);
+});
+
+// Product price plans nested routes
+Route::prefix('products/{product}')->group(function () {
+    Route::get('price-plans', [PricePlanController::class, 'index']);
+    Route::post('price-plans', [PricePlanController::class, 'store']);
+    Route::get('price-plans/{pricePlan}', [PricePlanController::class, 'show']);
+    Route::put('price-plans/{pricePlan}', [PricePlanController::class, 'update']);
+    Route::delete('price-plans/{pricePlan}', [PricePlanController::class, 'destroy']);
+});
