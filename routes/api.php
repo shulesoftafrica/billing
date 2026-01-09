@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerAddressController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PricePlanController;
+use App\Http\Controllers\SubscriptionController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -40,3 +41,11 @@ Route::prefix('products/{product}')->group(function () {
     Route::put('price-plans/{pricePlan}', [PricePlanController::class, 'update']);
     Route::delete('price-plans/{pricePlan}', [PricePlanController::class, 'destroy']);
 });
+
+// Subscription routes
+Route::get('subscriptions', [SubscriptionController::class, 'index']);
+Route::post('subscriptions', [SubscriptionController::class, 'store']);
+Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
+
+// Customer subscriptions routes
+Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);

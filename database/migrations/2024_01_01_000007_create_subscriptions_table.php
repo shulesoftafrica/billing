@@ -15,10 +15,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
             $table->foreignId('price_plan_id')->constrained('price_plans')->onDelete('cascade');
-            $table->enum('status', ['active', 'paused', 'canceled']);
-            $table->date('start_date');
-            $table->date('end_date');
-            $table->date('next_billing_date');
+            $table->enum('status', ['pending', 'active', 'paused', 'canceled']);
+            $table->date('start_date')->nullable();
+            $table->date('end_date')->nullable();
+            $table->date('next_billing_date')->nullable();
             $table->timestamps();
         });
     }

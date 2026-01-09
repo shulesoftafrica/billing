@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
             $table->string('invoice_number')->unique();
-            $table->foreignId('subscription_id')->nullable()->constrained('subscriptions')->onDelete('set null');
             $table->enum('status', ['draft', 'issued', 'paid', 'overdue', 'canceled']);
             $table->string('description');
             $table->decimal('subtotal', 15, 2);

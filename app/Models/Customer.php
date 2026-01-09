@@ -35,8 +35,8 @@ class Customer extends Model
         return $this->hasMany(Invoice::class);
     }
 
-    public function paymentMethods()
-    {
-        return $this->hasMany(PaymentMethod::class);
-    }
+    // public function paymentMethods()
+    // {
+    //     return $this->hasMany(PaymentMethod::class);
+    // }
 }
