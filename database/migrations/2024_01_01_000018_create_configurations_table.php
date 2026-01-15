@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('signature_key')->nullable();
             $table->string('api_endpoint')->nullable();
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
+            $table->foreignId('payment_gateway_id')->constrained('payment_gateways')->onDelete('cascade');
             $table->timestampTz('created_at')->useCurrent();
             $table->timestampTz('updated_at')->nullable();
         });

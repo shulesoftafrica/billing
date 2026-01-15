@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->string('reference')->nullable();
-            $table->foreignId('organization_bank_integration_id')->constrained('organization_bank_integrations')->onDelete('cascade');
+            $table->foreignId('organization_payment_gateway_integration_id')->constrained('organization_payment_gateway_integrations')->onDelete('cascade');
+            $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
             $table->integer('type_id')->default(9);
             $table->json('header_response')->nullable();
             $table->text('qr_code')->nullable();

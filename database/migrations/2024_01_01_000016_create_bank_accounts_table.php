@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('account_number');
             $table->string('branch');
-            $table->foreignId('refer_bank_id')->constrained('bank_accounts')->onDelete('cascade');
+            $table->foreignId('refer_bank_id')->constrained('constant.refer_banks')->onDelete('cascade');
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
             $table->timestamps();
         });

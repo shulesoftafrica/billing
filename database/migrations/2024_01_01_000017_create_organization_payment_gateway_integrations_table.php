@@ -11,9 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('organization_bank_integrations', function (Blueprint $table) {
+        Schema::create('organization_payment_gateway_integrations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('bank_account_id')->constrained('bank_accounts')->onDelete('cascade');
+            $table->foreignId('bank_account_id')->nullable()->constrained('bank_accounts')->onDelete('cascade');
+            $table->foreignId('payment_gateway_id')->constrained('payment_gateways')->onDelete('cascade');
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
             $table->enum('status', ['pending', 'completed']);
             $table->string('attachment')->nullable();
@@ -28,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('organization_bank_integrations');
+        Schema::dropIfExists('organization_payment_gateway_integrations');
     }
 };

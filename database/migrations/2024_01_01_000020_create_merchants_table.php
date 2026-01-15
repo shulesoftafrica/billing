@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('merchants', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('organization_bank_integration_id')->constrained('organization_bank_integrations')->onDelete('cascade');
+            $table->foreignId('organization_payment_gateway_integration_id')->constrained('organization_payment_gateway_integrations')->onDelete('cascade');
             $table->json('header_response')->nullable();
             $table->string('merchant_code')->nullable();
             $table->text('qr_code')->nullable();

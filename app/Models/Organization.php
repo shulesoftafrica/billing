@@ -8,7 +8,9 @@ class Organization extends Model
 {
     protected $fillable = [
         'name',
-        'legal_name',
+        'phone',
+        'email',
+        'endpoint',
         'currency_id',
         'country_id',
         'timezone',

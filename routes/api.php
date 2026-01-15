@@ -9,8 +9,13 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerAddressController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductTypeController;
 use App\Http\Controllers\Api\PricePlanController;
+use App\Http\Controllers\Api\PaymentGatewayController;
+use App\Http\Controllers\Api\BankAccountController;
+use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\WebhookController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -23,6 +28,10 @@ Route::apiResource('organizations', OrganizationController::class);
 Route::apiResource('users', UserController::class);
 Route::apiResource('customers', CustomerController::class);
 Route::apiResource('products', ProductController::class);
+Route::apiResource('product-types', ProductTypeController::class);
+Route::apiResource('payment-gateways', PaymentGatewayController::class);
+Route::apiResource('bank-accounts', BankAccountController::class);
+Route::apiResource('invoices', InvoiceController::class);
 
 // Customer addresses nested routes
 Route::prefix('customers/{customer}')->group(function () {
@@ -49,3 +58,6 @@ Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel
 
 // Customer subscriptions routes
 Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
+
+// Webhook routes
+Route::post('webhooks/unc-payment', [WebhookController::class, 'handleUNCPayment']);

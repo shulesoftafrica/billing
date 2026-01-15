@@ -25,7 +25,7 @@ class ProductController extends Controller
             ], 422);
         }
 
-        $products = Product::with(['pricePlans'])
+        $products = Product::with(['organization', 'productType', 'pricePlans'])
             ->where('organization_id', $request->organization_id)
             ->get();
 
@@ -40,12 +40,17 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+        // Determine if price_plans is required based on product_type_id
+        $productTypeId = $request->input('product_type_id');
+        $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
+        
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
+            'product_type_id' => 'required|exists:product_types,id',
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'active' => 'required|boolean',
-            'price_plans' => 'required|array|min:1',
+            'price_plans' => $pricePlansRule,
             'price_plans.*.name' => 'required|string|max:255',
             'price_plans.*.billing_type' => 'required|in:one_time,recurring,usage',
             'price_plans.*.billing_interval' => 'nullable|required_if:price_plans.*.billing_type,recurring|in:monthly,yearly',
@@ -64,19 +69,31 @@ class ProductController extends Controller
         $validatedData = $validator->validated();
         
         // Extract price_plans from validated data
-        $pricePlans = $validatedData['price_plans'];
+        $pricePlans = $validatedData['price_plans'] ?? [];
         unset($validatedData['price_plans']);
-        
         
         // Create product
         $product = Product::create($validatedData);
         
-        // Create price plans
-        foreach ($pricePlans as $plan) {
-            $product->pricePlans()->create($plan);
+        // Handle price plans
+        if ($productTypeId == 1 && empty($pricePlans)) {
+            // Create default price plan for product_type_id = 1 when no price plans provided
+            $product->pricePlans()->create([
+                'name' => $validatedData['name'],
+                'billing_type' => 'one_time',
+                'billing_interval' => null,
+                'amount' => 0,
+                'currency_id' => $request->input('currency_id', 1), // Default to currency_id 1 if not provided
+                'active' => true,
+            ]);
+        } else {
+            // Create provided price plans
+            foreach ($pricePlans as $plan) {
+                $product->pricePlans()->create($plan);
+            }
         }
         
-        $product->load(['organization', 'pricePlans']);
+        $product->load(['organization', 'productType', 'pricePlans']);
 
         return response()->json([
             'success' => true,
@@ -90,7 +107,7 @@ class ProductController extends Controller
      */
     public function show(string $id)
     {
-        $product = Product::with(['organization', 'pricePlans'])->find($id);
+        $product = Product::with(['organization', 'productType', 'pricePlans'])->find($id);
 
         if (!$product) {
             return response()->json([
@@ -121,6 +138,7 @@ class ProductController extends Controller
 
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|required|exists:organizations,id',
+            'product_type_id' => 'sometimes|required|exists:product_types,id',
             'name' => 'sometimes|required|string|max:255',
             'description' => 'sometimes|required|string',
             'active' => 'sometimes|required|boolean',
@@ -134,7 +152,7 @@ class ProductController extends Controller
         }
 
         $product->update($validator->validated());
-        $product->load('organization');
+        $product->load(['organization', 'productType']);
 
         return response()->json([
             'success' => true,

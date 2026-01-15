@@ -11,13 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('payment_gateways', function (Blueprint $table) {
+        Schema::create('product_types', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->enum('type', ['card', 'bank', 'mobile_money', 'control_number']);
-            $table->string('webhook_secret', 255);
-            $table->json('config')->nullable();
-            $table->boolean('active');
             $table->timestamps();
         });
     }
@@ -27,6 +23,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('payment_gateways');
+        Schema::dropIfExists('product_types');
     }
 };

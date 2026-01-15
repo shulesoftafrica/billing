@@ -8,6 +8,7 @@ class Product extends Model
 {
     protected $fillable = [
         'organization_id',
+        'product_type_id',
         'name',
         'description',
         'active',
@@ -20,6 +21,11 @@ class Product extends Model
     public function organization()
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function productType()
+    {
+        return $this->belongsTo(ProductType::class);
     }
 
     public function pricePlans()

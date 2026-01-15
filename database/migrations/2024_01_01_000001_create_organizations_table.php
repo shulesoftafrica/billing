@@ -14,7 +14,9 @@ return new class extends Migration
         Schema::create('organizations', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('legal_name');
+            $table->string('phone');
+            $table->string('email');
+            $table->string('endpoint')->nullable();
             $table->foreignId('currency_id')->constrained('currencies')->onDelete('cascade');
             $table->foreignId('country_id')->constrained('countries')->onDelete('cascade');
             $table->string('timezone');
