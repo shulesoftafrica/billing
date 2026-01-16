@@ -55,6 +55,27 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Additional validation: ensure product and customer belong to the organization
+        $product = Product::find($request->product_id);
+        $customer = Customer::find($request->customer_id);
+
+        $relationshipErrors = [];
+
+        if ($product && $product->organization_id != $request->organization_id) {
+            $relationshipErrors['product_id'] = ['The selected product does not exists.'];
+        }
+
+        if ($customer && $customer->organization_id != $request->organization_id) {
+            $relationshipErrors['customer_id'] = ['The selected customer does not exists.'];
+        }
+
+        if (!empty($relationshipErrors)) {
+            return response()->json([
+                'success' => false,
+                'errors' => $relationshipErrors
+            ], 422);
+        }
+
         try {
             DB::beginTransaction();
 
@@ -108,22 +129,18 @@ class InvoiceController extends Controller
                     // Fetch merchant record
                     $merchant = $orgGateway->merchants()->first();
 
-                    if ($merchant) {
-                        // Create control number via EcoBank API
-                        $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
-
-                        if ($controlNumberData['success']) {
-                            $gatewayData['references'] = $controlNumberData['control_number'];
-                        } else {
-                            $gatewayData['references'] = [
-                                'error' => $controlNumberData['message']
-                            ];
-                        }
-                    } else {
-                        $gatewayData['references'] = [
-                            'error' => 'Merchant not found for this gateway'
-                        ];
+                    if (!$merchant) {
+                        throw new \Exception('Merchant not found for Universal Control Number gateway');
                     }
+
+                    // Create control number via EcoBank API
+                    $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
+
+                    if (!$controlNumberData['success']) {
+                        throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
+                    }
+
+                    $gatewayData['references'] = $controlNumberData['control_number'];
                 } else {
                     $gatewayData['references'] = null;
                 }

@@ -16,7 +16,6 @@ return new class extends Migration
             $table->string('name');
             $table->string('phone');
             $table->string('email');
-            $table->string('endpoint')->nullable();
             $table->foreignId('currency_id')->constrained('currencies')->onDelete('cascade');
             $table->foreignId('country_id')->constrained('countries')->onDelete('cascade');
             $table->string('timezone');

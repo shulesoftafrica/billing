@@ -83,7 +83,6 @@ class OrganizationController extends Controller
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'email' => 'required|email|max:255',
-            'endpoint' => 'nullable|url|max:255',
             'currency_id' => 'required|exists:currencies,id',
             'country_id' => 'required|exists:countries,id',
             'timezone' => 'required|string|max:255',
@@ -98,142 +97,20 @@ class OrganizationController extends Controller
         }
 
         try {
-            DB::beginTransaction();
-
-            // Step 1: Create organization
+            // Create organization
             $organization = Organization::create($validator->validated());
             $organization->load(['currency', 'country']);
 
-            // Step 2: Fetch all active payment gateways
-            $activeGateways = PaymentGateway::where('active', true)->get();
-
-            $paymentGatewayDetails = [];
-
-            // Step 3: Process each gateway
-            foreach ($activeGateways as $gateway) {
-                $configuration = null;
-                $merchants = null;
-
-                $bankAccountId = null;
-
-                // Step 4: Handle UCN gateway specifically
-                if (strtolower($gateway->name) === 'universal control number' || strtolower($gateway->name) === 'ucn') {
-                    // Fetch virtual account
-                    $virtualAccount = DB::table('constant.virtual_accounts')
-                        ->where('status', 1)
-                        ->select('id', 'account_number', 'refer_bank_id')
-                        ->first();
-
-                    if (!$virtualAccount) {
-                        throw new Exception('No available virtual account found for UCN gateway');
-                    }
-
-                    // Create bank account
-                    $bankAccount = BankAccount::create([
-                        'name' => $organization->name . ' - UCN Virtual Account',
-                        'account_number' => $virtualAccount->account_number,
-                        'branch' => 'DAR ES SALAAM',
-                        'refer_bank_id' => $virtualAccount->refer_bank_id,
-                        'organization_id' => $organization->id,
-                    ]);
-
-                    $bankAccountId = $bankAccount->id;
-
-                    // Update virtual account status to 2 (assigned)
-                    DB::table('constant.virtual_accounts')
-                        ->where('id', $virtualAccount->id)
-                        ->update(['status' => 2]);
-                }
-
-                // Step 5: Create organization_payment_gateway_integration
-                $integrationId = DB::table('organization_payment_gateway_integrations')->insertGetId([
-                    'bank_account_id' => $bankAccountId,
-                    'payment_gateway_id' => $gateway->id,
-                    'organization_id' => $organization->id,
-                    'status' => 'pending',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-                // Step 6: Create configurations
-                $apiKey = $this->generateApiKey();
-                $signatureKey = $this->generateSignatureKey();
-
-                $configurationId = DB::table('configurations')->insertGetId([
-                    'env' => 1, // Testing environment
-                    'api_key' => $apiKey,
-                    'signature_key' => $signatureKey,
-                    'api_endpoint' => $organization->endpoint, // Use organization endpoint
-                    'organization_id' => $organization->id,
-                    'payment_gateway_id' => $gateway->id,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-                $configuration = DB::table('configurations')->where('id', $configurationId)->first();
-
-                // Step 7: Handle UCN merchant creation
-                if ($bankAccountId && (strtolower($gateway->name) === 'universal control number' || strtolower($gateway->name) === 'ucn')) {
-                    try {
-                        $merchantData = $this->createMerchantQR($organization, $bankAccount->account_number);
-
-                        if (is_array($merchantData)) {
-                            $datas =array_merge($merchantData, [
-                                'organization_payment_gateway_integration_id' => $integrationId,
-                                'created_at' => now()
-                            ]) ;
-                            
-                            // Store merchant data
-                            $merchantId = DB::table('merchants')->insertGetId($datas);
-
-                            // Update integration status to completed
-                            DB::table('organization_payment_gateway_integrations')
-                                ->where('id', $integrationId)
-                                ->update(['status' => 'completed']);
-
-                            $merchant = DB::table('merchants')->where('id', $merchantId)->first();
-                            $merchants = $merchant;
-                        } else {
-                            Log::warning('Merchant creation failed for organization', [
-                                'organization_id' => $organization->id,
-                                'error' => $merchantData
-                            ]);
-                        }
-                    } catch (Exception $e) {
-                        Log::error('Error creating merchant for UCN gateway', [
-                            'organization_id' => $organization->id,
-                            'error' => $e->getMessage(),
-                        ]);
-                        // Continue without failing the entire transaction
-                    }
-                }
-
-                // Build gateway data with nested configuration and merchants
-                $gatewayDetails = $gateway->toArray();
-                $gatewayDetails['configuration'] = $configuration;
-                $gatewayDetails['merchants'] = $merchants;
-
-                $paymentGatewayDetails[] = $gatewayDetails;
-            }
-
-            DB::commit();
-
-            Log::info('Organization created successfully with payment gateway integrations', [
+            Log::info('Organization created successfully', [
                 'organization_id' => $organization->id,
-                'gateways_count' => count($paymentGatewayDetails),
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Organization created successfully',
-                'data' => [
-                    'organization_detail' => $organization,
-                    'payment_gateways' => $paymentGatewayDetails,
-                ]
+                'data' => $organization
             ], 201);
         } catch (Exception $e) {
-            DB::rollBack();
-
             Log::error('Organization creation failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -246,6 +123,197 @@ class OrganizationController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : 'An error occurred while creating the organization',
             ], 500);
         }
+    }
+
+    /**
+     * Integrate payment gateway with organization
+     * Supported gateways: Universal Control Number (UCN), Stripe, PayPal, Flutterwave
+     * Currently implemented: UCN only
+     */
+    public function integratePaymentGateway(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_id' => 'required|exists:organizations,id',
+            'payment_gateway_id' => 'required|exists:payment_gateways,id',
+            'endpoint' => 'required|url|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $organization = Organization::findOrFail($request->organization_id);
+            $gateway = PaymentGateway::findOrFail($request->payment_gateway_id);
+
+            // Check if integration already exists
+            $existingIntegration = DB::table('organization_payment_gateway_integrations')
+                ->where('organization_id', $organization->id)
+                ->where('payment_gateway_id', $gateway->id)
+                ->first();
+
+            if ($existingIntegration) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment gateway already integrated with this organization'
+                ], 422);
+            }
+
+            // Route to appropriate gateway integration method
+            $gatewayName = strtolower($gateway->name);
+            
+            if ($gatewayName === 'universal control number' || $gatewayName === 'ucn') {
+                $result = $this->integrateUCN($organization, $gateway, $request->endpoint);
+            } elseif ($gatewayName === 'stripe') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Stripe integration is not yet implemented. Coming soon.'
+                ], 422);
+            } elseif ($gatewayName === 'paypal') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PayPal integration is not yet implemented. Coming soon.'
+                ], 422);
+            } elseif ($gatewayName === 'flutterwave') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Flutterwave integration is not yet implemented. Coming soon.'
+                ], 422);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Integration for ' . $gateway->name . ' is not yet supported.'
+                ], 422);
+            }
+
+            DB::commit();
+
+            Log::info('Payment gateway integrated successfully', [
+                'organization_id' => $organization->id,
+                'payment_gateway_id' => $gateway->id,
+                'gateway_name' => $gateway->name,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => $gateway->name . ' integrated successfully',
+                'data' => [
+                    'organization' => $organization,
+                    'payment_gateway' => $result,
+                ]
+            ], 201);
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            Log::error('Payment gateway integration failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment gateway integration failed',
+                'error' => config('app.debug') ? $e->getMessage() : 'An error occurred during integration',
+            ], 500);
+        }
+    }
+
+    /**
+     * Integrate Universal Control Number (UCN) gateway
+     * 
+     * @param Organization $organization
+     * @param PaymentGateway $gateway
+     * @param string $endpoint API endpoint for the organization
+     * @return array Gateway details with configuration and merchant info
+     * @throws Exception
+     */
+    private function integrateUCN($organization, $gateway, $endpoint)
+    {
+        // Step 1: Fetch virtual account
+        $virtualAccount = DB::table('constant.virtual_accounts')
+            ->where('status', 1)
+            ->select('id', 'account_number', 'refer_bank_id')
+            ->first();
+
+        if (!$virtualAccount) {
+            throw new Exception('No available virtual account found for UCN gateway');
+        }
+
+        // Step 2: Create bank account
+        $bankAccount = BankAccount::create([
+            'name' => $organization->name . ' - UCN Virtual Account',
+            'account_number' => $virtualAccount->account_number,
+            'branch' => 'DAR ES SALAAM',
+            'refer_bank_id' => $virtualAccount->refer_bank_id,
+            'organization_id' => $organization->id,
+        ]);
+
+        // Step 3: Update virtual account status to 2 (assigned)
+        DB::table('constant.virtual_accounts')
+            ->where('id', $virtualAccount->id)
+            ->update(['status' => 2]);
+
+        // Step 4: Create organization_payment_gateway_integration
+        $integrationId = DB::table('organization_payment_gateway_integrations')->insertGetId([
+            'bank_account_id' => $bankAccount->id,
+            'payment_gateway_id' => $gateway->id,
+            'organization_id' => $organization->id,
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Step 5: Create configurations
+        $apiKey = $this->generateApiKey();
+        $signatureKey = $this->generateSignatureKey();
+
+        $configurationId = DB::table('configurations')->insertGetId([
+            'env' => 1, // Testing environment
+            'api_key' => $apiKey,
+            'signature_key' => $signatureKey,
+            'api_endpoint' => $endpoint,
+            'organization_id' => $organization->id,
+            'payment_gateway_id' => $gateway->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $configuration = DB::table('configurations')->where('id', $configurationId)->first();
+
+        // Step 6: Create UCN merchant via EcoBank API
+        $merchantData = $this->createMerchantQR($organization, $bankAccount->account_number);
+
+        if (!is_array($merchantData)) {
+            throw new Exception('Merchant creation failed: ' . $merchantData);
+        }
+
+        $datas = array_merge($merchantData, [
+            'organization_payment_gateway_integration_id' => $integrationId,
+            'created_at' => now()
+        ]);
+
+        // Step 7: Store merchant data
+        $merchantId = DB::table('merchants')->insertGetId($datas);
+
+        // Step 8: Update integration status to completed
+        DB::table('organization_payment_gateway_integrations')
+            ->where('id', $integrationId)
+            ->update(['status' => 'completed']);
+
+        $merchant = DB::table('merchants')->where('id', $merchantId)->first();
+
+        // Build and return gateway details
+        $gatewayDetails = $gateway->toArray();
+        $gatewayDetails['configuration'] = $configuration;
+        $gatewayDetails['merchants'] = $merchant;
+
+        return $gatewayDetails;
     }
 
     /**
@@ -483,7 +551,6 @@ class OrganizationController extends Controller
             'name' => 'sometimes|required|string|max:255',
             'phone' => 'sometimes|required|string|max:20',
             'email' => 'sometimes|required|email|max:255',
-            'endpoint' => 'nullable|url|max:255',
             'currency_id' => 'sometimes|required|exists:currencies,id',
             'country_id' => 'sometimes|required|exists:countries,id',
             'timezone' => 'sometimes|required|string|max:255',

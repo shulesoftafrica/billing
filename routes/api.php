@@ -33,6 +33,9 @@ Route::apiResource('payment-gateways', PaymentGatewayController::class);
 Route::apiResource('bank-accounts', BankAccountController::class);
 Route::apiResource('invoices', InvoiceController::class);
 
+// Organization payment gateway integration
+Route::post('organizations/integrate-payment-gateway', [OrganizationController::class, 'integratePaymentGateway']);
+
 // Customer addresses nested routes
 Route::prefix('customers/{customer}')->group(function () {
     Route::get('addresses', [CustomerAddressController::class, 'index']);

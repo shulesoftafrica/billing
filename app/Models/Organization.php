@@ -10,7 +10,6 @@ class Organization extends Model
         'name',
         'phone',
         'email',
-        'endpoint',
         'currency_id',
         'country_id',
         'timezone',
