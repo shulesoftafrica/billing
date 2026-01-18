@@ -10,6 +10,7 @@ class Product extends Model
         'organization_id',
         'product_type_id',
         'name',
+        'product_code',
         'description',
         'active',
     ];

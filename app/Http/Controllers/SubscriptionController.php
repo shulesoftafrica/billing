@@ -229,4 +229,82 @@ class SubscriptionController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * Get subscription details by ID
+     *
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function show(int $id): JsonResponse
+    {
+        try {
+            $subscription = \App\Models\Subscription::with([
+                'customer', 
+                'pricePlan.product', 
+                'invoices' => function($query) {
+                    $query->orderBy('created_at', 'desc')->take(5);
+                }
+            ])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'subscription' => [
+                        'id' => $subscription->id,
+                        'subscription_number' => $subscription->subscription_number,
+                        'status' => $subscription->status,
+                        'start_date' => $subscription->start_date,
+                        'end_date' => $subscription->end_date,
+                        'next_billing_date' => $subscription->next_billing_date,
+                        'trial_ends_at' => $subscription->trial_ends_at,
+                        'canceled_at' => $subscription->canceled_at,
+                        'pause_starts_at' => $subscription->pause_starts_at,
+                        'pause_ends_at' => $subscription->pause_ends_at,
+                        'created_at' => $subscription->created_at,
+                        'updated_at' => $subscription->updated_at,
+                    ],
+                    'customer' => [
+                        'id' => $subscription->customer->id,
+                        'name' => $subscription->customer->name,
+                        'email' => $subscription->customer->email,
+                        'phone' => $subscription->customer->phone,
+                        'customer_type' => $subscription->customer->customer_type,
+                    ],
+                    'price_plan' => [
+                        'id' => $subscription->pricePlan->id,
+                        'name' => $subscription->pricePlan->name,
+                        'description' => $subscription->pricePlan->description,
+                        'amount' => $subscription->pricePlan->amount,
+                        'billing_interval' => $subscription->pricePlan->billing_interval,
+                        'trial_period_days' => $subscription->pricePlan->trial_period_days,
+                        'metadata' => $subscription->pricePlan->metadata,
+                        'product' => [
+                            'id' => $subscription->pricePlan->product->id,
+                            'name' => $subscription->pricePlan->product->name,
+                            'product_code' => $subscription->pricePlan->product->product_code,
+                            'description' => $subscription->pricePlan->product->description,
+                        ],
+                    ],
+                    'recent_invoices' => $subscription->invoices->map(function ($invoice) {
+                        return [
+                            'id' => $invoice->id,
+                            'invoice_number' => $invoice->invoice_number,
+                            'status' => $invoice->status,
+                            'total' => $invoice->total,
+                            'due_date' => $invoice->due_date,
+                            'issued_at' => $invoice->issued_at,
+                        ];
+                    }),
+                ],
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Subscription not found',
+                'error' => $e->getMessage(),
+            ], 404);
+        }
+    }
 }

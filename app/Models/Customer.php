@@ -35,6 +35,11 @@ class Customer extends Model
         return $this->hasMany(Invoice::class);
     }
 
+    public function walletTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class);
+    }
+
     // public function paymentMethods()
     // {
     //     return $this->hasMany(PaymentMethod::class);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\PricePlan;
+use App\Models\Currency;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -51,9 +52,21 @@ class PricePlanController extends Controller
             'billing_type' => 'required|in:one_time,recurring,usage',
             'billing_interval' => 'required_if:billing_type,recurring|in:monthly,yearly',
             'amount' => 'required|numeric|min:0',
-            'currency_id' => 'required|exists:currencies,id',
+            'currency_code' => 'nullable|string|exists:currencies,code',
+            'currency_name' => 'nullable|string|exists:currencies,name',
+            'features' => 'nullable|array',
             'active' => 'required|boolean',
         ]);
+
+        // Custom validation: either currency_code or currency_name must be provided
+        $validator->after(function ($validator) use ($request) {
+            if (empty($request->input('currency_code')) && empty($request->input('currency_name'))) {
+                $validator->errors()->add('currency', 'Either currency_code or currency_name is required.');
+            }
+            if (!empty($request->input('currency_code')) && !empty($request->input('currency_name'))) {
+                $validator->errors()->add('currency', 'Provide either currency_code or currency_name, not both.');
+            }
+        });
 
         if ($validator->fails()) {
             return response()->json([
@@ -62,7 +75,30 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $pricePlan = $product->pricePlans()->create($validator->validated());
+        $validatedData = $validator->validated();
+        
+        // Handle features as metadata
+        if (isset($validatedData['features'])) {
+            $validatedData['metadata'] = ['features' => $validatedData['features']];
+            unset($validatedData['features']);
+        }
+        
+        // Resolve currency_code or currency_name to currency_id
+        if (isset($validatedData['currency_code'])) {
+            $currency = Currency::where('code', $validatedData['currency_code'])->first();
+            if ($currency) {
+                $validatedData['currency_id'] = $currency->id;
+                unset($validatedData['currency_code']);
+            }
+        } elseif (isset($validatedData['currency_name'])) {
+            $currency = Currency::where('name', $validatedData['currency_name'])->first();
+            if ($currency) {
+                $validatedData['currency_id'] = $currency->id;
+                unset($validatedData['currency_name']);
+            }
+        }
+
+        $pricePlan = $product->pricePlans()->create($validatedData);
         $pricePlan->load('currency');
 
         return response()->json([

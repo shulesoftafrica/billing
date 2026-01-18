@@ -13,12 +13,14 @@ class PricePlan extends Model
         'billing_interval',
         'amount',
         'currency_id',
+        'metadata',
         'active',
     ];
 
     protected $casts = [
         'active' => 'boolean',
         'amount' => 'decimal:2',
+        'metadata' => 'array',
     ];
 
     public function product()

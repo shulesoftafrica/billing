@@ -13,16 +13,25 @@ class ProductTypeSeeder extends Seeder
     public function run(): void
     {
         $productTypes = [
-            ['name' => 'Wallet Based Product'],
-            ['name' => 'Subscription Based Product'],
+            [
+                'id' => 1,
+                'name' => 'One-time Product'
+            ],
+            [
+                'id' => 2, 
+                'name' => 'Subscription Product'
+            ],
         ];
 
         foreach ($productTypes as $type) {
-
-            DB::table('product_types')->insert([
-                'name' => $type['name'],
-                'created_at' => now()
-            ]);
+            DB::table('product_types')->updateOrInsert(
+                ['id' => $type['id']],
+                [
+                    'name' => $type['name'],
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]
+            );
         }
     }
 }
