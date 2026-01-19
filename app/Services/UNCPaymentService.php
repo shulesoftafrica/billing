@@ -7,10 +7,10 @@ use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Models\Product;
+use App\Models\Configuration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-use GuzzleHttp\Client;
 
 class UNCPaymentService
 {
@@ -32,7 +32,9 @@ class UNCPaymentService
 
             return DB::transaction(function () use ($webhookData, $ecTerminalId, $cbaReferenceNo, $amountPaid) {
                 // Step 1: Get control number by reference
-                $controlNumber = ControlNumber::where('reference', $ecTerminalId)->first();
+                $controlNumber = ControlNumber::with('organizationPaymentGatewayIntegration.paymentGateway')
+                    ->where('reference', $ecTerminalId)
+                    ->first();
 
                 if (!$controlNumber) {
                     return $this->failureResponse(
@@ -72,18 +74,26 @@ class UNCPaymentService
                     );
                 }
 
-                // Step 4: Get payment gateway
-                $paymentGateway = PaymentGateway::where('type', 'control_number')
-                    ->where('active', true)
-                    ->first();
+                // Step 4: Get payment gateway from organization payment gateway integration
+                $integration = $controlNumber->organizationPaymentGatewayIntegration;
+                if (!$integration) {
+                    return $this->failureResponse(
+                        $cbaReferenceNo,
+                        '404',
+                        'Payment gateway integration not found'
+                    );
+                }
 
+                $paymentGateway = $integration->paymentGateway;
                 if (!$paymentGateway) {
                     return $this->failureResponse(
                         $cbaReferenceNo,
-                        '500',
-                        'Payment gateway not configured'
+                        '404',
+                        'Payment gateway not found'
                     );
                 }
+
+                $organizationId = $integration->organization_id;
 
                 // Step 5: Record payment
                 $payment = Payment::create([
@@ -96,14 +106,17 @@ class UNCPaymentService
                     'paid_at' => Carbon::now(),
                 ]);
 
-                // Step 6: Find organization endpoint
-                $organization = $customer->organization;
-                if (!$organization || !$organization->endpoint) {
+                // Step 6: Get configuration for organization and payment gateway
+                $configuration = Configuration::where('organization_id', $organizationId)
+                    ->where('payment_gateway_id', $paymentGateway->id)
+                    ->first();
+
+                if (!$configuration || !$configuration->api_endpoint) {
                     $payment->update(['status' => 'failed']);
                     return $this->failureResponse(
                         $cbaReferenceNo,
                         '500',
-                        'Organization endpoint not configured'
+                        'API endpoint not configured for this organization and payment gateway'
                     );
                 }
 
@@ -131,17 +144,38 @@ class UNCPaymentService
                     ],
                 ];
 
-                // Step 8: Send API request to organization endpoint
-                try {
-                    $client = new Client();
-                    $response = $client->post($organization->endpoint, [
-                        'json' => $notificationPayload,
-                        'timeout' => 30,
-                    ]);
+                // Generate signature for API security
+                $signature = $this->generateSignature($notificationPayload, $configuration->signature_key);
+                $notificationPayload['signature'] = $signature;
 
-                    $statusCode = $response->getStatusCode();
+                // Step 8: Send API request to organization endpoint from configuration
+                try {
+                    // Initialize cURL
+                    $ch = curl_init($configuration->api_endpoint);
+
+                    // Set cURL options
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($notificationPayload));
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                        'Authorization: Bearer ' . $configuration->api_key,
+                        'Content-Type: application/json',
+                    ]);
+                    
+                    // Execute request
+                    $responseBody = curl_exec($ch);
+                    $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    $curlError = curl_error($ch);
+                    curl_close($ch);
+
+                    // Handle cURL errors
+                    if ($responseBody === false) {
+                        throw new \Exception('cURL error: ' . $curlError);
+                    }
+
                     $isSuccessful = $statusCode >= 200 && $statusCode < 300;
-                    $responseData = json_decode($response->getBody()->getContents(), true) ?? [];
+                    $responseData = json_decode($responseBody, true) ?? [];
 
                     // Step 9: Update payment status based on response
                     if ($isSuccessful && isset($responseData['success']) && $responseData['success'] === true) {
@@ -249,5 +283,27 @@ class UNCPaymentService
             'responseCode' => $code,
             'responseMessage' => $message,
         ];
+    }
+
+    /**
+     * Generate signature for API security
+     *
+     * @param array $data
+     * @param string $secretKey
+     * @return string
+     */
+    private function generateSignature(array $data, string $secretKey): string
+    {
+        // Remove signature if present
+        unset($data['signature']);
+
+        // Sort by keys
+        ksort($data);
+
+        // Encode to JSON
+        $jsonString = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        // Generate HMAC SHA256 hash
+        return hash_hmac('sha256', $jsonString, $secretKey);
     }
 }

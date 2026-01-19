@@ -40,4 +40,10 @@ class WebhookController extends Controller
 
         return response()->json($response, $httpStatus);
     }
+
+    public function handlePaymentWebhook(Request $request): JsonResponse
+    {
+        Log::info(['Request recived' => json_encode($request->all())]);
+        return response()->json(['success' => true, 'message' => 'Payment webhook received'], 200);
+    }
 }

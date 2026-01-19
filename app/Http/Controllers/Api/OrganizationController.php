@@ -373,19 +373,19 @@ class OrganizationController extends Controller
 
         // API endpoint
         $url = $baseUrl . '/corporateapi/merchant/createqr';
-        return [
-            'header_response' => json_encode([
-                'status' => 'SUCCESS',
-                'status_code' => 201,
-                'message' => 'UCN merchant and terminal successfully created',
-                'request_id' => 'UCN-REQ-20260114-8F3A9C21'
-            ]),
-            'merchant_code' => 'UCN-MER-240114-000873',
-            'qr_code' => '00020101021226280012UCN.TZ0119UCNMER2401140008735204581253038345802TZ5909UCN SHOP 6007DAR ES SALAAM6304A1B2',
-            'terminal_id' => rand(100000, 999999),
-            'terminal_name' => 'UCN Main POS Terminal',
-            'secret_key' => 'ucn_sk_live_9F8A7C6E5D4B3A2C1E0F987654321ABC'
-        ];
+        // return [
+        //     'header_response' => json_encode([
+        //         'status' => 'SUCCESS',
+        //         'status_code' => 201,
+        //         'message' => 'UCN merchant and terminal successfully created',
+        //         'request_id' => 'UCN-REQ-20260114-8F3A9C21'
+        //     ]),
+        //     'merchant_code' => 'UCN-MER-240114-000873',
+        //     'qr_code' => '00020101021226280012UCN.TZ0119UCNMER2401140008735204581253038345802TZ5909UCN SHOP 6007DAR ES SALAAM6304A1B2',
+        //     'terminal_id' => rand(100000, 999999),
+        //     'terminal_name' => 'UCN Main POS Terminal',
+        //     'secret_key' => 'ucn_sk_live_9F8A7C6E5D4B3A2C1E0F987654321ABC'
+        // ];
 
         // Initialize curl
         $ch = curl_init($url);

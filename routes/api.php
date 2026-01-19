@@ -63,4 +63,6 @@ Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel
 Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
 
 // Webhook routes
-Route::post('webhooks/unc-payment', [WebhookController::class, 'handleUNCPayment']);
+Route::post('ecobank/notification', [WebhookController::class, 'handleUNCPayment']);
+
+Route::post('payment_webhook', [WebhookController::class, 'handlePaymentWebhook']);

@@ -170,11 +170,10 @@ class InvoiceController extends Controller
                     'payment_gateways' => $paymentGateways,
                 ]
             ], 201);
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Invoice creation failed: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Invoice creation failed: ' . $e->getMessage()
@@ -193,12 +192,12 @@ class InvoiceController extends Controller
             if (!$token) {
                 return [
                     'success' => false,
-                    'message' => 'Failed to get EcoBank token'
+                    'message' => 'Failed to get token'
                 ];
             }
 
             // Prepare request data
-            $requestId = "TERMINAL_" .$customer->id.$product->id;
+            $requestId = "TERMINAL_" . $customer->id . $product->id;
             $postData = [
                 "requestId" => $requestId,
                 "affiliateCode" => "ETZ",
@@ -214,7 +213,7 @@ class InvoiceController extends Controller
             // Generate secure hash
             $payloadPart = implode('', array_values($postData));
             $secureHash = $this->generateSecureHash($payloadPart);
-            
+
             if (!$secureHash) {
                 return [
                     'success' => false,
@@ -248,6 +247,16 @@ class InvoiceController extends Controller
                     'message' => 'API request failed: ' . $curlError
                 ];
             }
+            // $response = json_encode([
+            //     "response_code" => 200,
+            //     "response_message" => "Success",
+            //     "response_content" => [
+            //         "terminalId" => "00012345",
+            //         "headerResponse" => "Control number generated successfully",
+            //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
+            //     ]
+            // ]);
+
 
             $responseData = json_decode($response, true);
             Log::info('EcoBank Control Number Response: ' . $response);
@@ -255,9 +264,8 @@ class InvoiceController extends Controller
             // Process successful response
             if (isset($responseData['response_code']) && $responseData['response_code'] === 200) {
                 $content = $responseData['response_content'];
-                
                 // Insert control number record
-                $controlNumber = ControlNumber::create([
+                $data =[
                     'customer_id' => $customer->id,
                     'reference' => $content['terminalId'],
                     'organization_payment_gateway_integration_id' => $orgGateway->id,
@@ -266,7 +274,8 @@ class InvoiceController extends Controller
                     'header_response' => $content['headerResponse'] ?? null,
                     'qr_code' => $content['qrBase64String'] ?? null,
                     'notified' => 1,
-                ]);
+                ];
+                $controlNumber = ControlNumber::create($data);
 
                 return [
                     'success' => true,
@@ -281,13 +290,12 @@ class InvoiceController extends Controller
             } else {
                 $errorMessage = $responseData['response_message'] ?? 'Unknown error occurred';
                 Log::error('EcoBank API Error: ' . $errorMessage);
-                
+
                 return [
                     'success' => false,
                     'message' => 'Failed to create control number: ' . $errorMessage
                 ];
             }
-
         } catch (\Exception $e) {
             Log::error('Control number creation exception: ' . $e->getMessage());
             return [
@@ -307,7 +315,7 @@ class InvoiceController extends Controller
                 'userId' => $this->username,
                 'password' => $this->password
             ];
-            
+
             $url = $this->baseUrl . '/corporateapi/user/token';
             $ch = curl_init($url);
 
@@ -324,7 +332,7 @@ class InvoiceController extends Controller
             curl_close($ch);
 
             $responseData = json_decode($response, true);
-            
+
             if (isset($responseData['token'])) {
                 return $responseData['token'];
             }
@@ -368,7 +376,7 @@ class InvoiceController extends Controller
     {
         $prefix = 'INV';
         $date = Carbon::now()->format('Ymd');
-        
+
         $lastInvoice = Invoice::where('invoice_number', 'like', $prefix . $date . '%')
             ->orderBy('invoice_number', 'desc')
             ->first();

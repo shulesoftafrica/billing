@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class ControlNumber extends Model
 {
     protected $fillable = [
-        'user_id',
+        'customer_id',
         'reference',
         'organization_payment_gateway_integration_id',
         'product_id',
@@ -21,9 +21,9 @@ class ControlNumber extends Model
         'header_response' => 'array',
     ];
 
-    public function user()
+    public function customer()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Customer::class);
     }
 
     public function organizationPaymentGatewayIntegration()
