@@ -11,7 +11,12 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Seed base tables only
+        // Seed users first
+        $this->call([
+            UserSeeder::class,
+        ]);
+
+        // Seed base tables
         $this->call([
             CountrySeeder::class,
             CurrencySeeder::class,
