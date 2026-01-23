@@ -3,31 +3,26 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PricePlan extends Model
 {
     protected $fillable = [
         'product_id',
         'name',
-        'billing_type',
-        'billing_interval',
+        'subscription_type',
         'amount',
-        'currency_id',
-        'active',
+        'currency',
     ];
 
     protected $casts = [
-        'active' => 'boolean',
         'amount' => 'decimal:2',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
-    public function product()
+    public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
-    }
-
-    public function currency()
-    {
-        return $this->belongsTo(Currency::class);
     }
 }

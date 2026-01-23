@@ -21,6 +21,7 @@ class ProductController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -31,6 +32,7 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Products retrieved successfully',
             'data' => $products
         ], 200);
     }
@@ -40,66 +42,92 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
-        // Determine if price_plans is required based on product_type_id
+        // Determine rules based on product_type_id
         $productTypeId = $request->input('product_type_id');
+        
+        // For product_type_id = 1: price_plans optional (max 1), subscription_type not allowed
+        // For other product_type_id: price_plans mandatory, array with min 1, subscription_type required
         $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
+        
+        // Valid subscription types
+        $validSubscriptionTypes = ['daily', 'weekly', 'monthly', 'quarterly', 'semi_annually', 'yearly'];
+        $subscriptionTypeRule = $productTypeId == 1 
+            ? 'nullable|string|max:255' 
+            : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes);
         
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'product_type_id' => 'required|exists:product_types,id',
             'name' => 'required|string|max:255',
-            'description' => 'required|string',
-            'active' => 'required|boolean',
+            'description' => 'nullable|string',
+            'status' => 'required|in:active,inactive,archived',
             'price_plans' => $pricePlansRule,
-            'price_plans.*.name' => 'required|string|max:255',
-            'price_plans.*.billing_type' => 'required|in:one_time,recurring,usage',
-            'price_plans.*.billing_interval' => 'nullable|required_if:price_plans.*.billing_type,recurring|in:monthly,yearly',
-            'price_plans.*.amount' => 'required|numeric|min:0',
-            'price_plans.*.currency_id' => 'required|exists:currencies,id',
-            'price_plans.*.active' => 'required|boolean',
+            'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
+            'price_plans.*.subscription_type' => $subscriptionTypeRule,
+            'price_plans.*.amount' => 'required_if:price_plans,!=null|numeric|min:0',
+            'price_plans.*.currency' => 'required_if:price_plans,!=null|string|min:2|max:5',
         ]);
+
+        // Additional validation: subscription_type not allowed for product_type_id = 1
+        if ($productTypeId == 1 && $request->has('price_plans') && is_array($request->input('price_plans'))) {
+            foreach ($request->input('price_plans') as $idx => $plan) {
+                if (isset($plan['subscription_type']) && !empty($plan['subscription_type'])) {
+                    $validator->after(function ($validator) use ($idx) {
+                        $validator->errors()->add(
+                            "price_plans.{$idx}.subscription_type",
+                            'subscription_type is not allowed for product_type_id = 1'
+                        );
+                    });
+                }
+            }
+        }
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $validatedData = $validator->validated();
-        
-        // Extract price_plans from validated data
-        $pricePlans = $validatedData['price_plans'] ?? [];
-        unset($validatedData['price_plans']);
-        
-        // Create product
-        $product = Product::create($validatedData);
-        
-        // Handle price plans
-        if ($productTypeId == 1 && empty($pricePlans)) {
-            // Create default price plan for product_type_id = 1 when no price plans provided
-            $product->pricePlans()->create([
-                'name' => $validatedData['name'],
-                'billing_type' => 'one_time',
-                'billing_interval' => null,
-                'amount' => 0,
-                'currency_id' => $request->input('currency_id', 1), // Default to currency_id 1 if not provided
-                'active' => true,
-            ]);
-        } else {
-            // Create provided price plans
-            foreach ($pricePlans as $plan) {
-                $product->pricePlans()->create($plan);
+        try {
+            $validatedData = $validator->validated();
+            $pricePlans = $validatedData['price_plans'] ?? [];
+            unset($validatedData['price_plans']);
+            
+            // Create product
+            $product = Product::create($validatedData);
+            
+            // Handle price plans
+            if ($productTypeId == 1 && empty($pricePlans)) {
+                // Create default price plan for product_type_id = 1 when no price plans provided
+                $product->pricePlans()->create([
+                    'name' => $validatedData['name'],
+                    'subscription_type' => null,
+                    'amount' => 0,
+                    'currency' => 'TZS', // Default currency
+                ]);
+            } else {
+                // Create provided price plans
+                foreach ($pricePlans as $plan) {
+                    $product->pricePlans()->create($plan);
+                }
             }
-        }
-        
-        $product->load(['organization', 'productType', 'pricePlans']);
+            
+            $product->load(['organization', 'productType', 'pricePlans']);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Product created successfully',
-            'data' => $product
-        ], 201);
+            return response()->json([
+                'success' => true,
+                'message' => 'Product created successfully',
+                'data' => $product
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -118,6 +146,7 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Product retrieved successfully',
             'data' => $product
         ], 200);
     }
@@ -140,25 +169,34 @@ class ProductController extends Controller
             'organization_id' => 'sometimes|required|exists:organizations,id',
             'product_type_id' => 'sometimes|required|exists:product_types,id',
             'name' => 'sometimes|required|string|max:255',
-            'description' => 'sometimes|required|string',
-            'active' => 'sometimes|required|boolean',
+            'description' => 'nullable|string',
+            'status' => 'sometimes|required|in:active,inactive,archived',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $product->update($validator->validated());
-        $product->load(['organization', 'productType']);
+        try {
+            $product->update($validator->validated());
+            $product->load(['organization', 'productType', 'pricePlans']);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Product updated successfully',
-            'data' => $product
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Product updated successfully',
+                'data' => $product
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -175,11 +213,19 @@ class ProductController extends Controller
             ], 404);
         }
 
-        $product->delete();
+        try {
+            $product->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Product deleted successfully'
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Product deleted successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }
