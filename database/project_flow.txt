@@ -1,0 +1,112 @@
+
+
+
+
+
+control_numbers
+countries
+merchants
+payments
+payment_gateways
+users
+configurations
+bank_accounts(virtual_accounts for ucn)
+product_types
+    - subscription
+    - one-time
+    - usage
+products
+ - name
+ - product_type_id
+ - organization_id
+ - description
+ - active
+product_price_plan (packages) ->nulable( default if product type is one-time)
+ - name
+ - subscription_type ('daily','weekly','monthly','quarterly','semi_annually','yearly') ->nullable(if product type is one-time)
+
+subscription
+- customer_id
+- price_plan_id
+- start_date ->nullable()
+- end_date ->nullable()
+- status (default false)
+
+invoice
+- customer_id'
+- status'
+- description'
+- subtotal'
+- tax_total'
+- total'
+- due_date'
+- currency  (default tzs)
+- issued_at'
+
+invoice_items
+- invoice_id'
+- subscription_id'
+- price_plan_id'
+- quantity'
+- unit_price'
+- curency (default tzs)
+- total
+System config
+1. Define product_types(1:one-time, 2:subscription, 3:usage)
+2. Define available payment_gateways
+3. Define countries
+
+Flows
+1. create organization
+2. Define products that organization offers
+3. Define product_plan(package) for each product
+    - product_plan can use default values (if product type is one-time )
+    - product_plan's subscription_type can be ('daily','weekly','monthly','quarterly','semi_annually','yearly') ->nullable(if product type is one-time)
+    - User should not define product_plan (if product type is one-time )
+    - product_plan should be one minimum 1 array if product type is not one-time
+4. Integrate the payment gateways, customers can use to pay for products
+5. Register customers belongs to organization (phone or email are required and must be unique)
+5. create invoice
+    - user will provide the following
+        customer details
+        pruducts (minimun 1 arrays) with the followings( price_plan_id, amount)
+        description (optional)
+        currency
+    - if product type  != one-time : 
+    - Create subsctipion
+    - status(pending)
+6. create invoice_items
+    - status(pending)
+7. Create payment control numbers (based on organization_gateway_integrations)
+
+Payments:
+1. recieve payment notification from payment gateway webhook
+2. Record Payment
+3. Determine product
+4. Determine price_plan_id paid from invoice_items where status ='pending' and price_plan_id belongs to the determined product
+5. Activate (subscription ) if product.product_type ! = one-time
+6. Notify organization about the payments done
+7. Mark invoice_items.status  as paid
+8. If all invoice_items are paid update their parent invoice as fully paid other partial
+ 
+1: shuleoft- academic  - products
+ price_plan
+ 1- Basic
+ 2 - Standard
+ 3 - Premium
+
+ invoice:
+ 1- total (50000)
+
+ invoice_ items
+ invoice_id - 1
+ price_plan_id = 1
+
+ control_number
+ product_id = 1
+ refrerence = 123345
+
+ webook
+ control  - 123445 has paid 50000 tsh
+
+ control_number.product_id, price_plan.product_id, price_plan.id, invoice_items.price_plan_id 
