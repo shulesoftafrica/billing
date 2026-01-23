@@ -13,14 +13,15 @@ return new class extends Migration
     {
         Schema::create('configurations', function (Blueprint $table) {
             $table->id();
-            $table->integer('env');
-            $table->string('api_key')->nullable();
-            $table->string('signature_key')->nullable();
-            $table->string('api_endpoint')->nullable();
+            $table->string('env')->default('production');
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
-            $table->foreignId('payment_gateway_id')->constrained('payment_gateways')->onDelete('cascade');
-            $table->timestampTz('created_at')->useCurrent();
-            $table->timestampTz('updated_at')->nullable();
+            $table->foreignId('payment_gateway_id')->constrained('payment_gateways')->onDelete('restrict');
+            $table->json('config')->nullable();
+            $table->timestampsTz();
+        });
+        Schema::table('configurations', function (Blueprint $table) {
+            $table->index('organization_id');
+            $table->index('env');
         });
     }
 

@@ -13,12 +13,14 @@ return new class extends Migration
     {
         Schema::create('payment_gateways', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->enum('type', ['card', 'bank', 'mobile_money', 'control_number']);
-            $table->string('webhook_secret', 255);
+            $table->string('name')->unique();
+            $table->string('type');
             $table->json('config')->nullable();
-            $table->boolean('active');
-            $table->timestamps();
+            $table->boolean('active')->default(false);
+            $table->timestampsTz();
+        });
+        Schema::table('payment_gateways', function (Blueprint $table) {
+            $table->index('active');
         });
     }
 

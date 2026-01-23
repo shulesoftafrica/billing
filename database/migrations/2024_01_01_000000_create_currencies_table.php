@@ -11,13 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('currencies', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->char('code', 3)->unique();
-            $table->string('symbol');
-            $table->timestamps();
-        });
+        // This table is deprecated and not part of the current schema.
+        // Organizations now use a JSON currency field instead.
     }
 
     /**

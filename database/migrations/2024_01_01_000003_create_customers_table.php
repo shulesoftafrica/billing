@@ -14,12 +14,17 @@ return new class extends Migration
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
-            $table->string('external_ref')->nullable();
             $table->string('name');
-            $table->string('email');
-            $table->string('phone');
-            $table->enum('status', ['active', 'suspended']);
-            $table->timestamps();
+            $table->string('email')->nullable();
+            $table->string('phone')->nullable();
+            $table->string('status')->default('active');
+            $table->timestampsTz();
+        });
+        Schema::table('customers', function (Blueprint $table) {
+            $table->index('organization_id');
+            $table->index('email');
+            $table->index('status');
+            $table->unique(['organization_id', 'email'], 'unique_org_customer_email');
         });
     }
 

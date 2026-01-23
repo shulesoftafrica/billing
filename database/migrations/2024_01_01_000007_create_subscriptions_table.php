@@ -14,12 +14,18 @@ return new class extends Migration
         Schema::create('subscriptions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
-            $table->foreignId('price_plan_id')->constrained('price_plans')->onDelete('cascade');
-            $table->enum('status', ['pending', 'active', 'paused', 'canceled']);
+            $table->foreignId('price_plan_id')->constrained('price_plans')->onDelete('restrict');
+            $table->string('status')->default('pending');
             $table->date('start_date')->nullable();
             $table->date('end_date')->nullable();
             $table->date('next_billing_date')->nullable();
-            $table->timestamps();
+            $table->timestampsTz();
+        });
+        Schema::table('subscriptions', function (Blueprint $table) {
+            $table->index('customer_id');
+            $table->index('price_plan_id');
+            $table->index('status');
+            $table->index('next_billing_date');
         });
     }
 

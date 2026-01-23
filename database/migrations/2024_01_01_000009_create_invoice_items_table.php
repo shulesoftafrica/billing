@@ -14,12 +14,16 @@ return new class extends Migration
         Schema::create('invoice_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('invoice_id')->constrained('invoices')->onDelete('cascade');
-            $table->foreignId('subscription_id')->nullable()->constrained('subscriptions')->onDelete('cascade');
-            $table->foreignId('price_plan_id')->constrained('price_plans')->onDelete('cascade');
-            $table->decimal('quantity', 15, 2);
-            $table->decimal('unit_price', 15, 2);
-            $table->decimal('total', 15, 2);
-            $table->timestamps();
+            $table->foreignId('subscription_id')->nullable()->constrained('subscriptions')->onDelete('set null');
+            $table->foreignId('price_plan_id')->constrained('price_plans')->onDelete('restrict');
+            $table->decimal('quantity', 10, 2)->default(1);
+            $table->decimal('unit_price', 12, 2)->default(0);
+            $table->decimal('total', 12, 2)->default(0);
+            $table->timestampsTz();
+        });
+        Schema::table('invoice_items', function (Blueprint $table) {
+            $table->index('invoice_id');
+            $table->index('subscription_id');
         });
     }
 

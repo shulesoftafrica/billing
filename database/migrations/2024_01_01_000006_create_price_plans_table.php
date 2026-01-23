@@ -15,12 +15,13 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
-            $table->enum('billing_type', ['one_time', 'recurring', 'usage']);
-            $table->enum('billing_interval', ['monthly', 'yearly'])->nullable();
-            $table->decimal('amount', 15, 2);
-            $table->foreignId('currency_id')->constrained('currencies')->onDelete('restrict');
-            $table->boolean('active');
-            $table->timestamps();
+            $table->string('subscription_type')->nullable();
+            $table->decimal('amount', 12, 2)->default(0);
+            $table->char('currency', 5)->default('TZS');
+            $table->timestampsTz();
+        });
+        Schema::table('price_plans', function (Blueprint $table) {
+            $table->index('product_id');
         });
     }
 

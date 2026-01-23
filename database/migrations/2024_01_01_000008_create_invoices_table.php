@@ -15,14 +15,20 @@ return new class extends Migration
             $table->id();
             $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
             $table->string('invoice_number')->unique();
-            $table->enum('status', ['draft', 'issued', 'paid', 'overdue', 'canceled']);
-            $table->string('description');
-            $table->decimal('subtotal', 15, 2);
-            $table->decimal('tax_total', 15, 2);
-            $table->decimal('total', 15, 2);
-            $table->date('due_date');
-            $table->timestamp('issued_at')->nullable();
-            $table->timestamps();
+            $table->string('status')->default('issued');
+            $table->text('description')->nullable();
+            $table->decimal('subtotal', 12, 2)->default(0);
+            $table->decimal('tax_total', 12, 2)->default(0);
+            $table->decimal('total', 12, 2)->default(0);
+            $table->date('due_date')->nullable();
+            $table->timestampTz('issued_at')->nullable();
+            $table->timestampsTz();
+        });
+        Schema::table('invoices', function (Blueprint $table) {
+            $table->index('customer_id');
+            $table->index('status');
+            $table->index('due_date');
+            $table->index('invoice_number');
         });
     }
 

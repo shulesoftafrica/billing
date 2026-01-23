@@ -13,14 +13,21 @@ return new class extends Migration
     {
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('invoice_id')->nullable()->constrained('invoices')->onDelete('cascade');
-            $table->foreignId('gateway_id')->constrained('payment_gateways')->onDelete('cascade');
-            $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
-            $table->decimal('amount', 15, 2);
-            $table->enum('status', ['pending', 'success', 'failed']);
-            $table->string('gateway_reference');
-            $table->timestamp('paid_at')->nullable();
-            $table->timestamps();
+            $table->foreignId('invoice_id')->nullable()->constrained('invoices')->onDelete('set null');
+            $table->foreignId('gateway_id')->constrained('payment_gateways')->onDelete('restrict');
+            $table->foreignId('customer_id')->constrained('customers')->onDelete('restrict');
+            $table->decimal('amount', 12, 2)->default(0);
+            $table->string('notification_status')->default('pending');
+            $table->string('gateway_reference')->unique();
+            $table->timestampTz('paid_at')->nullable();
+            $table->timestampsTz();
+        });
+        Schema::table('payments', function (Blueprint $table) {
+            $table->index('invoice_id');
+            $table->index('customer_id');
+            $table->index('gateway_id');
+            $table->index('notification_status');
+            $table->index('gateway_reference');
         });
     }
 

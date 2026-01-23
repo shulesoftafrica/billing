@@ -14,9 +14,13 @@ return new class extends Migration
         Schema::create('invoice_taxes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('invoice_id')->constrained('invoices')->onDelete('cascade');
-            $table->foreignId('tax_rate_id')->constrained('tax_rates')->onDelete('cascade');
-            $table->decimal('amount', 15, 2);
-            $table->timestamps();
+            $table->foreignId('tax_rate_id')->constrained('tax_rates')->onDelete('restrict');
+            $table->decimal('amount', 12, 2);
+            $table->timestampsTz();
+        });
+        Schema::table('invoice_taxes', function (Blueprint $table) {
+            $table->index('invoice_id');
+            $table->index('tax_rate_id');
         });
     }
 

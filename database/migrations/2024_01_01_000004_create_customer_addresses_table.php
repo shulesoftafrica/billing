@@ -11,15 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('customer_addresses', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
-            $table->enum('type', ['billing', 'shipping']);
-            $table->string('country');
-            $table->string('city');
-            $table->text('address_line');
-            $table->timestamps();
-        });
+        // This table is deprecated and not part of the current schema.
+        // No action needed.
     }
 
     /**

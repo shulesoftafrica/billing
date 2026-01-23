@@ -14,10 +14,14 @@ return new class extends Migration
         Schema::create('refunds', function (Blueprint $table) {
             $table->id();
             $table->foreignId('payment_id')->constrained('payments')->onDelete('cascade');
-            $table->decimal('amount', 15, 2);
-            $table->string('reason');
-            $table->enum('status', ['pending', 'completed']);
-            $table->timestamps();
+            $table->decimal('amount', 12, 2);
+            $table->text('reason');
+            $table->string('status')->default('pending');
+            $table->timestampsTz();
+        });
+        Schema::table('refunds', function (Blueprint $table) {
+            $table->index('payment_id');
+            $table->index('status');
         });
     }
 

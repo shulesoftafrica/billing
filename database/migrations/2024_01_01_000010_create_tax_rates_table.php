@@ -13,11 +13,15 @@ return new class extends Migration
     {
         Schema::create('tax_rates', function (Blueprint $table) {
             $table->id();
-            $table->string('country');
+            $table->char('country', 2);
             $table->string('name');
             $table->decimal('rate', 5, 2);
-            $table->boolean('active');
-            $table->timestamps();
+            $table->boolean('active')->default(true);
+            $table->timestampsTz();
+        });
+        Schema::table('tax_rates', function (Blueprint $table) {
+            $table->index('country');
+            $table->index('active');
         });
     }
 

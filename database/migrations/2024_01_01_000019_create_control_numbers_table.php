@@ -13,16 +13,17 @@ return new class extends Migration
     {
         Schema::create('control_numbers', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('customer_id')->constrained('customers')->onDelete('cascade');
-            $table->string('reference')->nullable();
-            $table->foreignId('organization_payment_gateway_integration_id')->constrained('organization_payment_gateway_integrations')->onDelete('cascade');
-            $table->foreignId('product_id')->constrained('products')->onDelete('cascade');
-            $table->integer('type_id')->default(9);
-            $table->json('header_response')->nullable();
-            $table->text('qr_code')->nullable();
-            $table->integer('notified')->default(1);
-            $table->timestamp('created_at')->useCurrent();
-            $table->timestamp('updated_at')->nullable();
+            $table->foreignId('customer_id')->nullable()->constrained('customers')->onDelete('set null');
+            $table->string('reference')->unique();
+            $table->foreignId('organization_payment_gateway_integration_id')->nullable()->constrained('organization_payment_gateway_integrations')->onDelete('set null');
+            $table->foreignId('product_id')->nullable()->constrained('products')->onDelete('set null');
+            $table->json('metadata')->nullable();
+            $table->timestampsTz();
+        });
+        Schema::table('control_numbers', function (Blueprint $table) {
+            $table->index('customer_id');
+            $table->index('reference');
+            $table->index('product_id');
         });
     }
 

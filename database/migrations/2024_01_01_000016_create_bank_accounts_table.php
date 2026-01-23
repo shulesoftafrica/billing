@@ -15,10 +15,14 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('account_number');
-            $table->string('branch');
-            $table->foreignId('refer_bank_id')->constrained('constant.refer_banks')->onDelete('cascade');
+            $table->string('branch')->nullable();
+            $table->unsignedBigInteger('refer_bank_id')->nullable();
+            $table->foreign('refer_bank_id')->references('id')->on('constant.refer_banks')->onDelete('set null');
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
-            $table->timestamps();
+            $table->timestampsTz();
+        });
+        Schema::table('bank_accounts', function (Blueprint $table) {
+            $table->index('organization_id');
         });
     }
 

@@ -14,13 +14,17 @@ return new class extends Migration
         Schema::create('organizations', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('phone');
-            $table->string('email');
-            $table->foreignId('currency_id')->constrained('currencies')->onDelete('cascade');
-            $table->foreignId('country_id')->constrained('countries')->onDelete('cascade');
-            $table->string('timezone');
-            $table->enum('status', ['active', 'suspended']);
-            $table->timestamps();
+            $table->string('phone')->nullable();
+            $table->string('email')->unique();
+            $table->json('currency')->default('["TZS"]');
+            $table->foreignId('country_id')->constrained('countries')->onDelete('restrict');
+            $table->string('status')->default('active');
+            $table->timestampsTz();
+        });
+        Schema::table('organizations', function (Blueprint $table) {
+            $table->index('country_id');
+            $table->index('status');
+            $table->index('email');
         });
     }
 

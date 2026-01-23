@@ -16,9 +16,14 @@ return new class extends Migration
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
             $table->foreignId('product_type_id')->constrained('product_types')->onDelete('restrict');
             $table->string('name');
-            $table->text('description');
-            $table->boolean('active');
-            $table->timestamps();
+            $table->text('description')->nullable();
+            $table->string('status')->default('active');
+            $table->timestampsTz();
+        });
+        Schema::table('products', function (Blueprint $table) {
+            $table->index('organization_id');
+            $table->index('product_type_id');
+            $table->index('status');
         });
     }
 
