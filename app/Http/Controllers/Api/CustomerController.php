@@ -21,16 +21,18 @@ class CustomerController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $customers = Customer::with(['organization', 'addresses'])
+        $customers = Customer::with('organization')
             ->where('organization_id', $request->organization_id)
             ->get();
 
         return response()->json([
             'success' => true,
+            'message' => 'Customers retrieved successfully',
             'data' => $customers
         ], 200);
     }
@@ -42,43 +44,36 @@ class CustomerController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
-            'external_ref' => 'nullable|string|max:255',
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255',
-            'phone' => 'required|string|max:255',
+            'email' => 'nullable|string|email|max:255',
+            'phone' => 'nullable|string|max:255',
             'status' => 'required|in:active,suspended',
-            'addresses' => 'required|array|min:1',
-            'addresses.*.type' => 'required|in:billing,shipping',
-            'addresses.*.country' => 'required|string|max:255',
-            'addresses.*.city' => 'required|string|max:255',
-            'addresses.*.address_line' => 'required|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $validatedData = $validator->validated();
-        $addresses = $validatedData['addresses'];
-        unset($validatedData['addresses']);
+        try {
+            $customer = Customer::create($validator->validated());
+            $customer->load('organization');
 
-        $customer = Customer::create($validatedData);
-
-        // Create addresses
-        foreach ($addresses as $address) {
-            $customer->addresses()->create($address);
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer created successfully',
+                'data' => $customer
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create customer',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $customer->load(['organization', 'addresses']);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer created successfully',
-            'data' => $customer
-        ], 201);
     }
 
     /**
@@ -86,7 +81,7 @@ class CustomerController extends Controller
      */
     public function show(string $id)
     {
-        $customer = Customer::with(['organization', 'addresses'])->find($id);
+        $customer = Customer::with('organization')->find($id);
 
         if (!$customer) {
             return response()->json([
@@ -97,6 +92,7 @@ class CustomerController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Customer retrieved successfully',
             'data' => $customer
         ], 200);
     }
@@ -117,28 +113,36 @@ class CustomerController extends Controller
 
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|required|exists:organizations,id',
-            'external_ref' => 'nullable|string|max:255',
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|string|email|max:255',
-            'phone' => 'sometimes|required|string|max:255',
+            'email' => 'nullable|string|email|max:255',
+            'phone' => 'nullable|string|max:255',
             'status' => 'sometimes|required|in:active,suspended',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $customer->update($validator->validated());
-        $customer->load(['organization', 'addresses']);
+        try {
+            $customer->update($validator->validated());
+            $customer->load('organization');
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer updated successfully',
-            'data' => $customer
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer updated successfully',
+                'data' => $customer
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update customer',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -155,11 +159,19 @@ class CustomerController extends Controller
             ], 404);
         }
 
-        $customer->delete();
+        try {
+            $customer->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer deleted successfully'
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer deleted successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete customer',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

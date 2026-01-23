@@ -3,34 +3,40 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Customer extends Model
 {
     protected $fillable = [
         'organization_id',
-        'external_ref',
         'name',
         'email',
         'phone',
         'status',
     ];
 
-    public function organization()
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+    public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
     }
 
-    public function addresses()
+    public function addresses(): HasMany
     {
         return $this->hasMany(CustomerAddress::class);
     }
 
-    public function subscriptions()
+    public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
     }
 
-    public function invoices()
+    public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
     }
