@@ -19,7 +19,7 @@ class OrganizationController extends Controller
      */
     public function index()
     {
-        $organizations = Organization::with(['currency', 'country'])->get();
+        $organizations = Organization::with(['country'])->get();
         
         $organizationsData = [];
         
@@ -82,10 +82,9 @@ class OrganizationController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
-            'email' => 'required|email|max:255',
-            'currency_id' => 'required|exists:currencies,id',
+            'email' => 'required|email|max:255|unique:organizations',
+            'currency' => 'required|array|min:1',
             'country_id' => 'required|exists:countries,id',
-            'timezone' => 'required|string|max:255',
             'status' => 'required|in:active,suspended',
         ]);
 
@@ -99,7 +98,7 @@ class OrganizationController extends Controller
         try {
             // Create organization
             $organization = Organization::create($validator->validated());
-            $organization->load(['currency', 'country']);
+            $organization->load(['country']);
 
             Log::info('Organization created successfully', [
                 'organization_id' => $organization->id,
@@ -518,7 +517,7 @@ class OrganizationController extends Controller
      */
     public function show(string $id)
     {
-        $organization = Organization::with(['currency', 'country'])->find($id);
+        $organization = Organization::with(['country'])->find($id);
 
         if (!$organization) {
             return response()->json([
@@ -550,10 +549,9 @@ class OrganizationController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
             'phone' => 'sometimes|required|string|max:20',
-            'email' => 'sometimes|required|email|max:255',
-            'currency_id' => 'sometimes|required|exists:currencies,id',
+            'email' => 'sometimes|required|email|max:255|unique:organizations,email,' . $id,
+            'currency' => 'sometimes|required|array|min:1',
             'country_id' => 'sometimes|required|exists:countries,id',
-            'timezone' => 'sometimes|required|string|max:255',
             'status' => 'sometimes|required|in:active,suspended',
         ]);
 
@@ -564,14 +562,33 @@ class OrganizationController extends Controller
             ], 422);
         }
 
-        $organization->update($validator->validated());
-        $organization->load(['currency', 'country']);
+        try {
+            $organization->update($validator->validated());
+            $organization->load(['country']);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Organization updated successfully',
-            'data' => $organization
-        ], 200);
+            Log::info('Organization updated successfully', [
+                'organization_id' => $organization->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Organization updated successfully',
+                'data' => $organization
+            ], 200);
+        } catch (Exception $e) {
+            Log::error('Organization update failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'organization_id' => $id,
+                'request_data' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Organization update failed',
+                'error' => config('app.debug') ? $e->getMessage() : 'An error occurred while updating the organization',
+            ], 500);
+        }
     }
 
     /**
@@ -588,11 +605,29 @@ class OrganizationController extends Controller
             ], 404);
         }
 
-        $organization->delete();
+        try {
+            $organization->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Organization deleted successfully'
-        ], 200);
+            Log::info('Organization deleted successfully', [
+                'organization_id' => $id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Organization deleted successfully'
+            ], 200);
+        } catch (Exception $e) {
+            Log::error('Organization deletion failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'organization_id' => $id
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Organization deletion failed',
+                'error' => config('app.debug') ? $e->getMessage() : 'An error occurred while deleting the organization',
+            ], 500);
+        }
     }
 }

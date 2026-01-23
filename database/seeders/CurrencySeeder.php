@@ -30,7 +30,8 @@ class CurrencySeeder extends Seeder
                 'name' => $currency['name'],
                 'code' => $currency['code'],
                 'symbol' => $currency['symbol'],
-                'created_at' => now()
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
     }

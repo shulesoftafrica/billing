@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Organization extends Model
 {
@@ -10,34 +12,70 @@ class Organization extends Model
         'name',
         'phone',
         'email',
-        'currency_id',
+        'currency',
         'country_id',
-        'timezone',
         'status',
     ];
 
-    public function currency()
-    {
-        return $this->belongsTo(Currency::class);
-    }
+    protected $casts = [
+        'currency' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
 
-    public function country()
+    /**
+     * Get the country that this organization belongs to.
+     */
+    public function country(): BelongsTo
     {
         return $this->belongsTo(Country::class);
     }
 
-    public function users()
+    /**
+     * Get all users for this organization.
+     */
+    public function users(): HasMany
     {
         return $this->hasMany(User::class);
     }
 
-    public function customers()
+    /**
+     * Get all customers for this organization.
+     */
+    public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);
     }
 
-    public function products()
+    /**
+     * Get all products for this organization.
+     */
+    public function products(): HasMany
     {
         return $this->hasMany(Product::class);
+    }
+
+    /**
+     * Get all bank accounts for this organization.
+     */
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(BankAccount::class);
+    }
+
+    /**
+     * Get all payment gateway integrations for this organization.
+     */
+    public function paymentGatewayIntegrations(): HasMany
+    {
+        return $this->hasMany(OrganizationPaymentGatewayIntegration::class);
+    }
+
+    /**
+     * Get all configurations for this organization.
+     */
+    public function configurations(): HasMany
+    {
+        return $this->hasMany(Configuration::class);
     }
 }

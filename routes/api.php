@@ -31,6 +31,8 @@ Route::middleware('throttle:30,1')->group(function () {
 });
 
 // Protected API routes - all require Sanctum authentication with rate limiting
+// Route::middleware(['auth:sanctum', 'throttle:30,1'])->group(function () {
+
 Route::middleware(['throttle:30,1'])->group(function () {
     // Auth routes
     Route::post('auth/logout', [AuthController::class, 'logout']);

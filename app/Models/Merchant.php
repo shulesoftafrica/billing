@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Merchant extends Model
 {
@@ -18,9 +19,14 @@ class Merchant extends Model
 
     protected $casts = [
         'header_response' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
-    public function organizationPaymentGatewayIntegration()
+    /**
+     * Get the organization payment gateway integration this merchant belongs to.
+     */
+    public function organizationPaymentGatewayIntegration(): BelongsTo
     {
         return $this->belongsTo(OrganizationPaymentGatewayIntegration::class);
     }

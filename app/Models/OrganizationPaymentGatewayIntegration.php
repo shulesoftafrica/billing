@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OrganizationPaymentGatewayIntegration extends Model
 {
@@ -12,30 +14,50 @@ class OrganizationPaymentGatewayIntegration extends Model
         'organization_id',
         'status',
         'attachment',
-        'attachment_url',
     ];
 
-    public function bankAccount()
+    protected $casts = [
+        'attachment' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+    /**
+     * Get the bank account associated with this integration.
+     */
+    public function bankAccount(): BelongsTo
     {
         return $this->belongsTo(BankAccount::class);
     }
 
-    public function paymentGateway()
+    /**
+     * Get the payment gateway associated with this integration.
+     */
+    public function paymentGateway(): BelongsTo
     {
         return $this->belongsTo(PaymentGateway::class);
     }
 
-    public function organization()
+    /**
+     * Get the organization associated with this integration.
+     */
+    public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
     }
 
-    public function merchants()
+    /**
+     * Get all merchants for this integration.
+     */
+    public function merchants(): HasMany
     {
         return $this->hasMany(Merchant::class);
     }
 
-    public function controlNumbers()
+    /**
+     * Get all control numbers for this integration.
+     */
+    public function controlNumbers(): HasMany
     {
         return $this->hasMany(ControlNumber::class);
     }

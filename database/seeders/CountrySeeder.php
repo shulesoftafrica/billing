@@ -13,23 +13,24 @@ class CountrySeeder extends Seeder
     public function run(): void
     {
         $countries = [
-            ['name' => 'Tanzania', 'code' => 'TZA'],
-            ['name' => 'Kenya', 'code' => 'KEN'],
-            ['name' => 'Uganda', 'code' => 'UGA'],
-            ['name' => 'Rwanda', 'code' => 'RWA'],
-            ['name' => 'Burundi', 'code' => 'BDI'],
-            ['name' => 'South Africa', 'code' => 'ZAF'],
-            ['name' => 'Nigeria', 'code' => 'NGA'],
-            ['name' => 'Ghana', 'code' => 'GHA'],
-            ['name' => 'Egypt', 'code' => 'EGY'],
-            ['name' => 'Morocco', 'code' => 'MAR'],
+            ['name' => 'Tanzania', 'code' => 'TZ'],
+            ['name' => 'Kenya', 'code' => 'KE'],
+            ['name' => 'Uganda', 'code' => 'UG'],
+            ['name' => 'Rwanda', 'code' => 'RW'],
+            ['name' => 'Burundi', 'code' => 'BI'],
+            ['name' => 'South Africa', 'code' => 'ZA'],
+            ['name' => 'Nigeria', 'code' => 'NG'],
+            ['name' => 'Ghana', 'code' => 'GH'],
+            ['name' => 'Egypt', 'code' => 'EG'],
+            ['name' => 'Morocco', 'code' => 'MA'],
         ];
 
         foreach ($countries as $country) {
             DB::table('countries')->insert([
                 'name' => $country['name'],
                 'code' => $country['code'],
-                'created_at' => now()
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
     }

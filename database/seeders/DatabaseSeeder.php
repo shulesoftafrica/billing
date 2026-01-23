@@ -11,17 +11,21 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Seed users first
-        $this->call([
-            UserSeeder::class,
-        ]);
-
-        // Seed base tables
+        // Seed base tables first (countries, product types, payment gateways)
         $this->call([
             CountrySeeder::class,
-            CurrencySeeder::class,
             ProductTypeSeeder::class,
             PaymentGatewaySeeder::class,
+        ]);
+
+        // Seed organizations
+        $this->call([
+            OrganizationSeeder::class,
+        ]);
+
+        // Seed users (requires organizations to exist)
+        $this->call([
+            UserSeeder::class,
         ]);
     }
 }
