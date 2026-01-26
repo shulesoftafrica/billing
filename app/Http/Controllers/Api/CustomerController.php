@@ -45,6 +45,7 @@ class CustomerController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'name' => 'required|string|max:255',
+            'username' => 'nullable|string|max:255|unique:customers,username,NULL,id,organization_id,' . $request->organization_id,
             'email' => 'nullable|string|email|max:255|unique:customers,email,NULL,id,organization_id,' . $request->organization_id,
             'phone' => 'nullable|string|max:255|unique:customers,phone,NULL,id,organization_id,' . $request->organization_id,
             'status' => 'required|in:active,suspended',
@@ -114,8 +115,9 @@ class CustomerController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|required|exists:organizations,id',
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'nullable|string|email|max:255',
-            'phone' => 'nullable|string|max:255',
+            'username' => 'nullable|string|max:255|unique:customers,username,' . $id . ',id,organization_id,' . $customer->organization_id,
+            'email' => 'nullable|string|email|max:255|unique:customers,email,' . $id . ',id,organization_id,' . $customer->organization_id,
+            'phone' => 'nullable|string|max:255|unique:customers,phone,' . $id . ',id,organization_id,' . $customer->organization_id,
             'status' => 'sometimes|required|in:active,suspended',
         ]);
 

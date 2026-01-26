@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
             $table->string('name');
+            $table->string('username')->nullable();
             $table->string('email')->nullable();
             $table->string('phone')->nullable();
             $table->string('status')->default('active');
@@ -23,8 +24,10 @@ return new class extends Migration
         Schema::table('customers', function (Blueprint $table) {
             $table->index('organization_id');
             $table->index('email');
+            $table->index('username');
             $table->index('status');
             $table->unique(['organization_id', 'email'], 'unique_org_customer_email');
+            $table->unique(['organization_id', 'username'], 'unique_org_customer_username');
         });
     }
 
