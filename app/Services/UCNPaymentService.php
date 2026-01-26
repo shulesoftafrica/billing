@@ -13,10 +13,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
-class UNCPaymentService
+class UCNPaymentService
 {
     /**
-     * Process UNC payment webhook
+     * Process UCN payment webhook
      *
      * @param array $webhookData
      * @return array
@@ -102,7 +102,7 @@ class UNCPaymentService
                     'gateway_id' => $paymentGateway->id,
                     'customer_id' => $customer->id,
                     'amount' => $amountPaid,
-                    'status' => 'pending',
+                    'notification_status' => 'pending',
                     'gateway_reference' => $cbaReferenceNo,
                     'paid_at' => Carbon::now(),
                 ]);
@@ -113,7 +113,7 @@ class UNCPaymentService
                     ->first();
 
                 if (!$configuration || !$configuration->config) {
-                    $payment->update(['status' => 'failed']);
+                    $payment->update(['notification_status' => 'failed']);
                     return $this->failureResponse(
                         $cbaReferenceNo,
                         '500',
@@ -123,7 +123,7 @@ class UNCPaymentService
 
                 $notify_config = json_decode($configuration->config, true);
                 if (!isset($notify_config['api_endpoint']) || empty($notify_config['api_endpoint'])) {
-                    $payment->update(['status' => 'failed']);
+                    $payment->update(['notification_status' => 'failed']);
                     return $this->failureResponse(
                         $cbaReferenceNo,
                         '500',
@@ -132,7 +132,7 @@ class UNCPaymentService
                 }
 
                 if (!isset($notify_config['signature_key']) || empty($notify_config['signature_key'])) {
-                    $payment->update(['status' => 'failed']);
+                    $payment->update(['notification_status' => 'failed']);
                     return $this->failureResponse(
                         $cbaReferenceNo,
                         '500',
@@ -157,7 +157,6 @@ class UNCPaymentService
                     }
 
                     if (!$subscription->pricePlan) {
-                        $payment->update(['status' => 'failed']);
                         return $this->failureResponse(
                             $cbaReferenceNo,
                             '500',
@@ -240,7 +239,7 @@ class UNCPaymentService
 
                     // Step 9: Update payment status based on response
                     if ($isSuccessful && isset($responseData['success']) && $responseData['success'] === true) {
-                        $payment->update(['status' => 'success']);
+                        $payment->update(['notification_status' => 'success']);
 
                         Log::info('UNC payment processed successfully', [
                             'payment_id' => $payment->id,
@@ -250,7 +249,7 @@ class UNCPaymentService
 
                         // Step 10: Return success response
                     } else {
-                        $payment->update(['status' => 'failed']);
+                        $payment->update(['notification_status' => 'failed']);
 
                         Log::error('Organization endpoint returned error', [
                             'payment_id' => $payment->id,
@@ -259,7 +258,7 @@ class UNCPaymentService
                     }
                     return $this->successResponse($cbaReferenceNo);
                 } catch (\Exception $e) {
-                    $payment->update(['status' => 'failed']);
+                    $payment->update(['notification_status' => 'failed']);
 
                     Log::error('Failed to notify organization endpoint', [
                         'payment_id' => $payment->id,

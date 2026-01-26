@@ -26,7 +26,7 @@ Route::middleware('throttle:5,1')->group(function () {
 
 // Webhook routes - Public (no authentication, with strict rate limiting)
 Route::middleware('throttle:30,1')->group(function () {
-    Route::post('ecobank/notification', [WebhookController::class, 'handleUNCPayment']);
+    Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']);
     Route::post('payment_webhook', [WebhookController::class, 'handlePaymentWebhook']);
 });
 

@@ -12,7 +12,7 @@ class Payment extends Model
         'gateway_id',
         'customer_id',
         'amount',
-        'status',
+        'notification_status',
         'gateway_reference',
         'paid_at',
     ];

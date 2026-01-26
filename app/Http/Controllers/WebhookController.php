@@ -2,30 +2,30 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\UNCPaymentService;
+use App\Services\UCNPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
 class WebhookController extends Controller
 {
-    protected UNCPaymentService $uncPaymentService;
+    protected UCNPaymentService $ucnPaymentService;
 
-    public function __construct(UNCPaymentService $uncPaymentService)
+    public function __construct(UCNPaymentService $ucnPaymentService)
     {
-        $this->uncPaymentService = $uncPaymentService;
+        $this->ucnPaymentService = $ucnPaymentService;
     }
 
     /**
-     * Handle UNC payment webhook
+     * Handle UCN payment webhook
      *
      * @param Request $request
      * @return JsonResponse
      */
-    public function handleUNCPayment(Request $request): JsonResponse
+    public function handleUCNPayment(Request $request): JsonResponse
     {
         // Log incoming webhook
-        Log::info('UNC webhook received', [
+        Log::info('UCN webhook received', [
             'payload' => $request->all(),
             'ip' => $request->ip(),
         ]);
@@ -33,7 +33,7 @@ class WebhookController extends Controller
         $webhookData = $request->all();
 
         // Process the webhook
-        $response = $this->uncPaymentService->processWebhook($webhookData);
+        $response = $this->ucnPaymentService->processWebhook($webhookData);
 
         // Determine HTTP status code based on response code
         $httpStatus = $response['responseCode'] === '000' ? 200 : 400;
@@ -41,7 +41,7 @@ class WebhookController extends Controller
         return response()->json($response, $httpStatus);
     }
 
-    public function handlePaymentWebhook(Request $request): JsonResponse
+    public function handleUCNPaymentWebhook(Request $request): JsonResponse
     {
         Log::info(['Request recived' => json_encode($request->all())]);
         return response()->json(['success' => true, 'message' => 'Payment webhook received'], 200);
