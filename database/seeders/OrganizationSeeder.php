@@ -15,8 +15,8 @@ class OrganizationSeeder extends Seeder
         $organizations = [
             [
                 'name' => 'Shulesoft Company Limited',
-                'phone' => '+255654321098',
-                'email' => 'info@shulesoft.com',
+                'phone' => '+255748771580',
+                'email' => 'shulesoftcompany@gmail.com',
                 'currency' => json_encode(['TZS']),
                 'country_id' => 1, // Tanzania
                 'status' => 'active',
