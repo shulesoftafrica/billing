@@ -12,6 +12,8 @@ use App\Models\OrganizationPaymentGatewayIntegration;
 use App\Models\Merchant;
 use App\Models\ControlNumber;
 use App\Models\User;
+use App\Models\Subscription;
+use App\Models\PricePlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -43,9 +45,18 @@ class InvoiceController extends Controller
     {
         // Validate required parameters
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
-            'product_id' => 'required|exists:products,id',
-            'customer_id' => 'required|exists:customers,id',
+            'organization_id' => 'required|integer|exists:organizations,id',
+            'customer' => 'required|array',
+            'customer.name' => 'required|string',
+            'customer.email' => 'required|email',
+            'customer.phone' => 'required|string',
+            'products' => 'required|array|min:1',
+            'products.*.price_plan_id' => 'required|integer|exists:price_plans,id',
+            'products.*.amount' => 'required|numeric|min:0',
+            'description' => 'nullable|string',
+            'currency' => 'nullable|string|max:5',
+            'status' => 'nullable|string|in:draft,issued,paid,cancelled',
+            'due_date' => 'nullable|date_format:Y-m-d',
         ]);
 
         if ($validator->fails()) {
@@ -55,62 +66,159 @@ class InvoiceController extends Controller
             ], 422);
         }
 
-        // Additional validation: ensure product and customer belong to the organization
-        $product = Product::find($request->product_id);
-        $customer = Customer::find($request->customer_id);
-
-        $relationshipErrors = [];
-
-        if ($product && $product->organization_id != $request->organization_id) {
-            $relationshipErrors['product_id'] = ['The selected product does not exists.'];
-        }
-
-        if ($customer && $customer->organization_id != $request->organization_id) {
-            $relationshipErrors['customer_id'] = ['The selected customer does not exists.'];
-        }
-
-        if (!empty($relationshipErrors)) {
-            return response()->json([
-                'success' => false,
-                'errors' => $relationshipErrors
-            ], 422);
-        }
-
         try {
             DB::beginTransaction();
 
-            // Fetch related records
-            $organization = Organization::findOrFail($request->organization_id);
-            $product = Product::with('pricePlans')->findOrFail($request->product_id);
-            $customer = Customer::findOrFail($request->customer_id);
+            $organizationId = $request->organization_id;
+            $customerData = $request->customer;
+            $productsData = $request->products;
+            $description = $request->description ?? 'Invoice for products';
+            $currency = $request->currency ?? 'TZS';
+            $status = $request->status ?? 'issued';
+            $dueDate = $request->due_date ?? null;
 
-            // Create invoice
-            $invoice = Invoice::create([
-                'customer_id' => $customer->id,
-                'invoice_number' => $this->generateInvoiceNumber(),
-                'status' => 'draft',
-                'description' => 'Invoice for ' . $product->name,
-                'subtotal' => 0,
-                'tax_total' => 0,
-                'total' => 0,
-                'due_date' => Carbon::now()->addDays(30),
-                'issued_at' => Carbon::now(),
-            ]);
+            // Step 2: Check if customer exists in the organization by phone or email
+            $customer = Customer::where('organization_id', $organizationId)
+                ->where(function ($query) use ($customerData) {
+                    $query->where('email', $customerData['email'])
+                          ->orWhere('phone', $customerData['phone']);
+                })
+                ->first();
 
-            // Create invoice items with default values
-            $pricePlan = $product->pricePlans()->first();
-            $invoiceItem = InvoiceItem::create([
-                'invoice_id' => $invoice->id,
-                'subscription_id' => null, // No subscription for this flow
-                'price_plan_id' => $pricePlan ? $pricePlan->id : null,
-                'quantity' => 1,
-                'unit_price' => $pricePlan ? $pricePlan->amount : 0,
-                'total' => $pricePlan ? $pricePlan->amount : 0,
-            ]);
+            // If customer doesn't exist, create a new one
+            if (!$customer) {
+                $customer = Customer::create([
+                    'organization_id' => $organizationId,
+                    'name' => $customerData['name'],
+                    'email' => $customerData['email'],
+                    'phone' => $customerData['phone'],
+                    'status' => 'active',
+                ]);
+            }
+
+            // Step 3 & 4: Process products and determine product types
+            $subscriptions = [];
+            $invoiceItems = [];
+            $totalAmount = 0;
+
+            foreach ($productsData as $productData) {
+                // Get price plan and its product
+                $pricePlan = PricePlan::with('product')->findOrFail($productData['price_plan_id']);
+                $product = $pricePlan->product;
+
+                // Validate product belongs to organization
+                if ($product->organization_id != $organizationId) {
+                    throw new \Exception('Product does not belong to the specified organization');
+                }
+
+                $shouldCreateInvoiceItem = true;
+                $subscription = null;
+
+                // Check if product is not a one-time product (product_type_id != 1)
+                if ($product->product_type_id != 1) {
+                    // Check if subscription already exists with pending status
+                    $existingSubscription = Subscription::where('customer_id', $customer->id)
+                        ->where('price_plan_id', $pricePlan->id)
+                        ->where('status', 'pending')
+                        ->first();
+
+                    if ($existingSubscription) {
+                        // Subscription already exists - skip invoice item creation for this product
+                        $shouldCreateInvoiceItem = false;
+                    } else {
+                        // Create subscription record for recurring products
+                        $subscription = Subscription::create([
+                            'customer_id' => $customer->id,
+                            'price_plan_id' => $pricePlan->id,
+                            'status' => 'pending',
+                            'start_date' => null,
+                            'next_billing_date' => null,
+                        ]);
+                        $subscriptions[] = [
+                            'id' => $subscription->id,
+                            'customer_id' => $subscription->customer_id,
+                            'price_plan_id' => $subscription->price_plan_id,
+                            'status' => $subscription->status,
+                            'start_date' => $subscription->start_date,
+                            'next_billing_date' => $subscription->next_billing_date,
+                            'end_date' => $subscription->end_date,
+                            'created_at' => $subscription->created_at,
+                        ];
+                    }
+                }
+
+                // Prepare invoice item data only if subscription doesn't already exist
+                if ($shouldCreateInvoiceItem) {
+                    $invoiceItems[] = [
+                        'price_plan_id' => $pricePlan->id,
+                        'subscription_id' => ($product->product_type_id != 1) ? ($subscription->id ?? null) : null,
+                        'quantity' => 1,
+                        'unit_price' => $productData['amount'],
+                        'total' => $productData['amount'],
+                    ];
+
+                    $totalAmount += $productData['amount'];
+                }
+            }
+
+            // If no invoice items to create, return response without creating invoice
+            if (empty($invoiceItems)) {
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'All products have pending subscriptions - no invoice created',
+                    'data' => [
+                        'invoice' => null,
+                        'subscriptions' => $subscriptions,
+                        'payment_gateways' => [],
+                    ]
+                ], 201);
+            }
+
+            // Check if invoice already exists for this customer with the same items and pending status
+            // to prevent duplicate invoices
+            $existingInvoice = null;
+            if ($status === 'pending' || $status === 'draft') {
+                $existingInvoice = Invoice::where('customer_id', $customer->id)
+                    ->where('status', $status)
+                    ->whereIn('id', function ($query) use ($productsData) {
+                        $query->select('invoice_id')
+                            ->from('invoice_items')
+                            ->whereIn('price_plan_id', collect($productsData)->pluck('price_plan_id'))
+                            ->groupBy('invoice_id')
+                            ->havingRaw('COUNT(*) = ?', [count($productsData)]);
+                    })
+                    ->first();
+            }
+
+            if ($existingInvoice) {
+                // Invoice with same items and status already exists, return it instead
+                $invoice = $existingInvoice;
+            } else {
+                // Create invoice
+                $invoice = Invoice::create([
+                    'customer_id' => $customer->id,
+                    'invoice_number' => $this->generateInvoiceNumber(),
+                    'status' => $status,
+                    'description' => $description,
+                    'subtotal' => $totalAmount,
+                    'tax_total' => 0,
+                    'total' => $totalAmount,
+                    'due_date' => $dueDate,
+                    'issued_at' => Carbon::now(),
+                ]);
+
+                // Create invoice items only if invoice was newly created
+                foreach ($invoiceItems as $itemData) {
+                    $itemData['invoice_id'] = $invoice->id;
+                    InvoiceItem::create($itemData);
+                }
+            }
 
             // Get all organization integrated gateways
             $organizationGateways = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
-                ->where('organization_id', $organization->id)
+                ->where('organization_id', $organizationId)
                 ->get();
 
             $paymentGateways = [];
@@ -133,8 +241,14 @@ class InvoiceController extends Controller
                         throw new \Exception('Merchant not found for Universal Control Number gateway');
                     }
 
-                    // Create control number via EcoBank API
-                    $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
+                    // Create control number via EcoBank API using the first product
+                    // (for composite invoices, you may need to adjust this logic)
+                    $firstProduct = Product::whereIn('id', 
+                        PricePlan::whereIn('id', collect($productsData)->pluck('price_plan_id'))
+                            ->pluck('product_id')
+                    )->first();
+
+                    $controlNumberData = $this->createControlNumber($merchant, $firstProduct, $customer, $orgGateway);
 
                     if (!$controlNumberData['success']) {
                         throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
@@ -159,6 +273,8 @@ class InvoiceController extends Controller
                         'id' => $invoice->id,
                         'invoice_number' => $invoice->invoice_number,
                         'customer_id' => $invoice->customer_id,
+                        'customer_name' => $customer->name,
+                        'customer_email' => $customer->email,
                         'status' => $invoice->status,
                         'description' => $invoice->description,
                         'subtotal' => $invoice->subtotal,
@@ -166,7 +282,10 @@ class InvoiceController extends Controller
                         'total' => $invoice->total,
                         'due_date' => $invoice->due_date,
                         'issued_at' => $invoice->issued_at,
+                        'items_count' => count($invoiceItems),
+                        'subscriptions_created' => count($subscriptions),
                     ],
+                    'subscriptions' => $subscriptions,
                     'payment_gateways' => $paymentGateways,
                 ]
             ], 201);
