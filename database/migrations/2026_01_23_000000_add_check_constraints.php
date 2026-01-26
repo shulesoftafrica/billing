@@ -54,7 +54,7 @@ return new class extends Migration
         DB::statement('ALTER TABLE refunds ADD CONSTRAINT refunds_amount_check CHECK (amount > 0)');
         
         // Organization Payment Gateway Integrations table - status check
-        DB::statement('ALTER TABLE organization_payment_gateway_integrations ADD CONSTRAINT opgi_status_check CHECK (status IN (\'active\', \'inactive\', \'suspended\'))');
+        DB::statement('ALTER TABLE organization_payment_gateway_integrations ADD CONSTRAINT opgi_status_check CHECK (status IN (\'active\', \'inactive\', \'suspended\', \'pending\'))');
         
         // Configurations table - env check
         DB::statement('ALTER TABLE configurations ADD CONSTRAINT env_check CHECK (env IN (\'testing\', \'production\'))');
