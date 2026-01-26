@@ -159,7 +159,7 @@ class InvoiceController extends Controller
             $customer = Customer::where('organization_id', $organizationId)
                 ->where(function ($query) use ($customerData) {
                     $query->where('email', $customerData['email'])
-                          ->orWhere('phone', $customerData['phone']);
+                        ->orWhere('phone', $customerData['phone']);
                 })
                 ->first();
 
@@ -321,7 +321,8 @@ class InvoiceController extends Controller
 
                     // Create control number via EcoBank API using the first product
                     // (for composite invoices, you may need to adjust this logic)
-                    $firstProduct = Product::whereIn('id', 
+                    $firstProduct = Product::whereIn(
+                        'id',
                         PricePlan::whereIn('id', collect($productsData)->pluck('price_plan_id'))
                             ->pluck('product_id')
                     )->first();
@@ -462,7 +463,7 @@ class InvoiceController extends Controller
             if (isset($responseData['response_code']) && $responseData['response_code'] === 200) {
                 $content = $responseData['response_content'];
                 // Insert control number record
-                $data =[
+                $data = [
                     'customer_id' => $customer->id,
                     'reference' => $content['terminalId'],
                     'organization_payment_gateway_integration_id' => $orgGateway->id,
@@ -659,6 +660,10 @@ class InvoiceController extends Controller
                 return [
                     'id' => $item->pricePlan->id,
                     'name' => $item->pricePlan->name,
+                    'subscription_type' => $item->pricePlan->subscription_type,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'amount' => $item->total,
                     'product_id' => $item->pricePlan->product_id,
                     'product_name' => $item->pricePlan->product->name,
                 ];
@@ -694,42 +699,14 @@ class InvoiceController extends Controller
                 return [
                     'id' => $item->pricePlan->id,
                     'name' => $item->pricePlan->name,
-                    'product_id' => $item->pricePlan->product_id,
-                    'product_name' => $item->pricePlan->product->name,
-                    'billing_frequency' => $item->pricePlan->billing_frequency,
-                    'amount' => $item->pricePlan->amount,
-                ];
-            })->unique('id')->values(),
-            'items' => $invoice->invoiceItems->map(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'price_plan_id' => $item->price_plan_id,
-                    'price_plan_name' => $item->pricePlan->name,
-                    'product_id' => $item->pricePlan->product->id,
-                    'product_name' => $item->pricePlan->product->name,
-                    'subscription_id' => $item->subscription_id,
+                    'subscription_type' => $item->pricePlan->subscription_type,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
-                    'total' => $item->total,
+                    'amount' => $item->total,
+                    'product_id' => $item->pricePlan->product_id,
+                    'product_name' => $item->pricePlan->product->name,
                 ];
-            }),
-            'subscriptions' => $invoice->invoiceItems
-                ->whereNotNull('subscription_id')
-                ->map(function ($item) {
-                    $subscription = $item->subscription;
-                    return [
-                        'id' => $subscription->id,
-                        'customer_id' => $subscription->customer_id,
-                        'price_plan_id' => $subscription->price_plan_id,
-                        'status' => $subscription->status,
-                        'start_date' => $subscription->start_date,
-                        'end_date' => $subscription->end_date,
-                        'next_billing_date' => $subscription->next_billing_date,
-                        'created_at' => $subscription->created_at,
-                    ];
-                })
-                ->unique('id')
-                ->values(),
+            })->unique('id')->values(),
             'created_at' => $invoice->created_at,
             'updated_at' => $invoice->updated_at,
         ];
