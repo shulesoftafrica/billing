@@ -32,10 +32,88 @@ class InvoiceController extends Controller
 
     /**
      * Display a listing of the resource.
+     * Request parameters:
+     * - organization_id: Filter invoices by organization
+     * - product_id: Filter invoices by product (returns invoices that contain this product)
+     * - per_page: Number of results per page (default: 15)
+     * - page: Page number (default: 1)
      */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        try {
+            $organizationId = $request->input('organization_id');
+            $productId = $request->input('product_id');
+            $perPage = $request->input('per_page', 15);
+
+            // Validate at least one filter is provided
+            if (!$organizationId && !$productId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Either organization_id or product_id must be provided'
+                ], 422);
+            }
+
+            // Validate organization exists if provided
+            if ($organizationId && !Organization::find($organizationId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Organization not found'
+                ], 404);
+            }
+
+            // Validate product exists if provided
+            if ($productId && !Product::find($productId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+
+            $query = Invoice::with(['customer', 'invoiceItems.pricePlan.product']);
+
+            // Filter by organization
+            if ($organizationId) {
+                $query->whereHas('customer', function ($q) use ($organizationId) {
+                    $q->where('organization_id', $organizationId);
+                });
+            }
+
+            // Filter by product
+            if ($productId) {
+                $query->whereHas('invoiceItems.pricePlan.product', function ($q) use ($productId) {
+                    $q->where('products.id', $productId);
+                });
+            }
+
+            // Paginate results
+            $invoices = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+            // Format response
+            $data = $invoices->map(function ($invoice) {
+                return $this->formatInvoiceResponse($invoice);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoices retrieved successfully',
+                'data' => $data,
+                'pagination' => [
+                    'total' => $invoices->total(),
+                    'per_page' => $invoices->perPage(),
+                    'current_page' => $invoices->currentPage(),
+                    'last_page' => $invoices->lastPage(),
+                    'from' => $invoices->firstItem(),
+                    'to' => $invoices->lastItem(),
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Invoice retrieval failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice retrieval failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -512,10 +590,34 @@ class InvoiceController extends Controller
 
     /**
      * Display the specified resource.
+     * Returns detailed information about a single invoice including items and subscriptions
      */
     public function show(string $id)
     {
-        //
+        try {
+            $invoice = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription'])
+                ->find($id);
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice details retrieved successfully',
+                'data' => $this->formatInvoiceDetailResponse($invoice)
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Invoice detail retrieval failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice detail retrieval failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -532,5 +634,104 @@ class InvoiceController extends Controller
     public function destroy(string $id)
     {
         //
+    }
+
+    /**
+     * Format invoice response for list view
+     */
+    private function formatInvoiceResponse($invoice)
+    {
+        return [
+            'id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'customer_id' => $invoice->customer_id,
+            'customer_name' => $invoice->customer->name,
+            'customer_email' => $invoice->customer->email,
+            'status' => $invoice->status,
+            'description' => $invoice->description,
+            'subtotal' => $invoice->subtotal,
+            'tax_total' => $invoice->tax_total,
+            'total' => $invoice->total,
+            'due_date' => $invoice->due_date,
+            'issued_at' => $invoice->issued_at,
+            'items_count' => $invoice->invoiceItems->count(),
+            'price_plans' => $invoice->invoiceItems->map(function ($item) {
+                return [
+                    'id' => $item->pricePlan->id,
+                    'name' => $item->pricePlan->name,
+                    'product_id' => $item->pricePlan->product_id,
+                    'product_name' => $item->pricePlan->product->name,
+                ];
+            })->unique('id')->values(),
+            'created_at' => $invoice->created_at,
+            'updated_at' => $invoice->updated_at,
+        ];
+    }
+
+    /**
+     * Format invoice response for detail view
+     */
+    private function formatInvoiceDetailResponse($invoice)
+    {
+        return [
+            'id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'customer' => [
+                'id' => $invoice->customer->id,
+                'name' => $invoice->customer->name,
+                'email' => $invoice->customer->email,
+                'phone' => $invoice->customer->phone,
+                'organization_id' => $invoice->customer->organization_id,
+            ],
+            'status' => $invoice->status,
+            'description' => $invoice->description,
+            'subtotal' => $invoice->subtotal,
+            'tax_total' => $invoice->tax_total,
+            'total' => $invoice->total,
+            'due_date' => $invoice->due_date,
+            'issued_at' => $invoice->issued_at,
+            'price_plans' => $invoice->invoiceItems->map(function ($item) {
+                return [
+                    'id' => $item->pricePlan->id,
+                    'name' => $item->pricePlan->name,
+                    'product_id' => $item->pricePlan->product_id,
+                    'product_name' => $item->pricePlan->product->name,
+                    'billing_frequency' => $item->pricePlan->billing_frequency,
+                    'amount' => $item->pricePlan->amount,
+                ];
+            })->unique('id')->values(),
+            'items' => $invoice->invoiceItems->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'price_plan_id' => $item->price_plan_id,
+                    'price_plan_name' => $item->pricePlan->name,
+                    'product_id' => $item->pricePlan->product->id,
+                    'product_name' => $item->pricePlan->product->name,
+                    'subscription_id' => $item->subscription_id,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'total' => $item->total,
+                ];
+            }),
+            'subscriptions' => $invoice->invoiceItems
+                ->whereNotNull('subscription_id')
+                ->map(function ($item) {
+                    $subscription = $item->subscription;
+                    return [
+                        'id' => $subscription->id,
+                        'customer_id' => $subscription->customer_id,
+                        'price_plan_id' => $subscription->price_plan_id,
+                        'status' => $subscription->status,
+                        'start_date' => $subscription->start_date,
+                        'end_date' => $subscription->end_date,
+                        'next_billing_date' => $subscription->next_billing_date,
+                        'created_at' => $subscription->created_at,
+                    ];
+                })
+                ->unique('id')
+                ->values(),
+            'created_at' => $invoice->created_at,
+            'updated_at' => $invoice->updated_at,
+        ];
     }
 }
