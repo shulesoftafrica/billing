@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\Configuration;
+use App\Models\Subscription;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -106,18 +107,79 @@ class UNCPaymentService
                     'paid_at' => Carbon::now(),
                 ]);
 
-                // Step 6: Get configuration for organization and payment gateway
+                // Step 6: Get configuration for organization and payment gateway + know if service or prodct paid is subscription or usage
                 $configuration = Configuration::where('organization_id', $organizationId)
                     ->where('payment_gateway_id', $paymentGateway->id)
                     ->first();
 
-                if (!$configuration || !$configuration->api_endpoint) {
+                if (!$configuration || !$configuration->config) {
                     $payment->update(['status' => 'failed']);
                     return $this->failureResponse(
                         $cbaReferenceNo,
                         '500',
                         'API endpoint not configured for this organization and payment gateway'
                     );
+                }
+
+                $notify_config = json_decode($configuration->config, true);
+                if (!isset($notify_config['api_endpoint']) || empty($notify_config['api_endpoint'])) {
+                    $payment->update(['status' => 'failed']);
+                    return $this->failureResponse(
+                        $cbaReferenceNo,
+                        '500',
+                        'API endpoint not configured for this organization and payment gateway'
+                    );
+                }
+
+                if (!isset($notify_config['signature_key']) || empty($notify_config['signature_key'])) {
+                    $payment->update(['status' => 'failed']);
+                    return $this->failureResponse(
+                        $cbaReferenceNo,
+                        '500',
+                        'Signature key not configured for this organization and payment gateway'
+                    );
+                }
+
+                if ($product->product_type_id != 1) {
+                    // Check subscription status for non-standard products
+                    $pricePlanIds = $product->pricePlans()->pluck('id');
+                    $subscription = Subscription::where('customer_id', $customer->id)
+                        ->whereIn('price_plan_id', $pricePlanIds)
+                        ->where('status', 'pending')
+                        ->first();
+
+                    if (!$subscription) {
+                        return $this->failureResponse(
+                            $cbaReferenceNo,
+                            '404',
+                            'No pending subscription found for this product'
+                        );
+                    }
+
+                    if (!$subscription->pricePlan) {
+                        $payment->update(['status' => 'failed']);
+                        return $this->failureResponse(
+                            $cbaReferenceNo,
+                            '500',
+                            'Price plan not found for subscription'
+                        );
+                    }
+
+                    $days_to_add = $subscription->pricePlan->days_to_add;
+                    $endDate = match ($days_to_add) {
+                        'daily'         => Carbon::now()->addDay(),
+                        'weekly'        => Carbon::now()->addWeek(),
+                        'monthly'       => Carbon::now()->addMonth(),
+                        'quarterly'     => Carbon::now()->addMonths(3),
+                        'semi_annually' => Carbon::now()->addMonths(6),
+                        'yearly'        => Carbon::now()->addYear(),
+                        default         => Carbon::now(),
+                    };
+
+                    $subscription->update([
+                        'status'   => 'active',
+                        'end_date' => $endDate,
+                    ]);
                 }
 
                 // Step 7: Create API request object
@@ -145,13 +207,13 @@ class UNCPaymentService
                 ];
 
                 // Generate signature for API security
-                $signature = $this->generateSignature($notificationPayload, $configuration->signature_key);
+                $signature = $this->generateSignature($notificationPayload, $notify_config['signature_key']);
                 $notificationPayload['signature'] = $signature;
 
                 // Step 8: Send API request to organization endpoint from configuration
                 try {
                     // Initialize cURL
-                    $ch = curl_init($configuration->api_endpoint);
+                    $ch = curl_init($notify_config['api_endpoint']);
 
                     // Set cURL options
                     curl_setopt($ch, CURLOPT_POST, true);
@@ -159,15 +221,14 @@ class UNCPaymentService
                     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                     curl_setopt($ch, CURLOPT_TIMEOUT, 60);
                     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                        'Authorization: Bearer ' . $configuration->api_key,
+                        'Authorization: Bearer ' . $notify_config['api_key'],
                         'Content-Type: application/json',
                     ]);
-                    
+
                     // Execute request
                     $responseBody = curl_exec($ch);
                     $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                     $curlError = curl_error($ch);
-                    curl_close($ch);
 
                     // Handle cURL errors
                     if ($responseBody === false) {
