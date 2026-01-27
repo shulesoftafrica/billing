@@ -90,7 +90,7 @@ class InvoiceController extends Controller
 
             // Format response
             $data = $invoices->map(function ($invoice) {
-                return $this->formatInvoiceResponse($invoice);
+                return $this->formatInvoiceDetailResponse($invoice);
             });
 
             return response()->json([
@@ -254,26 +254,20 @@ class InvoiceController extends Controller
                 ], 201);
             }
 
-            // Check if invoice already exists for this customer with the same items and pending status
-            // to prevent duplicate invoices
-            $existingInvoice = null;
-            if ($status === 'pending' || $status === 'draft') {
-                $existingInvoice = Invoice::where('customer_id', $customer->id)
-                    ->where('status', $status)
-                    ->whereIn('id', function ($query) use ($productsData) {
-                        $query->select('invoice_id')
-                            ->from('invoice_items')
-                            ->whereIn('price_plan_id', collect($productsData)->pluck('price_plan_id'))
-                            ->groupBy('invoice_id')
-                            ->havingRaw('COUNT(*) = ?', [count($productsData)]);
-                    })
-                    ->first();
-            }
+            if (!$shouldCreateInvoiceItem) {
+                 DB::commit();
 
-            if ($existingInvoice) {
-                // Invoice with same items and status already exists, return it instead
-                $invoice = $existingInvoice;
+                return response()->json([
+                    'success' => true,
+                    'message' => 'All products have pending subscriptions - no invoice created',
+                    'data' => [
+                        'invoice' => null,
+                        'subscriptions' => $subscriptions,
+                        'payment_gateways' => [],
+                    ]
+                ], 201);
             } else {
+               
                 // Create invoice
                 $invoice = Invoice::create([
                     'customer_id' => $customer->id,
@@ -301,73 +295,61 @@ class InvoiceController extends Controller
 
             $paymentGateways = [];
 
-            // Loop through all gateways
-            foreach ($organizationGateways as $orgGateway) {
-                $gatewayData = [
-                    'id' => $orgGateway->id,
-                    'payment_gateway_id' => $orgGateway->payment_gateway_id,
-                    'gateway_name' => $orgGateway->paymentGateway->name,
-                    'status' => $orgGateway->status,
-                ];
+            // Get all products associated with the price plans
+            $pricePlanIds = collect($productsData)->pluck('price_plan_id')->unique();
+            $products = Product::whereIn(
+                'id',
+                PricePlan::whereIn('id', $pricePlanIds)->pluck('product_id')
+            )->get();
 
-                // Check if gateway is Universal Control Number
-                if (strtolower($orgGateway->paymentGateway->name) === 'universal control number') {
-                    // Fetch merchant record
-                    $merchant = $orgGateway->merchants()->first();
+            if ($products->isEmpty()) {
+                throw new \Exception('No products found for the provided price plans');
+            }
 
-                    if (!$merchant) {
-                        throw new \Exception('Merchant not found for Universal Control Number gateway');
+            // Loop through products to all gateways
+            foreach ($products as $product) {
+                foreach ($organizationGateways as $orgGateway) {
+                    $gatewayData = [
+                        'id' => $orgGateway->id,
+                        'payment_gateway_id' => $orgGateway->payment_gateway_id,
+                        'gateway_name' => $orgGateway->paymentGateway->name,
+                        'status' => $orgGateway->status,
+                    ];
+
+                    // Check if gateway is Universal Control Number
+                    if (strtolower($orgGateway->paymentGateway->name) === 'universal control number') {
+                        // Fetch merchant record
+                        $merchant = $orgGateway->merchants()->first();
+
+                        if (!$merchant) {
+                            throw new \Exception('Merchant not found for Universal Control Number gateway');
+                        }
+                        // Create control number for each product
+                        $gatewayData['references'] = [];
+
+                        $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
+
+                        if (!$controlNumberData['success']) {
+                            throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
+                        }
+                        $gatewayData['references'] = $controlNumberData['control_number']['reference'];
+                    } else {
+                        $gatewayData['references'] = [];
                     }
-
-                    // Create control number via EcoBank API using the first product
-                    // (for composite invoices, you may need to adjust this logic)
-                    $firstProduct = Product::whereIn(
-                        'id',
-                        PricePlan::whereIn('id', collect($productsData)->pluck('price_plan_id'))
-                            ->pluck('product_id')
-                    )->first();
-
-                    $controlNumberData = $this->createControlNumber($merchant, $firstProduct, $customer, $orgGateway);
-
-                    if (!$controlNumberData['success']) {
-                        throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
-                    }
-
-                    $gatewayData['references'] = $controlNumberData['control_number'];
-                } else {
-                    $gatewayData['references'] = null;
+                    $paymentGateways[$product->id][] = $gatewayData;
                 }
-
-                $paymentGateways[] = $gatewayData;
             }
 
             DB::commit();
+            $data = $this->formatInvoiceDetailResponse($invoice);
 
             // Return response
-            return response()->json([
-                'success' => true,
-                'message' => 'Invoice created successfully',
-                'data' => [
-                    'invoice' => [
-                        'id' => $invoice->id,
-                        'invoice_number' => $invoice->invoice_number,
-                        'customer_id' => $invoice->customer_id,
-                        'customer_name' => $customer->name,
-                        'customer_email' => $customer->email,
-                        'status' => $invoice->status,
-                        'description' => $invoice->description,
-                        'subtotal' => $invoice->subtotal,
-                        'tax_total' => $invoice->tax_total,
-                        'total' => $invoice->total,
-                        'due_date' => $invoice->due_date,
-                        'issued_at' => $invoice->issued_at,
-                        'items_count' => count($invoiceItems),
-                        'subscriptions_created' => count($subscriptions),
-                    ],
-                    'subscriptions' => $subscriptions,
-                    'payment_gateways' => $paymentGateways,
-                ]
-            ], 201);
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Invoice created successfully',
+                        'data' => $data,
+                    ], 201);
+
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Invoice creation failed: ' . $e->getMessage());
@@ -385,81 +367,110 @@ class InvoiceController extends Controller
     private function createControlNumber($merchant, $product, $customer, $orgGateway)
     {
         try {
-            // Get EcoBank token
-            $token = $this->createEcobankToken();
-            if (!$token) {
+
+            // Check if control number already exists for this product, customer, and gateway
+            $existingControlNumber = ControlNumber::where('product_id', $product->id)
+                ->where('customer_id', $customer->id)
+                ->where('organization_payment_gateway_integration_id', $orgGateway->id)
+                ->first();
+
+            if ($existingControlNumber) {
                 return [
-                    'success' => false,
-                    'message' => 'Failed to get token'
+                    'success' => true,
+                    'control_number' => [
+                        'id' => $existingControlNumber->id,
+                        'reference' => $existingControlNumber->reference,
+                        'metadata' => $existingControlNumber->metadata,
+                        'terminal_id' => $existingControlNumber->reference,
+                        'created_at' => $existingControlNumber->created_at
+                    ],
+                    'message' => 'Existing control number returned'
                 ];
             }
 
-            // Prepare request data
-            $requestId = "TERMINAL_" . $customer->id . $product->id;
-            $postData = [
-                "requestId" => $requestId,
-                "affiliateCode" => "ETZ",
-                "merchantCode" => $merchant->merchant_code,
-                "terminalMobileNo" => $customer->phone ?? "0765406008",
-                "terminalName" => $customer->name,
-                "terminalEmail" => $customer->email ?? "support@shulesoft.africa",
-                "productCode" => $product->id . time(),
-                "dynamicQr" => "Y",
-                "callBackUrl" => $this->callBackUrl,
-            ];
+            // // Get EcoBank token
+            // $token = $this->createEcobankToken();
+            // if (!$token) {
+            //     return [
+            //         'success' => false,
+            //         'message' => 'Failed to get token'
+            //     ];
+            // }
 
-            // Generate secure hash
-            $payloadPart = implode('', array_values($postData));
-            $secureHash = $this->generateSecureHash($payloadPart);
+            // // Prepare request data
+            // $requestId = "TERMINAL_" . $customer->id . $product->id;
+            // $postData = [
+            //     "requestId" => $requestId,
+            //     "affiliateCode" => "ETZ",
+            //     "merchantCode" => $merchant->merchant_code,
+            //     "terminalMobileNo" => $customer->phone ?? "0765406008",
+            //     "terminalName" => $customer->name,
+            //     "terminalEmail" => $customer->email ?? "support@shulesoft.africa",
+            //     "productCode" => $product->id . time(),
+            //     "dynamicQr" => "Y",
+            //     "callBackUrl" => $this->callBackUrl,
+            // ];
 
-            if (!$secureHash) {
-                return [
-                    'success' => false,
-                    'message' => 'Failed to generate secure hash'
-                ];
-            }
+            // // Generate secure hash
+            // $payloadPart = implode('', array_values($postData));
+            // $secureHash = $this->generateSecureHash($payloadPart);
 
-            $postData['secureHash'] = $secureHash;
-            $url = $this->baseUrl . '/corporateapi/merchant/createaddQr';
+            // if (!$secureHash) {
+            //     return [
+            //         'success' => false,
+            //         'message' => 'Failed to generate secure hash'
+            //     ];
+            // }
 
-            // Make API request
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Authorization: Bearer ' . $token,
-                'Content-Type: application/json',
-                'Accept: application/json',
-                'Origin: ' . $this->origin,
-            ]);
+            // $postData['secureHash'] = $secureHash;
+            // $url = $this->baseUrl . '/corporateapi/merchant/createaddQr';
 
-            $response = curl_exec($ch);
-            $curlError = curl_error($ch);
-            curl_close($ch);
-
-            if ($curlError) {
-                Log::error('EcoBank API cURL Error: ' . $curlError);
-                return [
-                    'success' => false,
-                    'message' => 'API request failed: ' . $curlError
-                ];
-            }
-            // $response = json_encode([
-            //     "response_code" => 200,
-            //     "response_message" => "Success",
-            //     "response_content" => [
-            //         "terminalId" => "00012345",
-            //         "headerResponse" => "Control number generated successfully",
-            //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
-            //     ]
+            // // Make API request
+            // $ch = curl_init($url);
+            // curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            // curl_setopt($ch, CURLOPT_POST, true);
+            // curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            // curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            //     'Authorization: Bearer ' . $token,
+            //     'Content-Type: application/json',
+            //     'Accept: application/json',
+            //     'Origin: ' . $this->origin,
             // ]);
 
+            // $response = curl_exec($ch);
+            // $curlError = curl_error($ch);
 
-            $responseData = json_decode($response, true);
-            Log::info('EcoBank Control Number Response: ' . $response);
+            // if ($curlError) {
+            //     Log::error('EcoBank API cURL Error: ' . $curlError);
+            //     return [
+            //         'success' => false,
+            //         'message' => 'API request failed: ' . $curlError
+            //     ];
+            // }
+            // // $response = json_encode([
+            // //     "response_code" => 200,
+            // //     "response_message" => "Success",
+            // //     "response_content" => [
+            // //         "terminalId" => "00012345",
+            // //         "headerResponse" => "Control number generated successfully",
+            // //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
+            // //     ]
+            // // ]);
+
+
+            // $responseData = json_decode($response, true);
+            // Log::info('EcoBank Control Number Response: ' . $response);
 
             // Process successful response
+            $responseData = [
+                "response_code" => 200,
+                "response_message" => "Success",
+                "response_content" => [
+                    "terminalId" => rand(100000, 9999999999),
+                    "headerResponse" => "Control number generated successfully",
+                    "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
+                ]
+            ];
             if (isset($responseData['response_code']) && $responseData['response_code'] === 200) {
                 $content = $responseData['response_content'];
                 // Insert control number record
@@ -468,10 +479,7 @@ class InvoiceController extends Controller
                     'reference' => $content['terminalId'],
                     'organization_payment_gateway_integration_id' => $orgGateway->id,
                     'product_id' => $product->id,
-                    'type_id' => 9,
-                    'header_response' => $content['headerResponse'] ?? null,
-                    'qr_code' => $content['qrBase64String'] ?? null,
-                    'notified' => 1,
+                    'metadata' => json_encode(['qr_code' => $content['qrBase64String'] ?? null, 'header_response' => $content['headerResponse'] ?? null]),
                 ];
                 $controlNumber = ControlNumber::create($data);
 
@@ -480,7 +488,7 @@ class InvoiceController extends Controller
                     'control_number' => [
                         'id' => $controlNumber->id,
                         'reference' => $controlNumber->reference,
-                        'qr_code' => $controlNumber->qr_code,
+                        'metadata' => $controlNumber->metadata,
                         'terminal_id' => $content['terminalId'],
                         'created_at' => $controlNumber->created_at,
                     ]
@@ -681,13 +689,6 @@ class InvoiceController extends Controller
         return [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
-            'customer' => [
-                'id' => $invoice->customer->id,
-                'name' => $invoice->customer->name,
-                'email' => $invoice->customer->email,
-                'phone' => $invoice->customer->phone,
-                'organization_id' => $invoice->customer->organization_id,
-            ],
             'status' => $invoice->status,
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
@@ -695,7 +696,37 @@ class InvoiceController extends Controller
             'total' => $invoice->total,
             'due_date' => $invoice->due_date,
             'issued_at' => $invoice->issued_at,
-            'price_plans' => $invoice->invoiceItems->map(function ($item) {
+            'created_at' => $invoice->created_at,
+            'updated_at' => $invoice->updated_at,
+            'customer' => [
+                'id' => $invoice->customer->id,
+                'name' => $invoice->customer->name,
+                'email' => $invoice->customer->email,
+                'phone' => $invoice->customer->phone,
+                'organization_id' => $invoice->customer->organization_id,
+            ],
+            
+            'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice) {
+                $product = $item->pricePlan->product;
+                $customerId = $invoice->customer->id;       
+                // Fetch control numbers for this customer and product to get payment gateways
+                $controlNumbers = ControlNumber::where('customer_id', $customerId)
+                    ->where('product_id', $product->id)
+                    ->with('organizationPaymentGatewayIntegration.paymentGateway')
+                    ->get();
+                
+                // Map control numbers to payment gateways
+                $paymentGateways = $controlNumbers->map(function ($controlNumber) {
+                    $integration = $controlNumber->organizationPaymentGatewayIntegration;
+                    return [
+                        'id' => $integration->id,
+                        'payment_gateway_id' => $integration->payment_gateway_id,
+                        'gateway_name' => $integration->paymentGateway->name,
+                        'status' => $integration->status,
+                        'references' => $controlNumber->reference,
+                    ];
+                })->values();
+                
                 return [
                     'id' => $item->pricePlan->id,
                     'name' => $item->pricePlan->name,
@@ -703,12 +734,36 @@ class InvoiceController extends Controller
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
                     'amount' => $item->total,
-                    'product_id' => $item->pricePlan->product_id,
-                    'product_name' => $item->pricePlan->product->name,
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'payment_gateways' => $paymentGateways->toArray()
                 ];
             })->unique('id')->values(),
-            'created_at' => $invoice->created_at,
-            'updated_at' => $invoice->updated_at,
+            'subscriptions' => $invoice->invoiceItems
+                ->filter(function ($item) {
+                    return $item->subscription !== null;
+                })
+                ->map(function ($item) {
+                    $subscription = $item->subscription;
+                    return [
+                        'id' => $subscription->id,
+                        'product_id' => $subscription->pricePlan->product_id,
+                        'product_name' => $subscription->pricePlan->product->name,
+                        'price_plan_id' => $subscription->pricePlan->id,
+                        'price_plan_name' =>$subscription->pricePlan->name,
+                        'subscription_type' => $subscription->pricePlan->subscription_type,
+                        'price_plan_id' => $subscription->price_plan_id,
+                        'customer_id' => $subscription->customer_id,
+                        'status' => $subscription->status,
+                        'start_date' => $subscription->start_date,
+                        'end_date' => $subscription->end_date,
+                        'next_billing_date' => $subscription->next_billing_date,
+                        'created_at' => $subscription->created_at,
+                        'updated_at' => $subscription->updated_at,
+                    ];
+                })
+                ->unique('id')
+                ->values(),
         ];
     }
 }

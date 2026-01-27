@@ -32,8 +32,5 @@ class Subscription extends Model
         return $this->belongsTo(PricePlan::class);
     }
 
-    public function invoices()
-    {
-        return $this->hasMany(Invoice::class);
-    }
+   
 }

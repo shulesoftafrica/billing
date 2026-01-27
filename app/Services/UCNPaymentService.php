@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Models\ControlNumber;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -121,7 +122,7 @@ class UCNPaymentService
                     );
                 }
 
-                $notify_config = json_decode($configuration->config, true);
+                $notify_config = $configuration->config;
                 if (!isset($notify_config['api_endpoint']) || empty($notify_config['api_endpoint'])) {
                     $payment->update(['notification_status' => 'failed']);
                     return $this->failureResponse(
@@ -164,7 +165,7 @@ class UCNPaymentService
                         );
                     }
 
-                    $days_to_add = $subscription->pricePlan->days_to_add;
+                    $days_to_add = $subscription->pricePlan->subscription_type;
                     $endDate = match ($days_to_add) {
                         'daily'         => Carbon::now()->addDay(),
                         'weekly'        => Carbon::now()->addWeek(),
@@ -177,6 +178,7 @@ class UCNPaymentService
 
                     $subscription->update([
                         'status'   => 'active',
+                        'start_date' => Carbon::now(),
                         'end_date' => $endDate,
                     ]);
                 }
