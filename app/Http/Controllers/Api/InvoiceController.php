@@ -201,6 +201,9 @@ class InvoiceController extends Controller
                         ->first();
 
                     if ($existingSubscription) {
+                        $invoice = Invoice::where('customer_id', $customer->id)
+                            ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
+                            ->first();
                         // Subscription already exists - skip invoice item creation for this product
                         $shouldCreateInvoiceItem = false;
                     } else {
@@ -256,16 +259,13 @@ class InvoiceController extends Controller
 
             if (!$shouldCreateInvoiceItem) {
                  DB::commit();
+                 $data =$this->formatInvoiceDetailResponse($invoice);
 
                 return response()->json([
                     'success' => true,
                     'message' => 'All products have pending subscriptions - no invoice created',
-                    'data' => [
-                        'invoice' => null,
-                        'subscriptions' => $subscriptions,
-                        'payment_gateways' => [],
-                    ]
-                ], 201);
+                    'data' => $data
+                ], 200);
             } else {
                
                 // Create invoice
