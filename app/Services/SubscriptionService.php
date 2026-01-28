@@ -7,6 +7,7 @@ use App\Models\ControlNumber;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\InvoicePayment;
 use App\Models\Payment;
 use App\Models\PricePlan;
 use App\Models\Subscription;
@@ -370,9 +371,9 @@ class SubscriptionService
      * @return bool
      * @throws \Exception
      */
-    public function enableSubscription($subscription, $invoicedAmount, $payment = null): bool
+    public function enableSubscription($invoce_id, $subscription, $invoicedAmount, $payment = null): bool
     {
-        return DB::transaction(function () use ($subscription, $invoicedAmount, $payment) {
+        return DB::transaction(function () use ($invoce_id, $subscription, $invoicedAmount, $payment) {
             $customerId = $subscription->customer_id;
             $productId = $subscription->pricePlan->product_id;
 
@@ -413,17 +414,39 @@ class SubscriptionService
 
                 if ($hasCurrentPayment) {
                     $payment->update(['status' => 'cleared']);
+                    // Record the payment allocation to invoice
+                    InvoicePayment::create([
+                        'invoice_id' => $invoce_id,
+                        'payment_id' => $payment->id,
+                        'amount' => $payment->amount,
+                    ]);
                 }
 
-                // Reset all advance payments
-                $advancePayments->each(function ($ap) {
-                    $ap->update(['reminder' => 0]);
-                });
-
-                // Mark all other pending payments as cleared
-                $pendingPayments->each(function ($p) use ($payment) {
+                // Record all other pending payments as allocated to invoice
+                $pendingPayments->each(function ($p) use ($invoce_id, $payment) {
                     if (!$payment || $p->id !== $payment->id) {
                         $p->update(['status' => 'cleared']);
+                        InvoicePayment::create([
+                            'invoice_id' => $invoce_id,
+                            'payment_id' => $p->id,
+                            'amount' => $p->amount,
+                        ]);
+                    }
+                });
+
+                // Record advance payments used to clear the invoice
+                $advancePayments->each(function ($ap) use ($invoce_id) {
+                    if ($ap->reminder > 0) {
+                        // Record advance payment allocation to invoice
+                        if ($ap->payment_id) {
+                            InvoicePayment::create([
+                                'invoice_id' => $invoce_id,
+                                'payment_id' => $ap->payment_id,
+                                'amount' => $ap->reminder,
+                            ]);
+                        }
+                        // Clear the advance payment after using it
+                        $ap->update(['reminder' => 0]);
                     }
                 });
 
@@ -448,19 +471,67 @@ class SubscriptionService
                     'end_date' => $endDate,
                 ]);
 
+                // Allocate amount to invoice and track remaining amount for each payment
+                $remainingToAllocate = $invoicedAmount;
+
+                 // Allocate advance payments to invoice with remaining amount as reminder
+                $advancePayments->each(function ($ap) use ($invoce_id, &$remainingToAllocate) {
+                    if ($remainingToAllocate <= 0 || $ap->reminder <= 0) {
+                        return; // Stop if we've allocated the full invoice amount or advance payment is empty
+                    }
+                    
+                    $allocationAmount = min($ap->reminder, $remainingToAllocate);
+                    $newReminder = $ap->reminder - $allocationAmount;
+                    
+                    // Record advance payment allocation to invoice
+                    if ($ap->payment_id) {
+                        InvoicePayment::create([
+                            'invoice_id' => $invoce_id,
+                            'payment_id' => $ap->payment_id,
+                            'amount' => $allocationAmount,
+                        ]);
+                    }
+                    
+                    // Update advance payment with remaining reminder
+                    $ap->update(['reminder' => $newReminder]);
+                    
+                    $remainingToAllocate -= $allocationAmount;
+                });
+                
+                
                 if ($hasCurrentPayment) {
+                    $allocationAmount = min($payment->amount, $remainingToAllocate);
                     $payment->update(['status' => 'cleared']);
+                    
+                    // Record the payment allocation to invoice
+                    InvoicePayment::create([
+                        'invoice_id' => $invoce_id,
+                        'payment_id' => $payment->id,
+                        'amount' => $allocationAmount,
+                    ]);
+                    
+                    $remainingToAllocate -= $allocationAmount;
                 }
 
-                // Reset all advance payments
-                $advancePayments->each(function ($ap) {
-                    $ap->update(['reminder' => 0]);
-                });
-
-                // Mark all other pending payments as cleared
-                $pendingPayments->each(function ($p) use ($payment) {
+                // Allocate remaining amount from other pending payments
+                $pendingPayments->each(function ($p) use ($invoce_id, $payment, &$remainingToAllocate) {
+                    if ($remainingToAllocate <= 0) {
+                        return; // Stop if we've allocated the full invoice amount
+                    }
+                    
                     if (!$payment || $p->id !== $payment->id) {
                         $p->update(['status' => 'cleared']);
+                        
+                        $allocationAmount = min($p->amount, $remainingToAllocate);
+                        
+                        // Record the payment allocation to invoice
+                        InvoicePayment::create([
+                            'invoice_id' => $invoce_id,
+                            'payment_id' => $p->id,
+                            'amount' => $allocationAmount,
+                        ]);
+                        
+                        $remainingToAllocate -= $allocationAmount;
                     }
                 });
 

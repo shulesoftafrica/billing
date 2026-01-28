@@ -178,6 +178,7 @@ class InvoiceController extends Controller
             // Step 3 & 4: Process products and determine product types
             $subscriptions = [];
             $invoiceItems = [];
+            $subscriptionData = [];
             $totalAmount = 0;
 
             foreach ($productsData as $productData) {
@@ -216,17 +217,9 @@ class InvoiceController extends Controller
                             'start_date' => null,
                             'next_billing_date' => null,
                         ]);
-                        $subscriptionService = new SubscriptionService();
-                        $subscriptionService->enableSubscription($subscription, $productData['amount']);
-                        $subscriptions[] = [
+                        $subscriptionData[$subscription->id] = [
                             'id' => $subscription->id,
-                            'customer_id' => $subscription->customer_id,
-                            'price_plan_id' => $subscription->price_plan_id,
-                            'status' => $subscription->status,
-                            'start_date' => $subscription->start_date,
-                            'next_billing_date' => $subscription->next_billing_date,
-                            'end_date' => $subscription->end_date,
-                            'created_at' => $subscription->created_at,
+                            'amount' => $productData['amount'],
                         ];
                     }
                 }
@@ -261,8 +254,8 @@ class InvoiceController extends Controller
             }
 
             if (!$shouldCreateInvoiceItem) {
-                 DB::commit();
-                 $data =$this->formatInvoiceDetailResponse($invoice);
+                DB::commit();
+                $data = $this->formatInvoiceDetailResponse($invoice);
 
                 return response()->json([
                     'success' => true,
@@ -270,7 +263,7 @@ class InvoiceController extends Controller
                     'data' => $data
                 ], 200);
             } else {
-               
+
                 // Create invoice
                 $invoice = Invoice::create([
                     'customer_id' => $customer->id,
@@ -288,6 +281,15 @@ class InvoiceController extends Controller
                 foreach ($invoiceItems as $itemData) {
                     $itemData['invoice_id'] = $invoice->id;
                     InvoiceItem::create($itemData);
+                }
+                if (!empty($subscriptionData)) {
+                    $subscriptionService = new SubscriptionService();
+                    $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
+                    if (!$subscriptions->isEmpty()) {
+                        foreach ($subscriptions as $subscription) {
+                            $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
+                        }
+                    }
                 }
             }
 
@@ -347,12 +349,11 @@ class InvoiceController extends Controller
             $data = $this->formatInvoiceDetailResponse($invoice);
 
             // Return response
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Invoice created successfully',
-                        'data' => $data,
-                    ], 201);
-
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice created successfully',
+                'data' => $data,
+            ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Invoice creation failed: ' . $e->getMessage());
@@ -708,16 +709,16 @@ class InvoiceController extends Controller
                 'phone' => $invoice->customer->phone,
                 'organization_id' => $invoice->customer->organization_id,
             ],
-            
+
             'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice) {
                 $product = $item->pricePlan->product;
-                $customerId = $invoice->customer->id;       
+                $customerId = $invoice->customer->id;
                 // Fetch control numbers for this customer and product to get payment gateways
                 $controlNumbers = ControlNumber::where('customer_id', $customerId)
                     ->where('product_id', $product->id)
                     ->with('organizationPaymentGatewayIntegration.paymentGateway')
                     ->get();
-                
+
                 // Map control numbers to payment gateways
                 $paymentGateways = $controlNumbers->map(function ($controlNumber) {
                     $integration = $controlNumber->organizationPaymentGatewayIntegration;
@@ -729,7 +730,7 @@ class InvoiceController extends Controller
                         'references' => $controlNumber->reference,
                     ];
                 })->values();
-                
+
                 return [
                     'id' => $item->pricePlan->id,
                     'name' => $item->pricePlan->name,
@@ -753,7 +754,7 @@ class InvoiceController extends Controller
                         'product_id' => $subscription->pricePlan->product_id,
                         'product_name' => $subscription->pricePlan->product->name,
                         'price_plan_id' => $subscription->pricePlan->id,
-                        'price_plan_name' =>$subscription->pricePlan->name,
+                        'price_plan_name' => $subscription->pricePlan->name,
                         'subscription_type' => $subscription->pricePlan->subscription_type,
                         'price_plan_id' => $subscription->price_plan_id,
                         'customer_id' => $subscription->customer_id,

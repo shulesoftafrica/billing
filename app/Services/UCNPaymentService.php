@@ -143,10 +143,10 @@ class UCNPaymentService
                     if (!$subscription) {
                         $message .= 'No pending subscription found for this product';
                     } else {
-                        $invoicedAmount = InvoiceItem::where('price_plan_id', $subscription->price_plan_id)->where('subscription_id', $subscription->id)->value('total');
+                        $invoiceItem = InvoiceItem::where('price_plan_id', $subscription->price_plan_id)->where('subscription_id', $subscription->id)->first();
                         // Check and enable subscription
                         $subscriptionService = new SubscriptionService();
-                        $subscriptionService->enableSubscription($subscription, $invoicedAmount, $payment);
+                        $subscriptionService->enableSubscription($invoiceItem->invoice_id, $subscription, $invoiceItem->total, $payment);
                     }
                 }
 

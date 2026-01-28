@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Invoice extends Model
 {
@@ -42,5 +43,12 @@ class Invoice extends Model
     public function pricePlans(): HasManyThrough
     {
         return $this->hasManyThrough(PricePlan::class, InvoiceItem::class, 'invoice_id', 'id', 'id', 'price_plan_id');
+    }
+
+    public function payments(): BelongsToMany
+    {
+        return $this->belongsToMany(Payment::class, 'invoice_payments')
+            ->withPivot('amount')
+            ->withTimestamps();
     }
 }
