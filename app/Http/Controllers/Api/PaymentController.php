@@ -20,4 +20,25 @@ class PaymentController extends Controller
             'data' => $payments
         ]);
     }
+
+    /**
+     * Get all payments within a date range
+     * GET /api/payments?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+     */
+    public function getByDateRange(Request $request)
+    {
+        $request->validate([
+            'date_from' => 'required|date',
+            'date_to' => 'required|date',
+        ]);
+
+        $payments = Payment::whereDate('created_at', '>=', $request->date_from)
+            ->whereDate('created_at', '<=', $request->date_to)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $payments
+        ]);
+    }
 }
