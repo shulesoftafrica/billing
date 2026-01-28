@@ -295,3 +295,6 @@ Route::prefix('webhooks')->group(function () {
     Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']);
     Route::post('test', [WebhookController::class, 'handleTestWebhook']);
 });
+
+// Payment endpoints
+Route::get('payments/by-invoice/{invoice_id}', [\App\Http\Controllers\Api\PaymentController::class, 'getByInvoice']);
