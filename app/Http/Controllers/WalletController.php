@@ -189,4 +189,31 @@ class WalletController extends Controller
             'has_sufficient_balance' => $hasSufficient
         ]);
     }
+
+    /**
+     * Get all wallet transactions for a given customer and wallet type
+     * GET /api/wallets/transactions?customer_id={id}&wallet_type={type}
+     */
+    public function getTransactionsByWallet(Request $request)
+    {
+        $request->validate([
+            'customer_id' => 'required|integer|exists:customers,id',
+            'wallet_type' => 'required|string|max:50',
+            'limit' => 'nullable|integer|min:1|max:100'
+        ]);
+
+        $transactions = \App\Models\WalletTransaction::where('customer_id', $request->customer_id)
+            ->where('wallet_type', $request->wallet_type)
+            ->orderBy('created_at', 'desc')
+            ->limit($request->limit ?? 50)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'customer_id' => $request->customer_id,
+            'wallet_type' => $request->wallet_type,
+            'transactions' => $transactions,
+            'count' => $transactions->count()
+        ]);
+    }
 }
