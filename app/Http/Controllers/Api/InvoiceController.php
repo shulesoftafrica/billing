@@ -886,4 +886,24 @@ class InvoiceController extends Controller
                 return now()->addMonth(); // Default to monthly
         }
     }
+
+    /**
+     * Get all invoices for a given product ID
+     * GET /api/invoices?product_id={id}
+     */
+    public function getByProduct(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+        ]);
+
+        $invoices = Invoice::whereHas('invoiceItems', function($query) use ($request) {
+            $query->where('product_id', $request->product_id);
+        })->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $invoices
+        ]);
+    }
 }
