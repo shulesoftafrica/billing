@@ -19,6 +19,8 @@ return new class extends Migration
             $table->decimal('amount', 12, 2)->default(0);
             $table->string('notification_status')->default('pending');
             $table->string('gateway_reference')->unique();
+            $table->string('status')->default('pending');
+            $table->string('payment_reference')->nullable();
             $table->timestampTz('paid_at')->nullable();
             $table->timestampsTz();
         });

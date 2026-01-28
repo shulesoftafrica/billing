@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\AdvancePayment;
+use App\Models\ControlNumber;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Payment;
 use App\Models\PricePlan;
 use App\Models\Subscription;
 use Illuminate\Support\Facades\DB;
@@ -115,8 +118,8 @@ class SubscriptionService
 
         if (!empty($existingSubscriptions)) {
             throw new \Exception(
-                'Customer already has pending/paused subscriptions for plan IDs: ' . 
-                implode(', ', $existingSubscriptions)
+                'Customer already has pending/paused subscriptions for plan IDs: ' .
+                    implode(', ', $existingSubscriptions)
             );
         }
     }
@@ -219,7 +222,7 @@ class SubscriptionService
     {
         $prefix = 'INV';
         $date = Carbon::now()->format('Ymd');
-        
+
         // Get last invoice number for today
         $lastInvoice = Invoice::where('invoice_number', 'like', $prefix . $date . '%')
             ->orderBy('invoice_number', 'desc')
@@ -247,7 +250,7 @@ class SubscriptionService
     {
         $endDate = clone $startDate;
 
-        switch ($plan->billing_interval) {
+        switch ($plan->subscription_type) {
             case 'daily':
                 $endDate->addDay();
                 break;
@@ -264,7 +267,7 @@ class SubscriptionService
                 $endDate->addYear();
                 break;
             default:
-                $endDate->addMonth(); // Default to monthly
+                $endDate->addDay(); // Default to daily
         }
 
         return $endDate->toDateString();
@@ -356,6 +359,144 @@ class SubscriptionService
             ]);
 
             return $subscription->fresh(['customer', 'pricePlan']);
+        });
+    }
+    /**
+     * Enable subscription by validating total payments against invoiced amount
+     *
+     * @param Subscription $subscription
+     * @param float $invoicedAmount
+     * @param Payment|null $payment
+     * @return bool
+     * @throws \Exception
+     */
+    public function enableSubscription($subscription, $invoicedAmount, $payment = null): bool
+    {
+        return DB::transaction(function () use ($subscription, $invoicedAmount, $payment) {
+            $customerId = $subscription->customer_id;
+            $productId = $subscription->pricePlan->product_id;
+
+            // Step 1: Find all pending payments for this customer
+            $pendingPayments = Payment::where('customer_id', $customerId)
+                ->where('status', 'pending')
+                ->whereIn('payment_reference', ControlNumber::where('customer_id', $customerId)->where('product_id', $productId)->get()->pluck('reference'))
+                ->get();
+
+            // Step 2: Find advance payments with reminder > 0
+            $advancePayments = AdvancePayment::where('customer_id', $customerId)
+                ->where('product_id', $productId)
+                ->where('reminder', '>', 0)
+                ->get();
+
+            // Step 3: Verify current payment is not null
+            $hasCurrentPayment = $payment !== null;
+            if (!$hasCurrentPayment) {
+                $payment =  $pendingPayments->sortByDesc('created_at')->first();
+                $hasCurrentPayment = $payment !== null;
+            }
+            // Step 4: Calculate sum of all payments
+            $pendingPaymentsSum = $pendingPayments->sum('amount');
+            $advancePaymentsSum = $advancePayments->sum('reminder');
+            $totalPayments = $pendingPaymentsSum + $advancePaymentsSum;
+
+            // Step 5: Compare and execute logic
+            if ($totalPayments == $invoicedAmount) {
+                // Equal: Activate subscription and clear all payments
+                $startDate = Carbon::now();
+                $endDate = $this->calculateEndDate($startDate, $subscription->pricePlan);
+
+                $subscription->update([
+                    'status' => 'active',
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ]);
+
+                if ($hasCurrentPayment) {
+                    $payment->update(['status' => 'cleared']);
+                }
+
+                // Reset all advance payments
+                $advancePayments->each(function ($ap) {
+                    $ap->update(['reminder' => 0]);
+                });
+
+                // Mark all other pending payments as cleared
+                $pendingPayments->each(function ($p) use ($payment) {
+                    if (!$payment || $p->id !== $payment->id) {
+                        $p->update(['status' => 'cleared']);
+                    }
+                });
+
+                Log::info('Subscription enabled - payments equal invoiced amount', [
+                    'subscription_id' => $subscription->id,
+                    'customer_id' => $customerId,
+                    'total_payments' => $totalPayments,
+                    'invoiced_amount' => $invoicedAmount,
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ]);
+
+                return true;
+            } elseif ($totalPayments > $invoicedAmount) {
+                // Greater: Activate subscription and handle excess
+                $startDate = Carbon::now();
+                $endDate = $this->calculateEndDate($startDate, $subscription->pricePlan);
+
+                $subscription->update([
+                    'status' => 'active',
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ]);
+
+                if ($hasCurrentPayment) {
+                    $payment->update(['status' => 'cleared']);
+                }
+
+                // Reset all advance payments
+                $advancePayments->each(function ($ap) {
+                    $ap->update(['reminder' => 0]);
+                });
+
+                // Mark all other pending payments as cleared
+                $pendingPayments->each(function ($p) use ($payment) {
+                    if (!$payment || $p->id !== $payment->id) {
+                        $p->update(['status' => 'cleared']);
+                    }
+                });
+
+                // Calculate and record excess amount
+                $excessAmount = $totalPayments - $invoicedAmount;
+
+                AdvancePayment::create([
+                    'payment_id' => $payment?->id,
+                    'customer_id' => $customerId,
+                    'product_id' => $productId,
+                    'reminder' => $excessAmount,
+                    'amount' => $excessAmount,
+                ]);
+
+                Log::info('Subscription enabled - excess payment recorded', [
+                    'subscription_id' => $subscription->id,
+                    'customer_id' => $customerId,
+                    'total_payments' => $totalPayments,
+                    'invoiced_amount' => $invoicedAmount,
+                    'excess_amount' => $excessAmount,
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                ]);
+
+                return true;
+            } else {
+                // Less: Do nothing
+                Log::info('Subscription not enabled - insufficient payments', [
+                    'subscription_id' => $subscription->id,
+                    'customer_id' => $customerId,
+                    'total_payments' => $totalPayments,
+                    'invoiced_amount' => $invoicedAmount,
+                ]);
+
+                return true;
+            }
         });
     }
 }

@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Services\SubscriptionService;
 
 class InvoiceController extends Controller
 {
@@ -215,6 +216,8 @@ class InvoiceController extends Controller
                             'start_date' => null,
                             'next_billing_date' => null,
                         ]);
+                        $subscriptionService = new SubscriptionService();
+                        $subscriptionService->enableSubscription($subscription, $productData['amount']);
                         $subscriptions[] = [
                             'id' => $subscription->id,
                             'customer_id' => $subscription->customer_id,

@@ -14,6 +14,8 @@ class Payment extends Model
         'amount',
         'notification_status',
         'gateway_reference',
+        'status',
+        'payment_reference',
         'paid_at',
     ];
 
