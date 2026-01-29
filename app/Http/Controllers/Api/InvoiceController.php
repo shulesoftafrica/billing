@@ -690,6 +690,9 @@ class InvoiceController extends Controller
      */
     private function formatInvoiceDetailResponse($invoice)
     {
+        $invoiced = $invoice->total;
+        $paid = $invoice->payments->sum('pivot.amount');
+        $balance = $invoiced - $paid;
         return [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
@@ -697,7 +700,9 @@ class InvoiceController extends Controller
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
             'tax_total' => $invoice->tax_total,
-            'total' => $invoice->total,
+            'invoiced_amount' => $invoiced,
+            'paid_amount' => $paid,
+            'outstanding_amount' => $balance,
             'due_date' => $invoice->due_date,
             'issued_at' => $invoice->issued_at,
             'created_at' => $invoice->created_at,

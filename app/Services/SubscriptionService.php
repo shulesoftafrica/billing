@@ -474,15 +474,15 @@ class SubscriptionService
                 // Allocate amount to invoice and track remaining amount for each payment
                 $remainingToAllocate = $invoicedAmount;
 
-                 // Allocate advance payments to invoice with remaining amount as reminder
+                // Allocate advance payments to invoice with remaining amount as reminder
                 $advancePayments->each(function ($ap) use ($invoce_id, &$remainingToAllocate) {
                     if ($remainingToAllocate <= 0 || $ap->reminder <= 0) {
                         return; // Stop if we've allocated the full invoice amount or advance payment is empty
                     }
-                    
+
                     $allocationAmount = min($ap->reminder, $remainingToAllocate);
                     $newReminder = $ap->reminder - $allocationAmount;
-                    
+
                     // Record advance payment allocation to invoice
                     if ($ap->payment_id) {
                         InvoicePayment::create([
@@ -491,25 +491,25 @@ class SubscriptionService
                             'amount' => $allocationAmount,
                         ]);
                     }
-                    
+
                     // Update advance payment with remaining reminder
                     $ap->update(['reminder' => $newReminder]);
-                    
+
                     $remainingToAllocate -= $allocationAmount;
                 });
-                
-                
+
+
                 if ($hasCurrentPayment) {
                     $allocationAmount = min($payment->amount, $remainingToAllocate);
                     $payment->update(['status' => 'cleared']);
-                    
+
                     // Record the payment allocation to invoice
                     InvoicePayment::create([
                         'invoice_id' => $invoce_id,
                         'payment_id' => $payment->id,
                         'amount' => $allocationAmount,
                     ]);
-                    
+
                     $remainingToAllocate -= $allocationAmount;
                 }
 
@@ -518,19 +518,19 @@ class SubscriptionService
                     if ($remainingToAllocate <= 0) {
                         return; // Stop if we've allocated the full invoice amount
                     }
-                    
+
                     if (!$payment || $p->id !== $payment->id) {
                         $p->update(['status' => 'cleared']);
-                        
+
                         $allocationAmount = min($p->amount, $remainingToAllocate);
-                        
+
                         // Record the payment allocation to invoice
                         InvoicePayment::create([
                             'invoice_id' => $invoce_id,
                             'payment_id' => $p->id,
                             'amount' => $allocationAmount,
                         ]);
-                        
+
                         $remainingToAllocate -= $allocationAmount;
                     }
                 });
@@ -568,6 +568,271 @@ class SubscriptionService
 
                 return true;
             }
+        });
+    }
+
+    /**
+     * Find unpaid invoices and process on-time product payments
+     * Determines invoice_id from payment_reference and processes pending invoices
+     *
+     * @param string $payment_reference
+     * @param int $customerId
+     * @param float $invoicedAmount
+     * @param Payment|null $payment
+     * @return bool
+     * @throws \Exception
+     */
+    public function getOneTimePendingInvoice(int $productId, int $customerId, $payment = null): bool
+    {
+        return DB::transaction(function () use ($productId, $customerId, $payment) {
+
+            // Step 2: Get price_plan_id from price_plans where product_id matches
+            $pricePlans = PricePlan::where('product_id', $productId)->get();
+
+            if ($pricePlans->isEmpty()) {
+                throw new \Exception('No price plans found for product_id: ' . $productId);
+            }
+
+            // Step 3: Find all invoice_items where price_plan_id matches
+            $priceplanIds = $pricePlans->pluck('id')->toArray();
+            $invoiceItems = InvoiceItem::whereIn('price_plan_id', $priceplanIds)->get();
+
+            if ($invoiceItems->isEmpty()) {
+                throw new \Exception('No invoice items found for price plans');
+            }
+
+            // Step 4: Loop through invoice_items and process
+            foreach ($invoiceItems as $invoiceItem) {
+                // Get the total amount from invoice_item
+                $invoiceItemTotal = $invoiceItem->total;
+
+                // Get sum of paid amounts from invoice_payments for this product
+                $paidAmount = InvoicePayment::where('invoice_id', $invoiceItem->invoice_id)
+                    ->whereHas('payment.controlNumber', function ($query) use ($productId) {
+                        $query->where('product_id', $productId);
+                    })
+                    ->sum('amount');
+
+                // Compare and decide
+                if ($paidAmount == $invoiceItemTotal) {
+                    // Amount paid equals invoice item total - skip
+                    continue;
+                } elseif ($paidAmount < $invoiceItemTotal || $paidAmount == 0) {
+                    // Less or zero amount paid - process this invoice
+                    $invoiceId = $invoiceItem->invoice_id;
+                    $invoicedAmount = ($invoiceItem->total - $paidAmount);
+
+                    // Call clearOnTimeProductPayment with all required parameters
+                    $this->clearOnTimeProductPayment($invoiceId, $customerId, $invoicedAmount, $payment);
+                }
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * Clear on-time product payment by validating total payments against invoiced amount
+     * No subscription logic involved - purely handles payment allocation
+     * Processes all one-time products in the invoice
+     *
+     * @param int $invoice_id
+     * @param int $customerId
+     * @param float $invoicedAmount
+     * @param Payment|null $payment
+     * @return bool
+     * @throws \Exception
+     */
+    public function clearOnTimeProductPayment(int $invoice_id, int $customerId, float $invoicedAmount): bool
+    {
+        return DB::transaction(function () use ($invoice_id, $customerId, $invoicedAmount) {
+            // Get invoice with relationships to find one-time products
+            $invoice = Invoice::with(['invoiceItems.pricePlan.product'])->findOrFail($invoice_id);
+
+            // Get all unique one-time products (product_type_id = 1) from invoice items
+            $oneTimeProducts = $invoice->invoiceItems
+                ->map(function ($item) {
+                    return $item->pricePlan->product;
+                })
+                ->filter(function ($product) {
+                    return $product->product_type_id == 1;
+                })
+                ->unique('id')
+                ->values();
+            if ($oneTimeProducts->isEmpty()) {
+                throw new \Exception('No one-time products found in invoice items');
+            }
+
+            // Loop through each one-time product and clear payments
+            foreach ($oneTimeProducts as $product) {
+
+                $productId = $product->id;
+
+                // Step 1: Find all pending payments for this customer
+                $pendingPayments = Payment::where('customer_id', $customerId)
+                    ->where('status', 'pending')
+                    ->whereIn('payment_reference', ControlNumber::where('customer_id', $customerId)->where('product_id', $productId)->get()->pluck('reference'))
+                    ->get();
+
+                // Step 2: Find advance payments with reminder > 0
+                $advancePayments = AdvancePayment::where('customer_id', $customerId)
+                    ->where('product_id', $productId)
+                    ->where('reminder', '>', 0)
+                    ->get();
+
+                // Step 4: Calculate sum of all payments
+                $pendingPaymentsSum = $pendingPayments->sum('amount');
+                $advancePaymentsSum = $advancePayments->sum('reminder');
+                $totalPayments = $pendingPaymentsSum + $advancePaymentsSum;
+
+                // Step 5: Compare and execute logic
+                if ($totalPayments == $invoicedAmount) {
+
+                    // Record all other pending payments as allocated to invoice
+                    $pendingPayments->each(function ($p) use ($invoice_id) {
+                        $p->update(['status' => 'cleared']);
+                        InvoicePayment::create([
+                            'invoice_id' => $invoice_id,
+                            'payment_id' => $p->id,
+                            'amount' => $p->amount,
+                        ]);
+                    });
+
+                    // Record advance payments used to clear the invoice
+                    $advancePayments->each(function ($ap) use ($invoice_id) {
+                        if ($ap->reminder > 0) {
+                            // Record advance payment allocation to invoice
+                            if ($ap->payment_id) {
+                                InvoicePayment::create([
+                                    'invoice_id' => $invoice_id,
+                                    'payment_id' => $ap->payment_id,
+                                    'amount' => $ap->reminder,
+                                ]);
+                            }
+                            // Clear the advance payment after using it
+                            $ap->update(['reminder' => 0]);
+                        }
+                    });
+
+                    Log::info('On-time product payment cleared - payments equal invoiced amount', [
+                        'invoice_id' => $invoice_id,
+                        'customer_id' => $customerId,
+                        'product_id' => $productId,
+                        'total_payments' => $totalPayments,
+                        'invoiced_amount' => $invoicedAmount,
+                    ]);
+                } elseif ($totalPayments > $invoicedAmount) {
+                    // Greater: Handle excess
+                    // Allocate amount to invoice and track remaining amount for each payment
+                    $remainingToAllocate = $invoicedAmount;
+
+                    // Allocate advance payments to invoice with remaining amount as reminder
+                    $advancePayments->each(function ($ap) use ($invoice_id, &$remainingToAllocate) {
+                        if ($remainingToAllocate <= 0 || $ap->reminder <= 0) {
+                            return; // Stop if we've allocated the full invoice amount or advance payment is empty
+                        }
+
+                        $allocationAmount = min($ap->reminder, $remainingToAllocate);
+                        $newReminder = $ap->reminder - $allocationAmount;
+
+                        // Record advance payment allocation to invoice
+                        if ($ap->payment_id) {
+                            InvoicePayment::create([
+                                'invoice_id' => $invoice_id,
+                                'payment_id' => $ap->payment_id,
+                                'amount' => $allocationAmount,
+                            ]);
+                        }
+
+                        // Update advance payment with remaining reminder
+                        $ap->update(['reminder' => $newReminder]);
+
+                        $remainingToAllocate -= $allocationAmount;
+                    });
+
+                    // Allocate remaining amount from other pending payments
+                    $pendingPayments->each(function ($p) use ($invoice_id, &$remainingToAllocate, $customerId, $productId) {
+                        if ($remainingToAllocate <= 0) {
+
+                            AdvancePayment::create([
+                                'payment_id' => $p->id,
+                                'customer_id' => $customerId,
+                                'product_id' => $productId,
+                                'reminder' => $p->amount,
+                                'amount' => $p->amount,
+                            ]);
+                            $p->update(['status' => 'cleared']);
+                            return; // Stop if we've allocated the full invoice amount
+                        }
+
+                        $p->update(['status' => 'cleared']);
+
+                        $allocationAmount = min($p->amount, $remainingToAllocate);
+
+                        // Record the payment allocation to invoice
+                        InvoicePayment::create([
+                            'invoice_id' => $invoice_id,
+                            'payment_id' => $p->id,
+                            'amount' => $allocationAmount,
+                        ]);
+
+                        $remainingToAllocate -= $allocationAmount;
+                    });
+
+                    // Calculate and record excess amount
+                    $excessAmount = $totalPayments - $invoicedAmount;
+
+                    Log::info('On-time product payment cleared - excess payment recorded', [
+                        'invoice_id' => $invoice_id,
+                        'customer_id' => $customerId,
+                        'product_id' => $productId,
+                        'total_payments' => $totalPayments,
+                        'invoiced_amount' => $invoicedAmount,
+                        'excess_amount' => $excessAmount,
+                    ]);
+                } else {
+                    // Allocate advance payments to invoice with remaining amount as reminder
+                    $advancePayments->each(function ($ap) use ($invoice_id) {
+
+                        $allocationAmount = $ap->reminder;
+
+                        // Record advance payment allocation to invoice
+                        if ($ap->payment_id) {
+                            InvoicePayment::create([
+                                'invoice_id' => $invoice_id,
+                                'payment_id' => $ap->payment_id,
+                                'amount' => $allocationAmount,
+                            ]);
+                        }
+
+                        // Update advance payment with remaining reminder
+                        $ap->update(['reminder' => 0]);
+                    });
+                    $pendingPayments->each(function ($p) use ($invoice_id) {
+
+
+                        $p->update(['status' => 'cleared']);
+
+                        $allocationAmount = $p->amount;
+
+                        // Record the payment allocation to invoice
+                        InvoicePayment::create([
+                            'invoice_id' => $invoice_id,
+                            'payment_id' => $p->id,
+                            'amount' => $allocationAmount,
+                        ]);
+                    });
+                    Log::info('On-time product payment not cleared - insufficient payments', [
+                        'invoice_id' => $invoice_id,
+                        'customer_id' => $customerId,
+                        'product_id' => $productId,
+                        'total_payments' => $totalPayments,
+                        'invoiced_amount' => $invoicedAmount,
+                    ]);
+                }
+            }
+
+            return true;
         });
     }
 }

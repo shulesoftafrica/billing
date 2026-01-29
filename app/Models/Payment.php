@@ -46,4 +46,8 @@ class Payment extends Model
             ->withPivot('amount')
             ->withTimestamps();
     }
+    public function controlNumber()
+    {
+        return $this->belongsTo(ControlNumber::class, 'payment_reference', 'reference');
+    }
 }
