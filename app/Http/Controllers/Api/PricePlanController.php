@@ -24,7 +24,7 @@ class PricePlanController extends Controller
             ], 404);
         }
 
-        $pricePlans = $product->pricePlans()->with('currency')->get();
+        $pricePlans = $product->pricePlans()->get();
 
         return response()->json([
             'success' => true,

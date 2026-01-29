@@ -53,4 +53,7 @@ class User extends Authenticatable
     {
         return $this->hasMany(ControlNumber::class);
     }
+    public function organization(){
+        return $this->belongsTo(Organization::class);
+    }
 }

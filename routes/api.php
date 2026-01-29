@@ -14,9 +14,12 @@ use App\Http\Controllers\Api\PricePlanController;
 use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\PaymentGatewayTestController;
 
 // Authentication routes - Public (no authentication, with strict rate limiting to prevent brute force)
 Route::middleware('throttle:5,1')->group(function () {
@@ -26,8 +29,9 @@ Route::middleware('throttle:5,1')->group(function () {
 
 // Webhook routes - Public (no authentication, with strict rate limiting)
 Route::middleware('throttle:30,1')->group(function () {
-    Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']);
-    Route::post('payment_webhook', [WebhookController::class, 'handlePaymentWebhook']);
+    Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
+    Route::post('stripe', [WebhookController::class, 'handleStripeWebhook']); //stripe
+    Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
 });
 
 // Protected API routes - all require Sanctum authentication with rate limiting
@@ -38,7 +42,7 @@ Route::middleware(['throttle:30,1'])->group(function () {
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
     Route::get('auth/me', [AuthController::class, 'me']);
-    
+
     // User endpoint
     Route::get('/user', function (Request $request) {
         return $request->user();
@@ -85,3 +89,47 @@ Route::middleware(['throttle:30,1'])->group(function () {
     // Customer subscriptions routes
     Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
 });
+
+
+
+// Wallet Management Routes (Phase 1 Implementation) - Protected
+Route::prefix('wallets')->group(function () {
+    Route::get('balance', [WalletController::class, 'getBalance']);
+    Route::post('credit', [WalletController::class, 'addCredits']);
+    Route::post('deduct', [WalletController::class, 'deductCredits']);
+    Route::post('transfer', [WalletController::class, 'transferCredits']);
+    Route::get('check-balance', [WalletController::class, 'checkBalance']);
+    Route::get('{customer_id}/transactions', [WalletController::class, 'getTransactionHistory']);
+});
+
+// Phase 2: Advanced Invoice Types - Protected
+Route::prefix('invoices')->group(function () {
+    Route::post('wallet-topup', [App\Http\Controllers\Api\InvoiceController::class, 'createWalletTopupInvoice']);
+    Route::post('plan-upgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanUpgradeInvoice']);
+    Route::post('plan-downgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanDowngradeInvoice']);
+});
+
+// Phase 2: Enhanced Customer Management - Protected
+Route::prefix('customers')->group(function () {
+    Route::get('by-phone/{phone}/status', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); //okay
+    Route::get('by-email/{email}/status', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']); //okay
+});
+
+// Phase 2: Payment Gateway Testing - Protected
+Route::prefix('payment-gateways')->group(function () {
+    Route::get('test-connection', [PaymentGatewayTestController::class, 'testConnection']);
+    Route::get('test-all-connections', [PaymentGatewayTestController::class, 'testAllConnections']);
+});
+
+// Public webhook routes (no authentication needed)
+Route::prefix('webhooks')->group(function () {
+    Route::post('unc-payment', [WebhookController::class, 'handleUNCPayment']);
+
+    Route::post('test', [WebhookController::class, 'handleTestWebhook']);
+});
+
+// Payment endpoints
+Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
+Route::get('payments', [PaymentController::class, 'getByDateRange']);
+Route::get('invoices', [InvoiceController::class, 'getByProduct']);
+Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);

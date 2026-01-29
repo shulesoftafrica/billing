@@ -770,4 +770,19 @@ class InvoiceController extends Controller
                 ->values(),
         ];
     }
+    public function getByProduct(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+        ]);
+
+        $invoices = Invoice::whereHas('invoiceItems', function ($query) use ($request) {
+            $query->where('product_id', $request->product_id);
+        })->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $invoices
+        ]);
+    }
 }

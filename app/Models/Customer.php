@@ -27,11 +27,6 @@ class Customer extends Model
         return $this->belongsTo(Organization::class);
     }
 
-    public function addresses(): HasMany
-    {
-        return $this->hasMany(CustomerAddress::class);
-    }
-
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
@@ -40,6 +35,11 @@ class Customer extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    public function walletTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class);
     }
 
     // public function paymentMethods()

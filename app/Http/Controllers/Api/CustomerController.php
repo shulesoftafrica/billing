@@ -176,4 +176,140 @@ class CustomerController extends Controller
             ], 500);
         }
     }
+
+    public function lookupByPhoneWithStatus(string $phone)
+    {
+        try {
+            $customer = Customer::with([
+                'organization',
+                'subscriptions.pricePlan',
+                'invoices' => function ($query) {
+                    $query->whereIn('status', ['issued', 'overdue']);
+                },
+                'walletTransactions' => function ($query) {
+                    $query->where('status', 'completed')
+                        ->selectRaw('customer_id, wallet_type, SUM(units) as balance')
+                        ->groupBy('customer_id', 'wallet_type');
+                }
+            ])
+                ->where('phone', $phone)
+                ->first();
+
+            if (!$customer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer not found with this phone number'
+                ], 404);
+            }
+
+            // Calculate wallet balances
+            $walletBalances = [];
+            if ($customer->walletTransactions) {
+                foreach ($customer->walletTransactions as $transaction) {
+                    $walletBalances[$transaction->wallet_type] = (float) $transaction->balance;
+                }
+            }
+
+            // Calculate outstanding balance
+            $outstandingBalance = $customer->invoices->sum('total');
+
+            // Count active subscriptions
+            $activeSubscriptions = $customer->subscriptions->where('status', 'active')->count();
+
+            $customerData = [
+                'id' => $customer->id,
+                'organization_id' => $customer->organization_id,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'phone' => $customer->phone,
+                'status' => $customer->status,
+                'wallet_balances' => $walletBalances,
+                'active_subscriptions' => $activeSubscriptions,
+                'total_invoices' => $customer->invoices()->count(),
+                'outstanding_balance' => $outstandingBalance,
+                'organization' => $customer->organization,
+                'created_at' => $customer->created_at,
+                'updated_at' => $customer->updated_at
+            ];
+
+            return response()->json([
+                'success' => true,
+                'customer' => $customerData
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to lookup customer',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function lookupByEmailWithStatus(string $email)
+    {
+        try {
+            $customer = Customer::with([
+                'organization',
+                'subscriptions.pricePlan',
+                'invoices' => function ($query) {
+                    $query->whereIn('status', ['issued', 'overdue']);
+                },
+                'walletTransactions' => function ($query) {
+                    $query->where('status', 'completed')
+                        ->selectRaw('customer_id, wallet_type, SUM(units) as balance')
+                        ->groupBy('customer_id', 'wallet_type');
+                }
+            ])
+                ->where('email', $email)
+                ->first();
+
+            if (!$customer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer not found with this email address'
+                ], 404);
+            }
+
+            // Calculate wallet balances
+            $walletBalances = [];
+            if ($customer->walletTransactions) {
+                foreach ($customer->walletTransactions as $transaction) {
+                    $walletBalances[$transaction->wallet_type] = (float) $transaction->balance;
+                }
+            }
+
+            // Calculate outstanding balance
+            $outstandingBalance = $customer->invoices->sum('total');
+
+            // Count active subscriptions
+            $activeSubscriptions = $customer->subscriptions->where('status', 'active')->count();
+
+            $customerData = [
+                'id' => $customer->id,
+                'organization_id' => $customer->organization_id,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'phone' => $customer->phone,
+                'status' => $customer->status,
+                'wallet_balances' => $walletBalances,
+                'active_subscriptions' => $activeSubscriptions,
+                'total_invoices' => $customer->invoices()->count(),
+                'outstanding_balance' => $outstandingBalance,
+                'organization' => $customer->organization,
+                'created_at' => $customer->created_at,
+                'updated_at' => $customer->updated_at
+            ];
+
+            return response()->json([
+                'success' => true,
+                'customer' => $customerData
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to lookup customer',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }
