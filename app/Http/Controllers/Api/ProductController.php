@@ -16,7 +16,9 @@ class ProductController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
+            'product_type' => 'integer|exists:product_types,id',
         ]);
+        $product_type = $request->product_type ?? null;
 
         if ($validator->fails()) {
             return response()->json([
@@ -25,10 +27,12 @@ class ProductController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
-
-        $products = Product::with(['organization', 'productType', 'pricePlans'])
-            ->where('organization_id', $request->organization_id)
-            ->get();
+        $productQuery = Product::with(['organization', 'productType', 'pricePlans'])
+            ->where('organization_id', $request->organization_id);
+        if ($product_type) {
+            $productQuery->where('product_type_id', $product_type);
+        }
+        $products = $productQuery->get();
 
         return response()->json([
             'success' => true,
@@ -44,17 +48,17 @@ class ProductController extends Controller
     {
         // Determine rules based on product_type_id
         $productTypeId = $request->input('product_type_id');
-        
+
         // For product_type_id = 1: price_plans optional (max 1), subscription_type not allowed
         // For other product_type_id: price_plans mandatory, array with min 1, subscription_type required
         $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
-        
+
         // Valid subscription types
         $validSubscriptionTypes = ['daily', 'weekly', 'monthly', 'quarterly', 'semi_annually', 'yearly'];
-        $subscriptionTypeRule = $productTypeId == 1 
-            ? 'nullable|string|max:255' 
+        $subscriptionTypeRule = $productTypeId == 1
+            ? 'nullable|string|max:255'
             : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes);
-        
+
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'product_type_id' => 'required|exists:product_types,id',
@@ -94,10 +98,10 @@ class ProductController extends Controller
             $validatedData = $validator->validated();
             $pricePlans = $validatedData['price_plans'] ?? [];
             unset($validatedData['price_plans']);
-            
+
             // Create product
             $product = Product::create($validatedData);
-            
+
             // Handle price plans
             if ($productTypeId == 1 && empty($pricePlans)) {
                 // Create default price plan for product_type_id = 1 when no price plans provided
@@ -113,7 +117,7 @@ class ProductController extends Controller
                     $product->pricePlans()->create($plan);
                 }
             }
-            
+
             $product->load(['organization', 'productType', 'pricePlans']);
 
             return response()->json([

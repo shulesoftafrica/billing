@@ -44,6 +44,7 @@ class InvoiceController extends Controller
         try {
             $organizationId = $request->input('organization_id');
             $productId = $request->input('product_id');
+            $customerId = $request->input('customer_id') ?? null;
             $perPage = $request->input('per_page', 15);
 
             // Validate at least one filter is provided
@@ -85,6 +86,14 @@ class InvoiceController extends Controller
                     $q->where('products.id', $productId);
                 });
             }
+
+            // Filter by product
+            if ($customerId) {
+                $query->whereHas('invoiceItems.pricePlan.product', function ($q) use ($customerId) {
+                    $q->where('invoices.customer_id', $customerId);
+                });
+            }
+
 
             // Paginate results
             $invoices = $query->orderBy('created_at', 'desc')->paginate($perPage);
