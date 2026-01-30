@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerAddressController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductTypeController;
+use App\Http\Controllers\Api\ProductUsageController;
 use App\Http\Controllers\Api\PricePlanController;
 use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Http\Controllers\Api\BankAccountController;
@@ -88,6 +89,12 @@ Route::middleware(['throttle:30,1'])->group(function () {
 
     // Customer subscriptions routes
     Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
+
+    // Product usage routes
+    Route::post('product-usages', [ProductUsageController::class, 'store']);
+    Route::get('product-usages/balance', [ProductUsageController::class, 'getBalance']);
+    Route::get('product-usages/{customer_id}/report', [ProductUsageController::class, 'getUsageReportByCustomer']);
+    Route::get('product-usages/{customer_id}/{product_id}/history', [ProductUsageController::class, 'getHistory']);
 });
 
 
