@@ -48,11 +48,10 @@ class PricePlanController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'billing_type' => 'required|in:one_time,recurring,usage',
-            'billing_interval' => 'required_if:billing_type,recurring|in:monthly,yearly',
+            'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
             'amount' => 'required|numeric|min:0',
-            'currency_id' => 'required|exists:currencies,id',
-            'active' => 'required|boolean',
+            'currency' => 'nullable|string|min:2|max:5',
+            'rate' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -62,8 +61,15 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $pricePlan = $product->pricePlans()->create($validator->validated());
-        $pricePlan->load('currency');
+        $validated = $validator->validated();
+
+        $pricePlan = $product->pricePlans()->create([
+            'name' => $validated['name'],
+            'subscription_type' => $validated['subscription_type'] ?? null,
+            'amount' => $validated['amount'],
+            'currency' => $validated['currency'] ?? 'TZS',
+            'rate' => $validated['rate'] ?? 1,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -94,8 +100,6 @@ class PricePlanController extends Controller
                 'message' => 'Price plan not found'
             ], 404);
         }
-
-        $pricePlan->load('currency');
 
         return response()->json([
             'success' => true,
@@ -128,11 +132,10 @@ class PricePlanController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
-            'billing_type' => 'sometimes|required|in:one_time,recurring,usage',
-            'billing_interval' => 'sometimes|required_if:billing_type,recurring|in:monthly,yearly',
+            'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
             'amount' => 'sometimes|required|numeric|min:0',
-            'currency_id' => 'sometimes|required|exists:currencies,id',
-            'active' => 'sometimes|required|boolean',
+            'currency' => 'nullable|string|min:2|max:5',
+            'rate' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -142,8 +145,17 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $pricePlan->update($validator->validated());
-        $pricePlan->load('currency');
+        $validated = $validator->validated();
+
+        // Prepare update data with defaults for optional fields
+        $updateData = [];
+        if (isset($validated['name'])) $updateData['name'] = $validated['name'];
+        if (isset($validated['subscription_type'])) $updateData['subscription_type'] = $validated['subscription_type'];
+        if (isset($validated['amount'])) $updateData['amount'] = $validated['amount'];
+        if (isset($validated['currency'])) $updateData['currency'] = $validated['currency'];
+        if (isset($validated['rate'])) $updateData['rate'] = $validated['rate'];
+
+        $pricePlan->update($updateData);
 
         return response()->json([
             'success' => true,

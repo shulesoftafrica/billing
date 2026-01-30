@@ -50,6 +50,7 @@ class ProductController extends Controller
         $productTypeId = $request->input('product_type_id');
 
         // For product_type_id = 1: price_plans optional (max 1), subscription_type not allowed
+        // For product_type_id = 3: price_plans mandatory, subscription_type optional
         // For other product_type_id: price_plans mandatory, array with min 1, subscription_type required
         $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
 
@@ -57,19 +58,23 @@ class ProductController extends Controller
         $validSubscriptionTypes = ['daily', 'weekly', 'monthly', 'quarterly', 'semi_annually', 'yearly'];
         $subscriptionTypeRule = $productTypeId == 1
             ? 'nullable|string|max:255'
-            : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes);
+            : ($productTypeId == 3
+                ? 'nullable|in:' . implode(',', $validSubscriptionTypes)
+                : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes));
 
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'product_type_id' => 'required|exists:product_types,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'unit' => 'nullable|string|max:255',
             'status' => 'required|in:active,inactive,archived',
             'price_plans' => $pricePlansRule,
             'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
             'price_plans.*.subscription_type' => $subscriptionTypeRule,
             'price_plans.*.amount' => 'required_if:price_plans,!=null|numeric|min:0',
             'price_plans.*.currency' => 'required_if:price_plans,!=null|string|min:2|max:5',
+            'price_plans.*.rate' => 'nullable|integer|min:1',
         ]);
 
         // Additional validation: subscription_type not allowed for product_type_id = 1
@@ -114,6 +119,10 @@ class ProductController extends Controller
             } else {
                 // Create provided price plans
                 foreach ($pricePlans as $plan) {
+                    // Set default rate if not provided for product_type_id = 3
+                    if ($productTypeId == 3 && !isset($plan['rate'])) {
+                        $plan['rate'] = 1;
+                    }
                     $product->pricePlans()->create($plan);
                 }
             }

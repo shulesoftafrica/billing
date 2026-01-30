@@ -14,6 +14,7 @@ class PricePlan extends Model
         'subscription_type',
         'amount',
         'currency',
+        'rate',
     ];
 
     protected $casts = [
