@@ -753,17 +753,9 @@ class SubscriptionService
                     // Allocate remaining amount from other pending payments
                     $pendingPayments->each(function ($p) use ($invoice_id, &$remainingToAllocate, $customerId, $productId) {
                         if ($remainingToAllocate <= 0) {
-
-                            AdvancePayment::create([
-                                'payment_id' => $p->id,
-                                'customer_id' => $customerId,
-                                'product_id' => $productId,
-                                'reminder' => $p->amount,
-                                'amount' => $p->amount,
-                            ]);
-                            $p->update(['status' => 'cleared']);
                             return; // Stop if we've allocated the full invoice amount
                         }
+
 
                         $p->update(['status' => 'cleared']);
 
@@ -777,19 +769,19 @@ class SubscriptionService
                         ]);
 
                         $remainingToAllocate -= $allocationAmount;
+                        $excessAmount = $p->amount -  $allocationAmount;
+                        if ($remainingToAllocate <= 0  &&  $excessAmount > 0) {
+
+                            AdvancePayment::create([
+                                'payment_id' => $p->id,
+                                'customer_id' => $customerId,
+                                'product_id' => $productId,
+                                'reminder' =>  $excessAmount,
+                                'amount' =>  $excessAmount,
+                            ]);
+                            $p->update(['status' => 'cleared']);
+                        }
                     });
-
-                    // Calculate and record excess amount
-                    $excessAmount = $totalPayments - $invoicedAmount;
-
-                    Log::info('On-time product payment cleared - excess payment recorded', [
-                        'invoice_id' => $invoice_id,
-                        'customer_id' => $customerId,
-                        'product_id' => $productId,
-                        'total_payments' => $totalPayments,
-                        'invoiced_amount' => $invoicedAmount,
-                        'excess_amount' => $excessAmount,
-                    ]);
                 } else {
                     // Allocate advance payments to invoice with remaining amount as reminder
                     $advancePayments->each(function ($ap) use ($invoice_id) {

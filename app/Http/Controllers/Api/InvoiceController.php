@@ -180,6 +180,7 @@ class InvoiceController extends Controller
             $invoiceItems = [];
             $subscriptionData = [];
             $totalAmount = 0;
+            $oneTimeInvoiceItems = [];
 
             foreach ($productsData as $productData) {
                 // Get price plan and its product
@@ -233,6 +234,12 @@ class InvoiceController extends Controller
                         'unit_price' => $productData['amount'],
                         'total' => $productData['amount'],
                     ];
+                    // filter onetime product
+                    if ($product->product_type_id == 1) {
+                        $oneTimeInvoiceItems[$pricePlan->id] = [
+                            'amount' =>  $productData['amount']
+                        ];
+                    }
 
                     $totalAmount += $productData['amount'];
                 }
@@ -282,13 +289,18 @@ class InvoiceController extends Controller
                     $itemData['invoice_id'] = $invoice->id;
                     InvoiceItem::create($itemData);
                 }
+                $subscriptionService = new SubscriptionService();
                 if (!empty($subscriptionData)) {
-                    $subscriptionService = new SubscriptionService();
                     $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
                     if (!$subscriptions->isEmpty()) {
                         foreach ($subscriptions as $subscription) {
                             $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
                         }
+                    }
+                }
+                if (!empty($oneTimeInvoiceItems)) {
+                    foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
+                        $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
                     }
                 }
             }
