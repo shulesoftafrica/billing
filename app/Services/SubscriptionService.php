@@ -10,6 +10,7 @@ use App\Models\InvoiceItem;
 use App\Models\InvoicePayment;
 use App\Models\Payment;
 use App\Models\PricePlan;
+use App\Models\ProductPurchase;
 use App\Models\Subscription;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -826,5 +827,194 @@ class SubscriptionService
 
             return true;
         });
+    }
+    /**
+     * Create product purchase record and handle excess payments for usage-based products
+     * This method processes product usage/purchases similar to enableSubscription but creates
+     * product_purchase records instead of just activating subscriptions
+     *
+     * @param int $productId
+     * @param int $customerId
+     * @param float $invoicedAmount
+     * @param Payment|null $payment
+     * @return bool
+     * @throws \Exception
+     */
+    public function createProductPurchase(int $productId, int $customerId, $payment = null): bool
+    {
+        return DB::transaction(function () use ($productId, $customerId, $payment) {
+            // Step 1: Find pending subscription for this customer and product
+            $subscription = Subscription::where('customer_id', $customerId)
+                ->whereHas('pricePlan.product', function ($query) use ($productId) {
+                    $query->where('id', $productId);
+                })
+                ->whereIn('status', ['pending', 'partial'])
+                ->lockForUpdate()
+                ->first();
+
+            if (!$subscription && $payment) {
+                $this->createAutoSubscription($customerId, $productId, $payment->amount, $payment);
+                return true;
+            }
+            $invoiceItem = InvoiceItem::where('subscription_id', $subscription->id)->first();
+            if (!empty($invoiceItem)) {
+                $invoicedAmount = $invoiceItem->total;
+
+                // Get price plan details to determine rate
+                $pricePlan = $subscription->pricePlan;
+                $rate = $pricePlan->rate ?? 1;
+
+                // Step 2: Find all pending payments for this customer except the current payment if not null
+                $pendingPayments = Payment::where('customer_id', $customerId)
+                    ->where('status', 'pending')
+                    ->whereIn('payment_reference', ControlNumber::where('customer_id', $customerId)->where('product_id', $productId)->get()->pluck('reference'));
+                if ($payment) {
+                    $pendingPayments->where('id', '!=', $payment->id);
+                }
+                $pendingPayments = $pendingPayments->get();
+
+                // Step 3: Verify current payment is not null
+                $hasCurrentPayment = $payment !== null;
+                if (!$hasCurrentPayment) {
+                    $payment = $pendingPayments->sortByDesc('created_at')->first();
+                    $hasCurrentPayment = $payment !== null;
+                }
+
+                // Step 4: Calculate sum of pending payments only
+                $pendingPaymentsSum = $pendingPayments->sum('amount');
+                $currentPayment = $payment ? $payment->amount : 0;
+                $totalPayments = $pendingPaymentsSum + $currentPayment;
+
+                // Step 5: Calculate quantity = paid amount / rate
+                $quantity = $invoicedAmount / $rate;
+                if ($quantity >= 1) {
+                    // Step 6: Determine subscription status based on payment vs invoiced amount
+                    $subscriptionStatus = ($totalPayments == $invoicedAmount) ? 'active' : 'partial';
+
+                    // Step 7: Update subscription status and dates
+                    $startDate = Carbon::now();
+                    $endDate = $this->calculateEndDate($startDate, $pricePlan);
+
+                    $subscription->update([
+                        'status' => $subscriptionStatus,
+                        'start_date' => $startDate,
+                        'end_date' => $endDate,
+                    ]);
+
+                    // Step 8: Create product purchase record
+                    ProductPurchase::create([
+                        'product_id' => $productId,
+                        'customer_id' => $customerId,
+                        'quantity' => $quantity,
+                    ]);
+
+                    // // Step 9: Handle payment status - clear payment only if quantity >= 1
+                    // if ($quantity >= 1 && $hasCurrentPayment) {
+                    //     $payment->update(['status' => 'cleared']);
+                    // }
+
+
+                    $invoiceId = $invoiceItem->invoice_id;
+                    // Allocate current payment
+                    if ($payment) {
+                        InvoicePayment::create([
+                            'invoice_id' => $invoiceId,
+                            'payment_id' => $payment->id,
+                            'amount' => $payment->amount,
+                        ]);
+                        $payment->update(['status' => 'cleared']);
+                    }
+
+                    // Allocate other pending payments
+                    $pendingPayments->each(function ($p) use ($invoiceId) {
+                        InvoicePayment::create([
+                            'invoice_id' => $invoiceId,
+                            'payment_id' => $p->id,
+                            'amount' => $p->amount,
+                        ]);
+                        $p->update(['status' => 'cleared']);
+                    });
+                }
+                // Step 11: Handle excess payment case
+                if ($totalPayments > $invoicedAmount && $quantity >= 1) {
+                    $excessAmount = $totalPayments - $invoicedAmount;
+                    $this->createAutoSubscription($customerId, $productId, $excessAmount, $payment);
+                } else {
+                    // Equal or less payments - standard product purchase
+                    Log::info('Product purchase created successfully', [
+                        'product_id' => $productId,
+                        'customer_id' => $customerId,
+                        'subscription_id' => $subscription->id,
+                        'quantity' => $quantity,
+                        'status' => $subscriptionStatus,
+                    ]);
+                }
+            }
+            return true;
+        });
+    }
+    public function createAutoSubscription($customerId, $productId, $amount, $payment)
+    {
+
+        // Find the last subscription for this product
+        $lastSubscription = Subscription::where('customer_id', $customerId)
+            ->whereHas('pricePlan.product', function ($query) use ($productId) {
+                $query->where('id', $productId);
+            })
+            ->where('status', '=', 'active')
+            ->latest('created_at')
+            ->first();
+        $rate = $lastSubscription->PricePlan->rate;
+        // Create product purchase for excess amount
+        $quantity = $amount / $rate;
+        if ($quantity >= 1) {
+
+            // Create new subscription
+            $newSubscription = Subscription::create([
+                'customer_id' => $customerId,
+                'price_plan_id' => $lastSubscription->PricePlan->id,
+                'status' => 'active',
+                'start_date' => null,
+                'end_date' => null,
+                'next_billing_date' => null,
+            ]);
+
+            // Create new invoice with excess amount
+            $newInvoice = Invoice::create([
+                'customer_id' => $customerId,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'status' => 'issued',
+                'description' => 'Excess payment invoice for product usage',
+                'subtotal' => $amount,
+                'tax_total' => 0,
+                'total' => $amount,
+                'due_date' => Carbon::now()->addDays(30)->toDateString(),
+                'issued_at' => Carbon::now(),
+            ]);
+            // Create invoice item for new subscription and price plan
+            InvoiceItem::create([
+                'invoice_id' => $newInvoice->id,
+                'subscription_id' => $newSubscription->id,
+                'price_plan_id' => $lastSubscription->PricePlan->id,
+                'quantity' => 1,
+                'unit_price' => $amount,
+                'total' => $amount,
+            ]);
+
+            ProductPurchase::create([
+                'product_id' => $productId,
+                'customer_id' => $customerId,
+                'quantity' => $quantity,
+            ]);
+            $payment->update(['status' => 'cleared']);
+
+            if ($payment) {
+                InvoicePayment::create([
+                    'invoice_id' => $newInvoice->id,
+                    'payment_id' => $payment->id,
+                    'amount' => $amount,
+                ]);
+            }
+        }
     }
 }

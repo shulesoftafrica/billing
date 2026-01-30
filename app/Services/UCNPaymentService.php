@@ -132,7 +132,7 @@ class UCNPaymentService
                     $message .= 'Signature key not configured for this organization and payment gateway';
                 }
                 $subscriptionService = new SubscriptionService();
-                if (!empty($product) && $product->product_type_id != 1) {
+                if (!empty($product) && $product->product_type_id == 2) {
                     // Check subscription status for non-standard products
                     $pricePlanIds = $product->pricePlans()->pluck('id');
                     $subscription = Subscription::where('customer_id', $customer->id)
@@ -150,6 +150,8 @@ class UCNPaymentService
                     }
                 } elseif (!empty($product) && $product->product_type_id == 1) {
                     $subscriptionService->getOneTimePendingInvoice($product->id, $customer->id, $payment);
+                } elseif (!empty($product) && $product->product_type_id == 3) {
+                    $subscriptionService->createProductPurchase($product->id, $customer->id, $payment);
                 }
 
                 // Step 7: Create API request object
