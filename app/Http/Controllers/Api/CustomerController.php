@@ -16,19 +16,25 @@ class CustomerController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
+            'username' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
+            'success' => false,
+            'message' => 'Validation failed',
+            'errors' => $validator->errors()
             ], 422);
         }
 
-        $customers = Customer::with('organization')
-            ->where('organization_id', $request->organization_id)
-            ->get();
+        $query = Customer::with('organization')
+            ->where('organization_id', $request->organization_id);
+
+        if ($request->filled('username')) {
+            $query->where('username', $request->username);
+        }
+
+        $customers = $query->get();
 
         return response()->json([
             'success' => true,

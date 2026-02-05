@@ -19,6 +19,8 @@ class ProductController extends Controller
             'product_type' => 'integer|exists:product_types,id',
         ]);
         $product_type = $request->product_type ?? null;
+        $name = $request->name ?? null;
+        $status = $request->status ?? null;
 
         if ($validator->fails()) {
             return response()->json([
@@ -31,6 +33,12 @@ class ProductController extends Controller
             ->where('organization_id', $request->organization_id);
         if ($product_type) {
             $productQuery->where('product_type_id', $product_type);
+        }
+        if ($name) {
+            $productQuery->where('name', $name);
+        }
+        if ($status) {
+            $productQuery->where('status', $status);
         }
         $products = $productQuery->get();
 

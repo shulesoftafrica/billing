@@ -123,4 +123,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Webhook Configuration
+    |--------------------------------------------------------------------------
+    |
+    | This value is used for sending webhook notifications to external services
+    | when subscription events occur. Configure the base URL in your .env file.
+    |
+    */
+
+    'webhook_base_url' => env('WEBHOOK_BASE_URL', 'http://localhost/api'),
+
 ];

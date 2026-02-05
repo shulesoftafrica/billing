@@ -14,6 +14,7 @@ use App\Models\ProductPurchase;
 use App\Models\Subscription;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 
 class SubscriptionService
@@ -413,6 +414,9 @@ class SubscriptionService
                     'end_date' => $endDate,
                 ]);
 
+                // Send webhook notification for subscription activation
+                $this->sendSubscriptionWebhook($subscription);
+
                 if ($hasCurrentPayment) {
                     $payment->update(['status' => 'cleared']);
                     // Record the payment allocation to invoice
@@ -472,6 +476,9 @@ class SubscriptionService
                     'end_date' => $endDate,
                 ]);
 
+                // Send webhook notification for subscription activation
+                $this->sendSubscriptionWebhook($subscription);
+
                 // Allocate amount to invoice and track remaining amount for each payment
                 $remainingToAllocate = $invoicedAmount;
 
@@ -515,7 +522,7 @@ class SubscriptionService
                 }
 
                 // Allocate remaining amount from other pending payments
-                $pendingPayments->each(function ($p) use ($invoce_id, $payment, &$remainingToAllocate) {
+                $pendingPayments->each(function ($p) use ($invoce_id, $customerId, $payment, $productId, &$remainingToAllocate) {
                     if ($remainingToAllocate <= 0) {
                         return; // Stop if we've allocated the full invoice amount
                     }
@@ -533,30 +540,33 @@ class SubscriptionService
                         ]);
 
                         $remainingToAllocate -= $allocationAmount;
+                        if ($remainingToAllocate <= 0) {
+                            // Calculate and record excess amount
+                            $excessAmount = $p->amount - $allocationAmount;
+
+                            AdvancePayment::create([
+                                'payment_id' => $p->id,
+                                'customer_id' => $customerId,
+                                'product_id' => $productId,
+                                'reminder' => $excessAmount,
+                                'amount' => $excessAmount,
+                            ]);
+                        }
                     }
                 });
 
                 // Calculate and record excess amount
-                $excessAmount = $totalPayments - $invoicedAmount;
+                if ($hasCurrentPayment && $remainingToAllocate <= 0) {
+                    $excessAmount = $totalPayments - $invoicedAmount;
 
-                AdvancePayment::create([
-                    'payment_id' => $payment?->id,
-                    'customer_id' => $customerId,
-                    'product_id' => $productId,
-                    'reminder' => $excessAmount,
-                    'amount' => $excessAmount,
-                ]);
-
-                Log::info('Subscription enabled - excess payment recorded', [
-                    'subscription_id' => $subscription->id,
-                    'customer_id' => $customerId,
-                    'total_payments' => $totalPayments,
-                    'invoiced_amount' => $invoicedAmount,
-                    'excess_amount' => $excessAmount,
-                    'start_date' => $startDate,
-                    'end_date' => $endDate,
-                ]);
-
+                    AdvancePayment::create([
+                        'payment_id' => $payment->id,
+                        'customer_id' => $customerId,
+                        'product_id' => $productId,
+                        'reminder' => $excessAmount,
+                        'amount' => $excessAmount,
+                    ]);
+                }
                 return true;
             } else {
                 // Less: Do nothing
@@ -1015,6 +1025,65 @@ class SubscriptionService
                     'amount' => $amount,
                 ]);
             }
+        }
+    }
+
+    /**
+     * Send webhook notification when subscription is activated
+     * Sends subscription details to external API for further processing
+     *
+     * @param Subscription $subscription
+     * @return void
+     */
+    private function sendSubscriptionWebhook(Subscription $subscription): void
+    {
+        try {
+            // Load subscription with relationships
+            $subscription->load(['customer', 'pricePlan.product']);
+
+            // Get customer to check organization_id
+            $customer = $subscription->customer;
+
+            // Only send webhook if organization_id is 1
+            if ($customer->organization_id !== 1) {
+                return;
+            }
+
+            $webhookUrl = config('app.webhook_base_url') . '/subscriptionWebhook';
+
+            // Prepare subscription details payload
+            $payload = [
+                'subscription_id' => $subscription->id,
+                'customer_id' => $subscription->customer_id,
+                'customer_name' => $customer->name,
+                'customer_email' => $customer->email,
+                'price_plan_id' => $subscription->price_plan_id,
+                'price_plan_name' => $subscription->pricePlan->name,
+                'product_id' => $subscription->pricePlan->product_id,
+                'product_name' => $subscription->pricePlan->product->name,
+                'status' => $subscription->status,
+                'start_date' => $subscription->start_date,
+                'end_date' => $subscription->end_date,
+                'created_at' => $subscription->created_at,
+                'organization_id' => $customer->organization_id,
+            ];
+
+            // Send HTTP POST request to webhook endpoint
+            $response = Http::post($webhookUrl, $payload);
+
+            Log::info('Subscription webhook sent successfully', [
+                'subscription_id' => $subscription->id,
+                'customer_id' => $subscription->customer_id,
+                'webhook_url' => $webhookUrl,
+                'response_status' => $response->status(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send subscription webhook', [
+                'subscription_id' => $subscription->id,
+                'customer_id' => $subscription->customer_id,
+                'error' => $e->getMessage(),
+            ]);
+            // Don't throw exception - webhook failure shouldn't break subscription activation
         }
     }
 }
