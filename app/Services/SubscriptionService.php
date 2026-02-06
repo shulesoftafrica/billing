@@ -1048,8 +1048,12 @@ class SubscriptionService
             if ($customer->organization_id !== 1) {
                 return;
             }
+            $base = config('app.webhook_base_url');
 
-            $webhookUrl = config('app.webhook_base_url') . '/subscriptionWebhook';
+            $url = $base? rtrim($base, '/'): "https://{$customer->username}.shulesoft.africa/api";
+
+            $webhookUrl = $url . '/subscriptionWebhook';
+
 
             // Prepare subscription details payload
             $payload = [
