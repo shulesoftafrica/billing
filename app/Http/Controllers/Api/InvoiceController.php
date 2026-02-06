@@ -144,6 +144,7 @@ class InvoiceController extends Controller
             'description' => 'nullable|string',
             'currency' => 'nullable|string|max:5',
             'status' => 'nullable|string|in:draft,issued,paid,cancelled',
+            'date' => 'nullable|date_format:Y-m-d',
             'due_date' => 'nullable|date_format:Y-m-d',
         ]);
 
@@ -163,6 +164,7 @@ class InvoiceController extends Controller
             $description = $request->description ?? 'Invoice for products';
             $currency = $request->currency ?? 'TZS';
             $status = $request->status ?? 'issued';
+            $date = $request->date ?? null;
             $dueDate = $request->due_date ?? null;
 
             // Step 2: Check if customer exists in the organization by phone or email
@@ -289,6 +291,7 @@ class InvoiceController extends Controller
                     'subtotal' => $totalAmount,
                     'tax_total' => 0,
                     'total' => $totalAmount,
+                    'date' => $date,
                     'due_date' => $dueDate,
                     'issued_at' => Carbon::now(),
                 ]);
@@ -686,6 +689,7 @@ class InvoiceController extends Controller
             'subtotal' => $invoice->subtotal,
             'tax_total' => $invoice->tax_total,
             'total' => $invoice->total,
+            'date' => $invoice->date,
             'due_date' => $invoice->due_date,
             'issued_at' => $invoice->issued_at,
             'items_count' => $invoice->invoiceItems->count(),
@@ -724,6 +728,7 @@ class InvoiceController extends Controller
             'invoiced_amount' => $invoiced,
             'paid_amount' => $paid,
             'outstanding_amount' => $balance,
+            'date' => $invoice->date,
             'due_date' => $invoice->due_date,
             'issued_at' => $invoice->issued_at,
             'created_at' => $invoice->created_at,
