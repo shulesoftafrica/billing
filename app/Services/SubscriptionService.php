@@ -373,9 +373,9 @@ class SubscriptionService
      * @return bool
      * @throws \Exception
      */
-    public function enableSubscription($invoce_id, $subscription, $invoicedAmount, $payment = null): bool
+    public function enableSubscription($invoice_id, $subscription, $invoicedAmount, $payment = null): bool
     {
-        return DB::transaction(function () use ($invoce_id, $subscription, $invoicedAmount, $payment) {
+        return DB::transaction(function () use ($invoice_id, $subscription, $invoicedAmount, $payment) {
             $customerId = $subscription->customer_id;
             $productId = $subscription->pricePlan->product_id;
 
@@ -401,9 +401,12 @@ class SubscriptionService
             $pendingPaymentsSum = $pendingPayments->sum('amount');
             $advancePaymentsSum = $advancePayments->sum('reminder');
             $totalPayments = $pendingPaymentsSum + $advancePaymentsSum;
-
-            // Step 5: Compare and execute logic
-            if ($totalPayments == $invoicedAmount) {
+            // Step 5: Check the total payments against the invoiced amount
+            $totalPaid = InvoicePayment::where('invoice_id', $invoice_id)->sum('amount');
+            $balance = $invoicedAmount - $totalPaid;
+            // Now use $balance as the invoiced amount
+            // Step 6: Compare and execute logic
+            if ($totalPayments == $balance) {
                 // Equal: Activate subscription and clear all payments
                 $startDate = Carbon::now();
                 $endDate = $this->calculateEndDate($startDate, $subscription->pricePlan);
@@ -421,18 +424,18 @@ class SubscriptionService
                     $payment->update(['status' => 'cleared']);
                     // Record the payment allocation to invoice
                     InvoicePayment::create([
-                        'invoice_id' => $invoce_id,
+                        'invoice_id' => $invoice_id,
                         'payment_id' => $payment->id,
                         'amount' => $payment->amount,
                     ]);
                 }
 
                 // Record all other pending payments as allocated to invoice
-                $pendingPayments->each(function ($p) use ($invoce_id, $payment) {
+                $pendingPayments->each(function ($p) use ($invoice_id, $payment) {
                     if (!$payment || $p->id !== $payment->id) {
                         $p->update(['status' => 'cleared']);
                         InvoicePayment::create([
-                            'invoice_id' => $invoce_id,
+                            'invoice_id' => $invoice_id,
                             'payment_id' => $p->id,
                             'amount' => $p->amount,
                         ]);
@@ -440,12 +443,12 @@ class SubscriptionService
                 });
 
                 // Record advance payments used to clear the invoice
-                $advancePayments->each(function ($ap) use ($invoce_id) {
+                $advancePayments->each(function ($ap) use ($invoice_id) {
                     if ($ap->reminder > 0) {
                         // Record advance payment allocation to invoice
                         if ($ap->payment_id) {
                             InvoicePayment::create([
-                                'invoice_id' => $invoce_id,
+                                'invoice_id' => $invoice_id,
                                 'payment_id' => $ap->payment_id,
                                 'amount' => $ap->reminder,
                             ]);
@@ -465,7 +468,7 @@ class SubscriptionService
                 ]);
 
                 return true;
-            } elseif ($totalPayments > $invoicedAmount) {
+            } elseif ($totalPayments > $balance) {
                 // Greater: Activate subscription and handle excess
                 $startDate = Carbon::now();
                 $endDate = $this->calculateEndDate($startDate, $subscription->pricePlan);
@@ -480,10 +483,10 @@ class SubscriptionService
                 $this->sendSubscriptionWebhook($subscription);
 
                 // Allocate amount to invoice and track remaining amount for each payment
-                $remainingToAllocate = $invoicedAmount;
+                $remainingToAllocate = $balance;
 
                 // Allocate advance payments to invoice with remaining amount as reminder
-                $advancePayments->each(function ($ap) use ($invoce_id, &$remainingToAllocate) {
+                $advancePayments->each(function ($ap) use ($invoice_id, &$remainingToAllocate) {
                     if ($remainingToAllocate <= 0 || $ap->reminder <= 0) {
                         return; // Stop if we've allocated the full invoice amount or advance payment is empty
                     }
@@ -494,7 +497,7 @@ class SubscriptionService
                     // Record advance payment allocation to invoice
                     if ($ap->payment_id) {
                         InvoicePayment::create([
-                            'invoice_id' => $invoce_id,
+                            'invoice_id' => $invoice_id,
                             'payment_id' => $ap->payment_id,
                             'amount' => $allocationAmount,
                         ]);
@@ -513,7 +516,7 @@ class SubscriptionService
 
                     // Record the payment allocation to invoice
                     InvoicePayment::create([
-                        'invoice_id' => $invoce_id,
+                        'invoice_id' => $invoice_id,
                         'payment_id' => $payment->id,
                         'amount' => $allocationAmount,
                     ]);
@@ -522,7 +525,7 @@ class SubscriptionService
                 }
 
                 // Allocate remaining amount from other pending payments
-                $pendingPayments->each(function ($p) use ($invoce_id, $customerId, $payment, $productId, &$remainingToAllocate) {
+                $pendingPayments->each(function ($p) use ($invoice_id, $customerId, $payment, $productId, &$remainingToAllocate) {
                     if ($remainingToAllocate <= 0) {
                         return; // Stop if we've allocated the full invoice amount
                     }
@@ -534,7 +537,7 @@ class SubscriptionService
 
                         // Record the payment allocation to invoice
                         InvoicePayment::create([
-                            'invoice_id' => $invoce_id,
+                            'invoice_id' => $invoice_id,
                             'payment_id' => $p->id,
                             'amount' => $allocationAmount,
                         ]);
@@ -557,7 +560,7 @@ class SubscriptionService
 
                 // Calculate and record excess amount
                 if ($hasCurrentPayment && $remainingToAllocate <= 0) {
-                    $excessAmount = $totalPayments - $invoicedAmount;
+                    $excessAmount = $totalPayments - $balance;
 
                     AdvancePayment::create([
                         'payment_id' => $payment->id,
@@ -569,16 +572,46 @@ class SubscriptionService
                 }
                 return true;
             } else {
-                // Less: Do nothing
-                Log::info('Subscription not enabled - insufficient payments', [
-                    'subscription_id' => $subscription->id,
-                    'customer_id' => $customerId,
-                    'total_payments' => $totalPayments,
-                    'invoiced_amount' => $invoicedAmount,
-                ]);
+                // Allocate advance payments to invoice with remaining amount as reminder
+                $advancePayments->each(function ($ap) use ($invoice_id) {
 
-                return true;
+                    $allocationAmount = $ap->reminder;
+
+                    // Record advance payment allocation to invoice
+                    if ($ap->payment_id) {
+                        InvoicePayment::create([
+                            'invoice_id' => $invoice_id,
+                            'payment_id' => $ap->payment_id,
+                            'amount' => $allocationAmount,
+                        ]);
+                    }
+
+                    // Update advance payment with remaining reminder
+                    $ap->update(['reminder' => 0]);
+                });
+                $pendingPayments->each(function ($p) use ($invoice_id) {
+
+
+                    $p->update(['status' => 'cleared']);
+
+                    $allocationAmount = $p->amount;
+
+                    // Record the payment allocation to invoice
+                    InvoicePayment::create([
+                        'invoice_id' => $invoice_id,
+                        'payment_id' => $p->id,
+                        'amount' => $allocationAmount,
+                    ]);
+                });
+                Log::info('Subscription not cleared - insufficient payments', [
+                    'invoice_id' => $invoice_id,
+                    'customer_id' => $customerId,
+                    'product_id' => $productId,
+                    'total_payments' => $totalPayments,
+                    'invoiced_amount' => $balance,
+                ]);
             }
+            return true;
         });
     }
 
@@ -1050,7 +1083,7 @@ class SubscriptionService
             }
             $base = config('app.webhook_base_url');
 
-            $url = $base? rtrim($base, '/'): "https://{$customer->username}.shulesoft.africa/api";
+            $url = $base ? rtrim($base, '/') : "https://{$customer->username}.shulesoft.africa/api";
 
             $webhookUrl = $url . '/subscriptionWebhook';
 

@@ -816,4 +816,64 @@ class InvoiceController extends Controller
             'data' => $invoices
         ]);
     }
+
+    /**
+     * Return invoices created for the provided subscription ids.
+     * Request body: { subscription_ids: [1,2,3] }
+     */
+    public function getBySubscriptions(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'subscription_ids' => 'required|array|min:1',
+            'subscription_ids.*' => 'integer|exists:subscriptions,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $subscriptionIds = $request->input('subscription_ids');
+
+            // Get invoice ids from invoice_items using subscription_id
+            $invoiceIds = InvoiceItem::whereIn('subscription_id', $subscriptionIds)
+                ->pluck('invoice_id')
+                ->unique()
+                ->values()
+                ->toArray();
+
+            if (empty($invoiceIds)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No invoices found for provided subscription ids',
+                    'data' => []
+                ], 200);
+            }
+
+            // Eager load relations used by formatInvoiceDetailResponse
+            $invoices = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription', 'payments'])
+                ->whereIn('id', $invoiceIds)
+                ->get();
+
+            $data = $invoices->map(function ($invoice) {
+                return $this->formatInvoiceDetailResponse($invoice);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoices retrieved successfully',
+                'data' => $data
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Get invoices by subscriptions failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve invoices: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

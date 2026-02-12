@@ -139,4 +139,5 @@ Route::prefix('webhooks')->group(function () {
 Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
 Route::get('payments', [PaymentController::class, 'getByDateRange']);
 Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
+Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
 Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);
