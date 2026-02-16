@@ -352,8 +352,35 @@ class SubscriptionService
                 );
             }
 
-            // Update subscription status to canceled
-            $subscription->update(['status' => 'canceled']);
+            // Update subscription status to cancelled
+            $subscription->update(['status' => 'cancelled']);
+
+            $invoiceItem = InvoiceItem::where('subscription_id', $subscriptionId)->first();
+            if ($invoiceItem) {
+                $invoice = Invoice::lockForUpdate()->find($invoiceItem->invoice_id);
+                if ($invoice) {
+                    $invoice->update(['status' => 'cancelled']);
+
+                    $invoicePayments = InvoicePayment::where('invoice_id', $invoice->id)->get();
+                    $invoicePayments->each(function ($invoicePayment) use ($subscription) {
+                        $payment = Payment::find($invoicePayment->payment_id);
+                        if ($payment && $payment->amount == $invoicePayment->amount) {
+                            $payment->update(['status' => 'pending']);
+                        }else{
+                            // recognize it as advance payment
+                             AdvancePayment::create([
+                                'payment_id' => $$payment->id,
+                                'customer_id' =>  $subscription->customer_id,
+                                'product_id' => $subscription->price_plan->product_id,
+                                'reminder' => $invoicePayment->amount,
+                                'amount' => $invoicePayment->amount,
+                            ]);
+                        }
+
+                        $invoicePayment->delete();
+                    });
+                }
+            }
 
             Log::info('Subscription cancelled', [
                 'subscription_id' => $subscriptionId,
@@ -639,7 +666,13 @@ class SubscriptionService
 
             // Step 3: Find all invoice_items where price_plan_id matches
             $priceplanIds = $pricePlans->pluck('id')->toArray();
-            $invoiceItems = InvoiceItem::whereIn('price_plan_id', $priceplanIds)->get();
+            $invoiceItems = InvoiceItem::whereIn('price_plan_id', $priceplanIds)
+                ->whereNotIn('invoice_id', function ($query) {
+                    $query->select('id')
+                        ->from('invoices')
+                        ->where('status', '=', 'cancelled');
+                })
+                ->get();
 
             if ($invoiceItems->isEmpty()) {
                 throw new \Exception('No invoice items found for price plans');
@@ -691,7 +724,7 @@ class SubscriptionService
     {
         return DB::transaction(function () use ($invoice_id, $customerId, $invoicedAmount) {
             // Get invoice with relationships to find one-time products
-            $invoice = Invoice::with(['invoiceItems.pricePlan.product'])->findOrFail($invoice_id);
+            $invoice = Invoice::with(['invoiceItems.pricePlan.product'])->where('status', '!=', 'cancelled')->findOrFail($invoice_id);
 
             // Get all unique one-time products (product_type_id = 1) from invoice items
             $oneTimeProducts = $invoice->invoiceItems
@@ -899,7 +932,14 @@ class SubscriptionService
                 $this->createAutoSubscription($customerId, $productId, $payment->amount, $payment);
                 return true;
             }
-            $invoiceItem = InvoiceItem::where('subscription_id', $subscription->id)->first();
+            $invoiceItem = InvoiceItem::where('subscription_id', $subscription->id)
+                ->whereNotIn('invoice_id', function ($query) {
+                    $query->select('id')
+                        ->from('invoices')
+                        ->where('status', '=', 'cancelled');
+                })
+                ->first();
+
             if (!empty($invoiceItem)) {
                 $invoicedAmount = $invoiceItem->total;
 

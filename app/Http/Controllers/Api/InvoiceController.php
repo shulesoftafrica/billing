@@ -96,7 +96,7 @@ class InvoiceController extends Controller
 
 
             // Paginate results
-            $invoices = $query->orderBy('created_at', 'desc')->paginate($perPage);
+            $invoices = $query->where('status', '!=', 'cancelled')->orderBy('created_at', 'desc')->paginate($perPage);
 
             // Format response
             $data = $invoices->map(function ($invoice) {
@@ -217,6 +217,7 @@ class InvoiceController extends Controller
                     if ($existingSubscription) {
                         $invoice = Invoice::where('customer_id', $customer->id)
                             ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
+                            ->where('status', '!=', 'cancelled')
                             ->first();
                         // Subscription already exists - skip invoice item creation for this product
                         $shouldCreateInvoiceItem = false;
@@ -809,7 +810,11 @@ class InvoiceController extends Controller
 
         $invoices = Invoice::whereHas('invoiceItems', function ($query) use ($request) {
             $query->where('product_id', $request->product_id);
-        })->get();
+        })
+        ->where('status', '!=', 'cancelled')
+        ->get();
+
+        
 
         return response()->json([
             'success' => true,
@@ -856,6 +861,7 @@ class InvoiceController extends Controller
             // Eager load relations used by formatInvoiceDetailResponse
             $invoices = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription', 'payments'])
                 ->whereIn('id', $invoiceIds)
+                ->where('status', '!=', 'cancelled')
                 ->get();
 
             $data = $invoices->map(function ($invoice) {
