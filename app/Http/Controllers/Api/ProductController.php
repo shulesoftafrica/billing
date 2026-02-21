@@ -16,19 +16,11 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
 
         $products = Product::with(['organization', 'productType', 'pricePlans'])
-            ->where('organization_id', $request->organization_id)
+            ->where('organization_id', $organizationId)
             ->get();
 
         return response()->json([
@@ -42,12 +34,14 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
+        
         // Determine if price_plans is required based on product_type_id
         $productTypeId = $request->input('product_type_id');
         $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
         
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
             'product_type_id' => 'required|exists:product_types,id',
             'name' => 'required|string|max:255',
             'product_code' => 'nullable|string|max:255',
@@ -85,6 +79,9 @@ class ProductController extends Controller
         }
 
         $validatedData = $validator->validated();
+        
+        // Add organization_id from authenticated user
+        $validatedData['organization_id'] = $organizationId;
         
         // Extract price_plans from validated data
         $pricePlans = $validatedData['price_plans'] ?? [];
@@ -238,7 +235,6 @@ class ProductController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'sometimes|required|exists:organizations,id',
             'product_type_id' => 'sometimes|required|exists:product_types,id',
             'name' => 'sometimes|required|string|max:255',
             'product_code' => 'sometimes|nullable|string|max:255',

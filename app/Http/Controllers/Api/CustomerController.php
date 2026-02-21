@@ -14,19 +14,11 @@ class CustomerController extends Controller
      */
     public function index(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
 
         $customers = Customer::with(['organization', 'addresses'])
-            ->where('organization_id', $request->organization_id)
+            ->where('organization_id', $organizationId)
             ->get();
 
         return response()->json([
@@ -40,8 +32,10 @@ class CustomerController extends Controller
      */
     public function store(Request $request)
     {
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
+        
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
             'external_ref' => 'nullable|string|max:255',
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255',
@@ -62,6 +56,10 @@ class CustomerController extends Controller
         }
 
         $validatedData = $validator->validated();
+        
+        // Add organization_id from authenticated user
+        $validatedData['organization_id'] = $organizationId;
+        
         $addresses = $validatedData['addresses'];
         unset($validatedData['addresses']);
 
@@ -116,7 +114,6 @@ class CustomerController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'sometimes|required|exists:organizations,id',
             'external_ref' => 'nullable|string|max:255',
             'name' => 'sometimes|required|string|max:255',
             'email' => 'sometimes|required|string|email|max:255',
