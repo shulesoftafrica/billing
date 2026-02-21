@@ -195,6 +195,73 @@ class ProductController extends Controller
     }
 
     /**
+     * Transform product with price plans into configuration format.
+     */
+    protected function transformProductConfig($product)
+    {
+        $plans = [];
+        
+        foreach ($product->pricePlans as $pricePlan) {
+            // Determine plan key based on plan name
+            $planName = strtolower($pricePlan->name);
+            $planKey = null;
+            
+            if (str_contains($planName, 'trial')) {
+                $planKey = 'trial';
+            } elseif (str_contains($planName, 'starter') || str_contains($planName, 'winga')) {
+                $planKey = 'starter';
+            } elseif (str_contains($planName, 'pro')) {
+                $planKey = 'pro';
+            } elseif (str_contains($planName, 'premium')) {
+                $planKey = 'premium';
+            } else {
+                $planKey = strtolower(str_replace(' ', '_', $pricePlan->name));
+            }
+            
+            // Get metadata features or use defaults
+            $metadata = $pricePlan->metadata ?? [];
+            $features = $metadata['features'] ?? [];
+            
+            // Build the plan structure
+            $currencyModel = $pricePlan->getRelation('currency');
+            $planData = [
+                'price' => (float) $pricePlan->amount,
+                'currency' => $currencyModel ? $currencyModel->code : 'TZS',
+                'billing_cycle' => $pricePlan->billing_interval ?? 'monthly',
+                'limits' => $features,
+                'credits_rollover' => $features['credits_rollover'] ?? false,
+                'permissions' => [
+                    'booking_calendars' => $features['booking_calendars'] ?? false
+                ]
+            ];
+            
+            // For trial plans, add duration_days
+            if ($planKey === 'trial') {
+                $planData['duration_days'] = $pricePlan->trial_period_days ?? 3;
+                unset($planData['currency']);
+                unset($planData['billing_cycle']);
+            }
+            
+            // Remove credits_rollover from limits if it exists there
+            if (isset($planData['limits']['credits_rollover'])) {
+                unset($planData['limits']['credits_rollover']);
+            }
+            
+            $plans[$planKey] = $planData;
+        }
+        
+        return [
+            'product_code' => $product->product_code,
+            'plans' => $plans,
+            'token_pricing' => [
+                'tokens_per_credit' => 3.846,
+                'cost_per_token_input' => 0.0015,
+                'cost_per_token_output' => 0.002
+            ]
+        ];
+    }
+
+    /**
      * Find product by product code for authenticated user's organization.
      */
     public function byCode(Request $request, string $productCode)
@@ -218,9 +285,12 @@ class ProductController extends Controller
             ], 404);
         }
 
+        // Transform to config format
+        $data = $this->transformProductConfig($product);
+
         return response()->json([
             'success' => true,
-            'data' => $product
+            'data' => $data
         ], 200);
     }
 
