@@ -276,6 +276,7 @@ class ProductController extends Controller
         ])
             ->where('product_code', $productCode)
             ->where('organization_id', $organizationId)
+            ->whereHas('pricePlans') // Only get products that have price plans
             ->first();
 
         if (!$product) {
@@ -285,8 +286,14 @@ class ProductController extends Controller
             ], 404);
         }
 
-        // Transform to config format
-        $data = $this->transformProductConfig($product);
+        // Check if config format is requested
+        $format = $request->query('format', 'standard');
+        
+        if ($format === 'config') {
+            $data = $this->transformProductConfig($product);
+        } else {
+            $data = $product;
+        }
 
         return response()->json([
             'success' => true,
