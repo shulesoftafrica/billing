@@ -11,10 +11,30 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Check if currencies table exists before trying to alter it
+        if (!Schema::hasTable('currencies')) {
+            // Create the base currencies table first
+            Schema::create('currencies', function (Blueprint $table) {
+                $table->id();
+                $table->string('name');
+                $table->char('code', 3)->unique();
+                $table->string('symbol');
+                $table->timestamps();
+            });
+        }
+
+        // Now add the enhancement columns
         Schema::table('currencies', function (Blueprint $table) {
-            $table->decimal('exchange_rate', 10, 6)->default(1.000000);
-            $table->boolean('is_base_currency')->default(false);
-            $table->timestamp('last_updated')->nullable();
+            // Check if columns don't already exist
+            if (!Schema::hasColumn('currencies', 'exchange_rate')) {
+                $table->decimal('exchange_rate', 10, 6)->default(1.000000);
+            }
+            if (!Schema::hasColumn('currencies', 'is_base_currency')) {
+                $table->boolean('is_base_currency')->default(false);
+            }
+            if (!Schema::hasColumn('currencies', 'last_updated')) {
+                $table->timestamp('last_updated')->nullable();
+            }
         });
     }
 
@@ -23,8 +43,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('currencies', function (Blueprint $table) {
-            $table->dropColumn(['exchange_rate', 'is_base_currency', 'last_updated']);
-        });
+        if (Schema::hasTable('currencies')) {
+            Schema::table('currencies', function (Blueprint $table) {
+                if (Schema::hasColumn('currencies', 'exchange_rate')) {
+                    $table->dropColumn('exchange_rate');
+                }
+                if (Schema::hasColumn('currencies', 'is_base_currency')) {
+                    $table->dropColumn('is_base_currency');
+                }
+                if (Schema::hasColumn('currencies', 'last_updated')) {
+                    $table->dropColumn('last_updated');
+                }
+            });
+        }
     }
 };
