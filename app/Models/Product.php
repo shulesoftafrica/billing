@@ -13,11 +13,14 @@ class Product extends Model
         'product_code',
         'description',
         'active',
+        'unit',
     ];
 
     protected $casts = [
         'active' => 'boolean',
     ];
+
+    protected $appends = ['status'];
 
     public function organization()
     {
@@ -32,5 +35,13 @@ class Product extends Model
     public function pricePlans()
     {
         return $this->hasMany(PricePlan::class);
+    }
+
+    /**
+     * Get the product status.
+     */
+    public function getStatusAttribute()
+    {
+        return $this->active ? 'active' : 'inactive';
     }
 }

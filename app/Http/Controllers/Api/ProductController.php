@@ -202,7 +202,11 @@ class ProductController extends Controller
         // Get organization_id from authenticated user
         $organizationId = $request->user()->organization_id;
 
-        $product = Product::with(['organization', 'productType', 'pricePlans'])
+        $product = Product::with([
+            'organization', 
+            'productType', 
+            'pricePlans.currency'
+        ])
             ->where('product_code', $productCode)
             ->where('organization_id', $organizationId)
             ->first();
