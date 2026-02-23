@@ -9,9 +9,8 @@ use App\Models\Product;
 use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\OrganizationPaymentGatewayIntegration;
-use App\Models\Merchant;
 use App\Models\ControlNumber;
-use App\Models\User;
+use App\Models\TaxRate;
 use App\Models\Subscription;
 use App\Models\PricePlan;
 use Illuminate\Http\Request;
@@ -71,7 +70,13 @@ class InvoiceController extends Controller
                 ], 404);
             }
 
-            $query = Invoice::with(['customer', 'invoiceItems.pricePlan.product']);
+            $query = Invoice::with([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ]);
 
             // Filter by organization
             if ($organizationId) {
@@ -98,10 +103,12 @@ class InvoiceController extends Controller
             // Paginate results
             $invoices = $query->where('status', '!=', 'cancelled')->orderBy('created_at', 'desc')->paginate($perPage);
 
+            $controlNumbersMap = $this->buildControlNumbersMap($invoices->getCollection());
+
             // Format response
-            $data = $invoices->map(function ($invoice) {
-                return $this->formatInvoiceDetailResponse($invoice);
-            });
+            $data = $invoices->getCollection()->map(function ($invoice) use ($controlNumbersMap) {
+                return $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+            })->values();
 
             return response()->json([
                 'success' => true,
@@ -141,6 +148,8 @@ class InvoiceController extends Controller
             'products' => 'required|array|min:1',
             'products.*.price_plan_id' => 'required|integer|exists:price_plans,id',
             'products.*.amount' => 'required|numeric|min:0',
+            'tax_rate_ids' => 'nullable|array',
+            'tax_rate_ids.*' => 'integer|distinct|exists:tax_rates,id',
             'description' => 'nullable|string',
             'currency' => 'nullable|string|max:5',
             'status' => 'nullable|string|in:draft,issued,paid,cancelled',
@@ -166,6 +175,12 @@ class InvoiceController extends Controller
             $status = $request->status ?? 'issued';
             $date = $request->date ?? null;
             $dueDate = $request->due_date ?? null;
+            $requestedTaxRateIds = collect($request->input('tax_rate_ids', []))
+                ->filter(fn($id) => $id !== null)
+                ->map(fn($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
 
             // Step 2: Check if customer exists in the organization by phone or email
             $customer = Customer::where('organization_id', $organizationId)
@@ -274,7 +289,15 @@ class InvoiceController extends Controller
 
             if (!$shouldCreateInvoiceItem) {
                 DB::commit();
-                $data = $this->formatInvoiceDetailResponse($invoice);
+                $invoice->load([
+                    'customer',
+                    'payments',
+                    'invoiceTaxes.taxRate',
+                    'invoiceItems.pricePlan.product',
+                    'invoiceItems.subscription.pricePlan.product',
+                ]);
+                $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
+                $data = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
 
                 return response()->json([
                     'success' => true,
@@ -283,6 +306,11 @@ class InvoiceController extends Controller
                 ], 200);
             } else {
 
+                $taxRates = $this->resolveActiveTaxRates($requestedTaxRateIds);
+                $taxBreakdown = $this->calculateTaxBreakdown($totalAmount, $taxRates);
+                $taxTotal = collect($taxBreakdown)->sum('amount');
+                $grandTotal = round($totalAmount + $taxTotal, 2);
+
                 // Create invoice
                 $invoice = Invoice::create([
                     'customer_id' => $customer->id,
@@ -290,8 +318,8 @@ class InvoiceController extends Controller
                     'status' => $status,
                     'description' => $description,
                     'subtotal' => $totalAmount,
-                    'tax_total' => 0,
-                    'total' => $totalAmount,
+                    'tax_total' => $taxTotal,
+                    'total' => $grandTotal,
                     'date' => $date,
                     'due_date' => $dueDate,
                     'issued_at' => Carbon::now(),
@@ -302,6 +330,18 @@ class InvoiceController extends Controller
                     $itemData['invoice_id'] = $invoice->id;
                     InvoiceItem::create($itemData);
                 }
+
+                if (!empty($taxBreakdown)) {
+                    $invoice->invoiceTaxes()->createMany(
+                        collect($taxBreakdown)->map(function ($taxRow) {
+                            return [
+                                'tax_rate_id' => $taxRow['tax_rate_id'],
+                                'amount' => $taxRow['amount'],
+                            ];
+                        })->all()
+                    );
+                }
+
                 $subscriptionService = new SubscriptionService();
                 if (!empty($subscriptionData)) {
                     $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
@@ -371,7 +411,15 @@ class InvoiceController extends Controller
             }
 
             DB::commit();
-            $data = $this->formatInvoiceDetailResponse($invoice);
+            $invoice->load([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ]);
+            $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
+            $data = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
 
             // Return response
             return response()->json([
@@ -626,6 +674,78 @@ class InvoiceController extends Controller
         return $prefix . $date . str_pad($newSequence, 4, '0', STR_PAD_LEFT);
     }
 
+    private function resolveActiveTaxRates(array $taxRateIds)
+    {
+        if (empty($taxRateIds)) {
+            return collect();
+        }
+
+        $taxRates = TaxRate::whereIn('id', $taxRateIds)
+            ->where('active', true)
+            ->get();
+
+        if ($taxRates->count() !== count($taxRateIds)) {
+            throw new \InvalidArgumentException('One or more selected tax rates are invalid or inactive');
+        }
+
+        return $taxRates;
+    }
+
+    private function calculateTaxBreakdown(float $subtotal, $taxRates): array
+    {
+        if ($taxRates->isEmpty()) {
+            return [];
+        }
+
+        return $taxRates->map(function ($taxRate) use ($subtotal) {
+            $amount = round($subtotal * ((float) $taxRate->rate / 100), 2);
+
+            return [
+                'tax_rate_id' => $taxRate->id,
+                'amount' => $amount,
+            ];
+        })->values()->all();
+    }
+
+    private function buildControlNumbersMap($invoices): array
+    {
+        $invoiceCollection = collect($invoices);
+
+        if ($invoiceCollection->isEmpty()) {
+            return [];
+        }
+
+        $customerIds = $invoiceCollection->pluck('customer_id')->filter()->unique()->values();
+        $productIds = $invoiceCollection
+            ->flatMap(fn($invoice) => $invoice->invoiceItems->map(fn($item) => $item->pricePlan?->product_id))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($customerIds->isEmpty() || $productIds->isEmpty()) {
+            return [];
+        }
+
+        $controlNumbers = ControlNumber::with('organizationPaymentGatewayIntegration.paymentGateway')
+            ->whereIn('customer_id', $customerIds)
+            ->whereIn('product_id', $productIds)
+            ->get();
+
+        $map = [];
+        foreach ($controlNumbers as $controlNumber) {
+            $key = $this->controlNumbersMapKey($controlNumber->customer_id, $controlNumber->product_id);
+            $map[$key] ??= collect();
+            $map[$key]->push($controlNumber);
+        }
+
+        return $map;
+    }
+
+    private function controlNumbersMapKey($customerId, $productId): string
+    {
+        return $customerId . ':' . $productId;
+    }
+
     /**
      * Display the specified resource.
      * Returns detailed information about a single invoice including items and subscriptions
@@ -633,7 +753,13 @@ class InvoiceController extends Controller
     public function show(string $id)
     {
         try {
-            $invoice = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription'])
+            $invoice = Invoice::with([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ])
                 ->find($id);
 
             if (!$invoice) {
@@ -643,10 +769,12 @@ class InvoiceController extends Controller
                 ], 404);
             }
 
+            $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
+
             return response()->json([
                 'success' => true,
                 'message' => 'Invoice details retrieved successfully',
-                'data' => $this->formatInvoiceDetailResponse($invoice)
+                'data' => $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap)
             ], 200);
         } catch (\Exception $e) {
             Log::error('Invoice detail retrieval failed: ' . $e->getMessage());
@@ -714,19 +842,35 @@ class InvoiceController extends Controller
     /**
      * Format invoice response for detail view
      */
-    private function formatInvoiceDetailResponse($invoice)
+    private function formatInvoiceDetailResponse($invoice, array $controlNumbersMap = [])
     {
-        $invoiced = $invoice->total;
+        $grandTotal = $invoice->total;
         $paid = $invoice->payments->sum('pivot.amount');
-        $balance = $invoiced - $paid;
+        $balance = $grandTotal - $paid;
+
+        $taxBreakdown = $invoice->invoiceTaxes->map(function ($invoiceTax) {
+            $taxRate = $invoiceTax->taxRate;
+
+            return [
+                'invoice_tax_id' => $invoiceTax->id,
+                'tax_rate_id' => $invoiceTax->tax_rate_id,
+                'name' => $taxRate?->name,
+                'country' => $taxRate?->country,
+                'rate' => $taxRate?->rate,
+                'amount' => $invoiceTax->amount,
+            ];
+        })->values();
+
         return [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'status' => $invoice->status,
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
+            'tax_breakdown' => $taxBreakdown,
             'tax_total' => $invoice->tax_total,
-            'invoiced_amount' => $invoiced,
+            'grand_total' => $grandTotal,
+            'invoiced_amount' => $grandTotal,
             'paid_amount' => $paid,
             'outstanding_amount' => $balance,
             'date' => $invoice->date,
@@ -742,18 +886,20 @@ class InvoiceController extends Controller
                 'organization_id' => $invoice->customer->organization_id,
             ],
 
-            'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice) {
+            'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice, $controlNumbersMap) {
                 $product = $item->pricePlan->product;
                 $customerId = $invoice->customer->id;
-                // Fetch control numbers for this customer and product to get payment gateways
-                $controlNumbers = ControlNumber::where('customer_id', $customerId)
-                    ->where('product_id', $product->id)
-                    ->with('organizationPaymentGatewayIntegration.paymentGateway')
-                    ->get();
+                $mapKey = $this->controlNumbersMapKey($customerId, $product->id);
+                $controlNumbers = $controlNumbersMap[$mapKey] ?? collect();
 
                 // Map control numbers to payment gateways
                 $paymentGateways = $controlNumbers->map(function ($controlNumber) {
                     $integration = $controlNumber->organizationPaymentGatewayIntegration;
+
+                    if (!$integration || !$integration->paymentGateway) {
+                        return null;
+                    }
+
                     return [
                         'id' => $integration->id,
                         'payment_gateway_id' => $integration->payment_gateway_id,
@@ -761,7 +907,7 @@ class InvoiceController extends Controller
                         'status' => $integration->status,
                         'references' => $controlNumber->reference,
                     ];
-                })->values();
+                })->filter()->values();
 
                 return [
                     'id' => $item->pricePlan->id,
@@ -859,13 +1005,21 @@ class InvoiceController extends Controller
             }
 
             // Eager load relations used by formatInvoiceDetailResponse
-            $invoices = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription', 'payments'])
+            $invoices = Invoice::with([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ])
                 ->whereIn('id', $invoiceIds)
                 ->where('status', '!=', 'cancelled')
                 ->get();
 
-            $data = $invoices->map(function ($invoice) {
-                return $this->formatInvoiceDetailResponse($invoice);
+            $controlNumbersMap = $this->buildControlNumbersMap($invoices);
+
+            $data = $invoices->map(function ($invoice) use ($controlNumbersMap) {
+                return $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
             });
 
             return response()->json([

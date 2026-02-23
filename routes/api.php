@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\TaxRateController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
@@ -60,6 +61,7 @@ Route::middleware(['throttle:30,1'])->group(function () {
     Route::apiResource('payment-gateways', PaymentGatewayController::class);
     Route::apiResource('bank-accounts', BankAccountController::class);
     Route::apiResource('invoices', InvoiceController::class);
+    Route::apiResource('tax-rates', TaxRateController::class);
 
     // Organization payment gateway integration
     Route::post('organizations/integrate-payment-gateway', [OrganizationController::class, 'integratePaymentGateway']);

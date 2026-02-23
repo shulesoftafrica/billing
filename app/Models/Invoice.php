@@ -53,4 +53,9 @@ class Invoice extends Model
             ->withPivot('amount')
             ->withTimestamps();
     }
+
+    public function invoiceTaxes(): HasMany
+    {
+        return $this->hasMany(InvoiceTaxes::class, 'invoice_id');
+    }
 }
