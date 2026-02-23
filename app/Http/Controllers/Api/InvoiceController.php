@@ -12,6 +12,7 @@ use App\Models\OrganizationPaymentGatewayIntegration;
 use App\Models\Merchant;
 use App\Models\ControlNumber;
 use App\Models\User;
+use App\Services\FlutterwaveService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,7 @@ class InvoiceController extends Controller
             'success_url' => 'nullable|url',
             'cancel_url' => 'nullable|url',
             'metadata' => 'nullable|array',
+            'payment_gateway' => 'nullable|string|in:control_number,flutterwave,both',
         ];
 
         // Conditional validation based on what's provided
@@ -241,6 +243,9 @@ class InvoiceController extends Controller
 
             // Generate control number (simplified for now)
             $controlNumber = $this->generateControlNumber();
+            
+            // Determine payment gateway to use
+            $paymentGateway = $request->payment_gateway ?? 'control_number';
 
             // Prepare response data
             $responseData = [
@@ -269,18 +274,89 @@ class InvoiceController extends Controller
                     'customer_type' => $customer->customer_type,
                     'created' => $customerCreated
                 ],
-                'payment_details' => [
-                    'control_number' => $controlNumber,
-                    'amount' => number_format($amount, 2),
-                    'currency' => $request->currency ?: 'TZS',
-                    'expires_at' => Carbon::now()->addDays(7)->toISOString(),
-                    'payment_instructions' => [
-                        'mobile_banking' => "Dial *150*01*{$controlNumber}# from your registered mobile number",
-                        'internet_banking' => 'Login to your internet banking and pay bill using control number',
-                        'agent_banking' => 'Visit any bank agent and provide the control number'
-                    ]
-                ]
+                'payment_details' => []
             ];
+            
+            // Add control number if requested
+            if (in_array($paymentGateway, ['control_number', 'both'])) {
+                $responseData['payment_details']['control_number'] = $controlNumber;
+                $responseData['payment_details']['amount'] = number_format($amount, 2);
+                $responseData['payment_details']['currency'] = $request->currency ?: 'TZS';
+                $responseData['payment_details']['expires_at'] = Carbon::now()->addDays(7)->toISOString();
+                $responseData['payment_details']['payment_instructions'] = [
+                    'mobile_banking' => "Dial *150*01*{$controlNumber}# from your registered mobile number",
+                    'internet_banking' => 'Login to your internet banking and pay bill using control number',
+                    'agent_banking' => 'Visit any bank agent and provide the control number'
+                ];
+            }
+            
+            // Generate Flutterwave payment link if requested
+            if (in_array($paymentGateway, ['flutterwave', 'both'])) {
+                try {
+                    $flutterwaveService = new FlutterwaveService();
+                    
+                    if ($flutterwaveService->isActive()) {
+                        $flutterwavePayload = [
+                            'tx_ref' => $invoice->invoice_number . '-' . time(),
+                            'amount' => $amount,
+                            'currency' => $request->currency ?: 'TZS',
+                            'redirect_url' => $request->success_url ?: config('app.url') . '/payment/callback',
+                            'customer' => [
+                                'email' => $customer->email ?: 'customer@example.com',
+                                'name' => $customer->name,
+                                'phone' => $customer->phone,
+                            ],
+                            'title' => 'Invoice Payment',
+                            'description' => $invoice->description,
+                            'meta' => [
+                                'invoice_id' => $invoice->id,
+                                'invoice_number' => $invoice->invoice_number,
+                                'customer_id' => $customer->id,
+                                'organization_id' => $organization->id,
+                            ],
+                        ];
+                        
+                        $flutterwaveResult = $flutterwaveService->initializePayment($flutterwavePayload);
+                        
+                        if ($flutterwaveResult['success']) {
+                            $responseData['payment_details']['flutterwave'] = [
+                                'payment_link' => $flutterwaveResult['data']['payment_link'],
+                                'tx_ref' => $flutterwaveResult['data']['tx_ref'],
+                                'expires_at' => $flutterwaveResult['data']['expires_at'],
+                                'instructions' => 'Click the payment link to pay via card, mobile money, or bank transfer'
+                            ];
+                            
+                            Log::info('Flutterwave payment link generated successfully', [
+                                'invoice_id' => $invoice->id,
+                                'payment_link' => $flutterwaveResult['data']['payment_link'],
+                            ]);
+                        } else {
+                            // Log error but don't fail the invoice creation
+                            Log::warning('Flutterwave payment link generation failed', [
+                                'invoice_id' => $invoice->id,
+                                'error' => $flutterwaveResult['error'] ?? 'Unknown error',
+                            ]);
+                            
+                            // Add error message to response but don't fail
+                            $responseData['payment_details']['flutterwave_error'] = $flutterwaveResult['error'] ?? 'Payment link generation failed';
+                        }
+                    } else {
+                        Log::warning('Flutterwave gateway not active', [
+                            'invoice_id' => $invoice->id,
+                        ]);
+                        $responseData['payment_details']['flutterwave_error'] = 'Flutterwave gateway not configured or inactive';
+                    }
+                } catch (\Exception $e) {
+                    // Log exception but don't fail the invoice creation
+                    Log::error('Flutterwave integration error', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    
+                    $responseData['payment_details']['flutterwave_error'] = 'An error occurred while generating payment link';
+                }
+            }
 
             // Add subscription info if created
             if ($subscription) {

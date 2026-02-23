@@ -299,5 +299,6 @@ Route::prefix('webhooks')->group(function () {
 // Payment endpoints
 Route::get('payments/by-invoice/{invoice_id}', [\App\Http\Controllers\Api\PaymentController::class, 'getByInvoice']);
 Route::get('payments', [\App\Http\Controllers\Api\PaymentController::class, 'getByDateRange']);
+Route::get('payments/verify/{transaction_id}', [\App\Http\Controllers\Api\PaymentController::class, 'verifyFlutterwavePayment']);
 Route::get('invoices', [\App\Http\Controllers\Api\InvoiceController::class, 'getByProduct']);
 Route::get('wallets/transactions', [\App\Http\Controllers\WalletController::class, 'getTransactionsByWallet']);
