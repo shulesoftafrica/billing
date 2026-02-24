@@ -1125,7 +1125,7 @@ class SubscriptionService
 
             $url = $base ? rtrim($base, '/') : "https://{$customer->username}.shulesoft.africa/api";
 
-            $webhookUrl = $url . '/subscriptionWebhook';
+            $webhookUrl = $url . '/billing/subscriptionWebhook';
 
 
             // Prepare subscription details payload
