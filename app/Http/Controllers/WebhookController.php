@@ -2,34 +2,34 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\UCNPaymentService;
+use App\Services\UNCPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\PaymentGateway;
-use Illuminate\Support\Facades\Validator;
 
 class WebhookController extends Controller
 {
-    protected UCNPaymentService $ucnPaymentService;
+    protected UNCPaymentService $uncPaymentService;
 
-    public function __construct(UCNPaymentService $ucnPaymentService)
+    public function __construct(UNCPaymentService $uncPaymentService)
     {
-        $this->ucnPaymentService = $ucnPaymentService;
+        $this->uncPaymentService = $uncPaymentService;
     }
 
     /**
-     * Handle UCN payment webhook
+     * Handle UNC payment webhook
      *
      * @param Request $request
      * @return JsonResponse
      */
-    public function handleUCNPayment(Request $request): JsonResponse
+    public function handleUNCPayment(Request $request): JsonResponse
     {
         // Log incoming webhook
-        Log::info('UCN webhook received', [
+        Log::info('UNC webhook received', [
             'payload' => $request->all(),
             'ip' => $request->ip(),
         ]);
@@ -37,18 +37,12 @@ class WebhookController extends Controller
         $webhookData = $request->all();
 
         // Process the webhook
-        $response = $this->ucnPaymentService->processWebhook($webhookData);
+        $response = $this->uncPaymentService->processWebhook($webhookData);
 
         // Determine HTTP status code based on response code
         $httpStatus = $response['responseCode'] === '000' ? 200 : 400;
 
         return response()->json($response, $httpStatus);
-    }
-
-    public function handleUCNPaymentWebhook(Request $request): JsonResponse
-    {
-        Log::info(['Request recived' => json_encode($request->all())]);
-        return response()->json(['success' => true, 'message' => 'Payment webhook received'], 200);
     }
 
     /**
@@ -210,7 +204,7 @@ class WebhookController extends Controller
                 
                 // If it's a wallet topup invoice, add credits to wallet
                 if ($invoice->invoice_type === 'wallet_topup' && isset($invoice->metadata['wallet_type'])) {
-                    $walletService = app(\app\Services\WalletService::class);
+                    $walletService = app(\App\Services\WalletService::class);
                     $walletService->addCredits(
                         $invoice->customer_id,
                         $invoice->metadata['wallet_type'],
@@ -419,7 +413,4 @@ class WebhookController extends Controller
         // For now, we'll just check if hash is present
         return !empty($hash);
     }
-     private function handleStripeInvoicePaymentSuccess($payload){
-        return response()->json(['true']);
-     }
 }

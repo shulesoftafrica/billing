@@ -3,9 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
-use App\Http\Middleware\HandleCors;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,20 +13,26 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // API requests should not use encrypted cookies or session
-        $middleware->statefulApi();
+        // For API routes, don't redirect unauthenticated users
+        $middleware->redirectGuestsTo(function ($request) {
+            return $request->expectsJson() ? null : '/login';
+        });
         
-        // Register CORS middleware for API routes
-        $middleware->web(HandleCors::class);
+        // Disable sessions for API routes (we use tokens)
+        $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Return JSON response for unauthenticated API requests
-        $exceptions->render(function (AuthenticationException $e, Request $request) {
-            if ($request->is('api/*')) {
+        // Handle authentication exceptions for API requests
+        $exceptions->render(function (AuthenticationException $e, $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
-                    'message' => 'Unauthenticated. Please provide a valid Bearer token.',
-                    'error' => 'authentication_required'
+                    'success' => false,
+                    'message' => 'Unauthenticated',
+                    'error' => 'Authentication required'
                 ], 401);
             }
+            
+            // For web requests, redirect to login (but we don't have one)
+            return redirect()->guest('/login');
         });
     })->create();

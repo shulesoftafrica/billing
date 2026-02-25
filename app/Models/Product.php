@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
@@ -12,27 +10,38 @@ class Product extends Model
         'organization_id',
         'product_type_id',
         'name',
+        'product_code',
         'description',
-        'status',
+        'active',
+        'unit',
     ];
 
     protected $casts = [
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'active' => 'boolean',
     ];
 
-    public function organization(): BelongsTo
+    protected $appends = ['status'];
+
+    public function organization()
     {
         return $this->belongsTo(Organization::class);
     }
 
-    public function productType(): BelongsTo
+    public function productType()
     {
         return $this->belongsTo(ProductType::class);
     }
 
-    public function pricePlans(): HasMany
+    public function pricePlans()
     {
         return $this->hasMany(PricePlan::class);
+    }
+
+    /**
+     * Get the product status.
+     */
+    public function getStatusAttribute()
+    {
+        return $this->active ? 'active' : 'inactive';
     }
 }

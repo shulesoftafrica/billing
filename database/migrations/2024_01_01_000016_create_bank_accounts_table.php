@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -15,15 +16,14 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('account_number');
-            $table->string('branch')->nullable();
-            $table->unsignedBigInteger('refer_bank_id')->nullable();
-            $table->foreign('refer_bank_id')->references('id')->on('constant.refer_banks')->onDelete('set null');
+            $table->string('branch');
+            $table->unsignedBigInteger('refer_bank_id')->nullable(); // Make nullable for now
             $table->foreignId('organization_id')->constrained('organizations')->onDelete('cascade');
-            $table->timestampsTz();
+            $table->timestamps();
         });
-        Schema::table('bank_accounts', function (Blueprint $table) {
-            $table->index('organization_id');
-        });
+
+        // TODO: Add foreign key constraint when constant.refer_banks table is available
+        // DB::statement('ALTER TABLE billing.bank_accounts ADD CONSTRAINT bank_accounts_refer_bank_id_foreign FOREIGN KEY (refer_bank_id) REFERENCES constant.refer_banks(id) ON DELETE CASCADE');
     }
 
     /**

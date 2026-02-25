@@ -5,31 +5,33 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Invoice extends Model
 {
     protected $fillable = [
         'customer_id',
+        'subscription_id',
         'invoice_number',
-        'date',
+        'invoice_type',
         'status',
         'description',
         'subtotal',
         'tax_total',
+        'proration_credit',
         'total',
         'due_date',
         'issued_at',
+        'metadata',
     ];
 
     protected $casts = [
         'subtotal' => 'decimal:2',
         'tax_total' => 'decimal:2',
+        'proration_credit' => 'decimal:2',
         'total' => 'decimal:2',
-        'date' => 'date',
         'due_date' => 'date',
         'issued_at' => 'datetime',
+        'metadata' => 'array',
     ];
 
     public function customer(): BelongsTo
@@ -37,20 +39,19 @@ class Invoice extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function subscription(): BelongsTo
+    {
+        return $this->belongsTo(Subscription::class);
+    }
+
     public function invoiceItems(): HasMany
     {
         return $this->hasMany(InvoiceItem::class);
     }
 
-    public function pricePlans(): HasManyThrough
+    // Alias for invoiceItems to match API expectations
+    public function items(): HasMany
     {
-        return $this->hasManyThrough(PricePlan::class, InvoiceItem::class, 'invoice_id', 'id', 'id', 'price_plan_id');
-    }
-
-    public function payments(): BelongsToMany
-    {
-        return $this->belongsToMany(Payment::class, 'invoice_payments')
-            ->withPivot('amount')
-            ->withTimestamps();
+        return $this->hasMany(InvoiceItem::class);
     }
 }

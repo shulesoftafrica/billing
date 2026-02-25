@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\Currency;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 class ProductController extends Controller
 {
@@ -14,37 +16,15 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
-            'product_type' => 'integer|exists:product_types,id',
-        ]);
-        $product_type = $request->product_type ?? null;
-        $name = $request->name ?? null;
-        $status = $request->status ?? null;
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-        $productQuery = Product::with(['organization', 'productType', 'pricePlans'])
-            ->where('organization_id', $request->organization_id);
-        if ($product_type) {
-            $productQuery->where('product_type_id', $product_type);
-        }
-        if ($name) {
-            $productQuery->where('name', $name);
-        }
-        if ($status) {
-            $productQuery->where('status', $status);
-        }
-        $products = $productQuery->get();
+        $products = Product::with(['organization', 'productType', 'pricePlans'])
+            ->where('organization_id', $organizationId)
+            ->get();
 
         return response()->json([
             'success' => true,
-            'message' => 'Products retrieved successfully',
             'data' => $products
         ], 200);
     }
@@ -54,87 +34,103 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
-        // Determine rules based on product_type_id
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
+        
+        // Determine if price_plans is required based on product_type_id
         $productTypeId = $request->input('product_type_id');
-
-        // For product_type_id = 1: price_plans optional (max 1), subscription_type not allowed
-        // For product_type_id = 3: price_plans mandatory, subscription_type optional
-        // For other product_type_id: price_plans mandatory, array with min 1, subscription_type required
         $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
-
-        // Valid subscription types
-        $validSubscriptionTypes = ['daily', 'weekly', 'monthly', 'quarterly', 'semi_annually', 'yearly'];
-        $subscriptionTypeRule = $productTypeId == 1
-            ? 'nullable|string|max:255'
-            : ($productTypeId == 3
-                ? 'nullable|in:' . implode(',', $validSubscriptionTypes)
-                : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes));
-
+        
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
             'product_type_id' => 'required|exists:product_types,id',
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'unit' => 'nullable|string|max:255',
-            'status' => 'required|in:active,inactive,archived',
+            'product_code' => 'nullable|string|max:255',
+            'description' => 'required|string',
+            'active' => 'required|boolean',
             'price_plans' => $pricePlansRule,
-            'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
-            'price_plans.*.subscription_type' => $subscriptionTypeRule,
-            'price_plans.*.amount' => 'required_if:price_plans,!=null|numeric|min:0',
-            'price_plans.*.currency' => 'required_if:price_plans,!=null|string|min:2|max:5',
-            'price_plans.*.rate' => 'nullable|integer|min:1',
+            'price_plans.*.name' => 'required|string|max:255',
+            'price_plans.*.billing_type' => 'required|in:one_time,recurring,usage',
+            'price_plans.*.billing_interval' => 'nullable|required_if:price_plans.*.billing_type,recurring|in:monthly,yearly',
+            'price_plans.*.amount' => 'required|numeric|min:0',
+            'price_plans.*.currency_code' => 'nullable|string|exists:currencies,code',
+            'price_plans.*.currency_name' => 'nullable|string|exists:currencies,name',
+            'price_plans.*.features' => 'nullable|array',
+            'price_plans.*.active' => 'required|boolean',
         ]);
 
-        // Additional validation: subscription_type not allowed for product_type_id = 1
-        if ($productTypeId == 1 && $request->has('price_plans') && is_array($request->input('price_plans'))) {
-            foreach ($request->input('price_plans') as $idx => $plan) {
-                if (isset($plan['subscription_type']) && !empty($plan['subscription_type'])) {
-                    $validator->after(function ($validator) use ($idx) {
-                        $validator->errors()->add(
-                            "price_plans.{$idx}.subscription_type",
-                            'subscription_type is not allowed for product_type_id = 1'
-                        );
-                    });
+        // Custom validation: either currency_code or currency_name must be provided for each price plan
+        $validator->after(function ($validator) use ($request) {
+            $pricePlans = $request->input('price_plans', []);
+            foreach ($pricePlans as $index => $plan) {
+                if (empty($plan['currency_code']) && empty($plan['currency_name'])) {
+                    $validator->errors()->add("price_plans.{$index}.currency", 'Either currency_code or currency_name is required.');
+                }
+                if (!empty($plan['currency_code']) && !empty($plan['currency_name'])) {
+                    $validator->errors()->add("price_plans.{$index}.currency", 'Provide either currency_code or currency_name, not both.');
                 }
             }
-        }
+        });
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
+        $validatedData = $validator->validated();
+        
+        // Add organization_id from authenticated user
+        $validatedData['organization_id'] = $organizationId;
+        
+        // Extract price_plans from validated data
+        $pricePlans = $validatedData['price_plans'] ?? [];
+        unset($validatedData['price_plans']);
+        
         try {
-            $validatedData = $validator->validated();
-            $pricePlans = $validatedData['price_plans'] ?? [];
-            unset($validatedData['price_plans']);
-
             // Create product
             $product = Product::create($validatedData);
-
+            
             // Handle price plans
             if ($productTypeId == 1 && empty($pricePlans)) {
                 // Create default price plan for product_type_id = 1 when no price plans provided
+                $defaultCurrency = Currency::where('is_base_currency', true)->first() ?? Currency::first();
                 $product->pricePlans()->create([
                     'name' => $validatedData['name'],
-                    'subscription_type' => null,
+                    'billing_type' => 'one_time',
+                    'billing_interval' => null,
                     'amount' => 0,
-                    'currency' => 'TZS', // Default currency
+                    'currency_id' => $defaultCurrency->id,
+                    'active' => true,
                 ]);
             } else {
                 // Create provided price plans
                 foreach ($pricePlans as $plan) {
-                    // Set default rate if not provided for product_type_id = 3
-                    if ($productTypeId == 3 && !isset($plan['rate'])) {
-                        $plan['rate'] = 1;
+                    // Resolve currency_code or currency_name to currency_id
+                    if (isset($plan['currency_code'])) {
+                        $currency = Currency::where('code', $plan['currency_code'])->first();
+                        if ($currency) {
+                            $plan['currency_id'] = $currency->id;
+                            unset($plan['currency_code']); // Remove currency_code as we now have currency_id
+                        }
+                    } elseif (isset($plan['currency_name'])) {
+                        $currency = Currency::where('name', $plan['currency_name'])->first();
+                        if ($currency) {
+                            $plan['currency_id'] = $currency->id;
+                            unset($plan['currency_name']); // Remove currency_name as we now have currency_id
+                        }
                     }
+                    
+                    // Handle features as metadata
+                    if (isset($plan['features'])) {
+                        $plan['metadata'] = ['features' => $plan['features']];
+                        unset($plan['features']); // Remove features as we now have metadata
+                    }
+                    
                     $product->pricePlans()->create($plan);
                 }
             }
-
+            
             $product->load(['organization', 'productType', 'pricePlans']);
 
             return response()->json([
@@ -142,12 +138,39 @@ class ProductController extends Controller
                 'message' => 'Product created successfully',
                 'data' => $product
             ], 201);
-        } catch (\Exception $e) {
+            
+        } catch (UniqueConstraintViolationException $e) {
+            // Check which constraint was violated
+            $errorMessage = $e->getMessage();
+            
+            if (str_contains($errorMessage, 'products_org_name_unique')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product name already exists for this organization',
+                    'errors' => [
+                        'name' => ['A product with this name already exists for the selected organization.']
+                    ]
+                ], 409);
+            }
+            
+            if (str_contains($errorMessage, 'products_org_code_unique')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product code already exists for this organization',
+                    'errors' => [
+                        'product_code' => ['A product with this product code already exists for the selected organization.']
+                    ]
+                ], 409);
+            }
+            
+            // Fallback for other unique constraint violations
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create product',
-                'error' => $e->getMessage()
-            ], 500);
+                'message' => 'Duplicate product detected',
+                'errors' => [
+                    'duplicate' => ['This product already exists for the selected organization.']
+                ]
+            ], 409);
         }
     }
 
@@ -167,8 +190,114 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Product retrieved successfully',
             'data' => $product
+        ], 200);
+    }
+
+    /**
+     * Transform product with price plans into configuration format.
+     */
+    protected function transformProductConfig($product)
+    {
+        $plans = [];
+        
+        foreach ($product->pricePlans as $pricePlan) {
+            // Determine plan key based on plan name
+            $planName = strtolower($pricePlan->name);
+            $planKey = null;
+            
+            if (str_contains($planName, 'trial')) {
+                $planKey = 'trial';
+            } elseif (str_contains($planName, 'starter') || str_contains($planName, 'winga')) {
+                $planKey = 'starter';
+            } elseif (str_contains($planName, 'pro')) {
+                $planKey = 'pro';
+            } elseif (str_contains($planName, 'premium')) {
+                $planKey = 'premium';
+            } else {
+                $planKey = strtolower(str_replace(' ', '_', $pricePlan->name));
+            }
+            
+            // Get metadata features or use defaults
+            $metadata = $pricePlan->metadata ?? [];
+            $features = $metadata['features'] ?? [];
+            
+            // Build the plan structure
+            $currencyModel = $pricePlan->getRelation('currency');
+            $planData = [
+                'price' => (float) $pricePlan->amount,
+                'currency' => $currencyModel ? $currencyModel->code : 'TZS',
+                'billing_cycle' => $pricePlan->billing_interval ?? 'monthly',
+                'limits' => $features,
+                'credits_rollover' => $features['credits_rollover'] ?? false,
+                'permissions' => [
+                    'booking_calendars' => $features['booking_calendars'] ?? false
+                ]
+            ];
+            
+            // For trial plans, add duration_days
+            if ($planKey === 'trial') {
+                $planData['duration_days'] = $pricePlan->trial_period_days ?? 3;
+                unset($planData['currency']);
+                unset($planData['billing_cycle']);
+            }
+            
+            // Remove credits_rollover from limits if it exists there
+            if (isset($planData['limits']['credits_rollover'])) {
+                unset($planData['limits']['credits_rollover']);
+            }
+            
+            $plans[$planKey] = $planData;
+        }
+        
+        return [
+            'product_code' => $product->product_code,
+            'plans' => $plans,
+            'token_pricing' => [
+                'tokens_per_credit' => 3.846,
+                'cost_per_token_input' => 0.0015,
+                'cost_per_token_output' => 0.002
+            ]
+        ];
+    }
+
+    /**
+     * Find product by product code for authenticated user's organization.
+     */
+    public function byCode(Request $request, string $productCode)
+    {
+        // Get organization_id from authenticated user
+        $organizationId = $request->user()->organization_id;
+
+        $product = Product::with([
+            'organization', 
+            'productType', 
+            'pricePlans.currency'
+        ])
+            ->where('product_code', $productCode)
+            ->where('organization_id', $organizationId)
+            ->whereHas('pricePlans') // Only get products that have price plans
+            ->first();
+
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => "Product not found with code: {$productCode}"
+            ], 404);
+        }
+
+        // Check if config format is requested
+        $format = $request->query('format', 'standard');
+        
+        if ($format === 'config') {
+            $data = $this->transformProductConfig($product);
+        } else {
+            $data = $product;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
         ], 200);
     }
 
@@ -187,36 +316,62 @@ class ProductController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'sometimes|required|exists:organizations,id',
             'product_type_id' => 'sometimes|required|exists:product_types,id',
             'name' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'sometimes|required|in:active,inactive,archived',
+            'product_code' => 'sometimes|nullable|string|max:255',
+            'description' => 'sometimes|required|string',
+            'active' => 'sometimes|required|boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
         try {
             $product->update($validator->validated());
-            $product->load(['organization', 'productType', 'pricePlans']);
+            $product->load(['organization', 'productType']);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Product updated successfully',
                 'data' => $product
             ], 200);
-        } catch (\Exception $e) {
+            
+        } catch (UniqueConstraintViolationException $e) {
+            // Check which constraint was violated
+            $errorMessage = $e->getMessage();
+            
+            if (str_contains($errorMessage, 'products_org_name_unique')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product name already exists for this organization',
+                    'errors' => [
+                        'name' => ['A product with this name already exists for the selected organization.']
+                    ]
+                ], 409);
+            }
+            
+            if (str_contains($errorMessage, 'products_org_code_unique')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product code already exists for this organization',
+                    'errors' => [
+                        'product_code' => ['A product with this product code already exists for the selected organization.']
+                    ]
+                ], 409);
+            }
+            
+            // Fallback for other unique constraint violations
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update product',
-                'error' => $e->getMessage()
-            ], 500);
+                'message' => 'Duplicate product detected',
+                'errors' => [
+                    'duplicate' => ['This product already exists for the selected organization.']
+                ]
+            ], 409);
         }
     }
 
@@ -234,19 +389,11 @@ class ProductController extends Controller
             ], 404);
         }
 
-        try {
-            $product->delete();
+        $product->delete();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Product deleted successfully'
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to delete product',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Product deleted successfully'
+        ], 200);
     }
 }

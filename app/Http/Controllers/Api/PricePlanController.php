@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\PricePlan;
+use App\Models\Currency;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -24,7 +25,7 @@ class PricePlanController extends Controller
             ], 404);
         }
 
-        $pricePlans = $product->pricePlans()->get();
+        $pricePlans = $product->pricePlans()->with('currency')->get();
 
         return response()->json([
             'success' => true,
@@ -48,11 +49,24 @@ class PricePlanController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
+            'billing_type' => 'required|in:one_time,recurring,usage',
+            'billing_interval' => 'required_if:billing_type,recurring|in:monthly,yearly',
             'amount' => 'required|numeric|min:0',
-            'currency' => 'nullable|string|min:2|max:5',
-            'rate' => 'nullable|integer|min:1',
+            'currency_code' => 'nullable|string|exists:currencies,code',
+            'currency_name' => 'nullable|string|exists:currencies,name',
+            'features' => 'nullable|array',
+            'active' => 'required|boolean',
         ]);
+
+        // Custom validation: either currency_code or currency_name must be provided
+        $validator->after(function ($validator) use ($request) {
+            if (empty($request->input('currency_code')) && empty($request->input('currency_name'))) {
+                $validator->errors()->add('currency', 'Either currency_code or currency_name is required.');
+            }
+            if (!empty($request->input('currency_code')) && !empty($request->input('currency_name'))) {
+                $validator->errors()->add('currency', 'Provide either currency_code or currency_name, not both.');
+            }
+        });
 
         if ($validator->fails()) {
             return response()->json([
@@ -61,15 +75,31 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $validated = $validator->validated();
+        $validatedData = $validator->validated();
+        
+        // Handle features as metadata
+        if (isset($validatedData['features'])) {
+            $validatedData['metadata'] = ['features' => $validatedData['features']];
+            unset($validatedData['features']);
+        }
+        
+        // Resolve currency_code or currency_name to currency_id
+        if (isset($validatedData['currency_code'])) {
+            $currency = Currency::where('code', $validatedData['currency_code'])->first();
+            if ($currency) {
+                $validatedData['currency_id'] = $currency->id;
+                unset($validatedData['currency_code']);
+            }
+        } elseif (isset($validatedData['currency_name'])) {
+            $currency = Currency::where('name', $validatedData['currency_name'])->first();
+            if ($currency) {
+                $validatedData['currency_id'] = $currency->id;
+                unset($validatedData['currency_name']);
+            }
+        }
 
-        $pricePlan = $product->pricePlans()->create([
-            'name' => $validated['name'],
-            'subscription_type' => $validated['subscription_type'] ?? null,
-            'amount' => $validated['amount'],
-            'currency' => $validated['currency'] ?? 'TZS',
-            'rate' => $validated['rate'] ?? 1,
-        ]);
+        $pricePlan = $product->pricePlans()->create($validatedData);
+        $pricePlan->load('currency');
 
         return response()->json([
             'success' => true,
@@ -100,6 +130,8 @@ class PricePlanController extends Controller
                 'message' => 'Price plan not found'
             ], 404);
         }
+
+        $pricePlan->load('currency');
 
         return response()->json([
             'success' => true,
@@ -132,10 +164,11 @@ class PricePlanController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
-            'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
+            'billing_type' => 'sometimes|required|in:one_time,recurring,usage',
+            'billing_interval' => 'sometimes|required_if:billing_type,recurring|in:monthly,yearly',
             'amount' => 'sometimes|required|numeric|min:0',
-            'currency' => 'nullable|string|min:2|max:5',
-            'rate' => 'nullable|integer|min:1',
+            'currency_id' => 'sometimes|required|exists:currencies,id',
+            'active' => 'sometimes|required|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -145,17 +178,8 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $validated = $validator->validated();
-
-        // Prepare update data with defaults for optional fields
-        $updateData = [];
-        if (isset($validated['name'])) $updateData['name'] = $validated['name'];
-        if (isset($validated['subscription_type'])) $updateData['subscription_type'] = $validated['subscription_type'];
-        if (isset($validated['amount'])) $updateData['amount'] = $validated['amount'];
-        if (isset($validated['currency'])) $updateData['currency'] = $validated['currency'];
-        if (isset($validated['rate'])) $updateData['rate'] = $validated['rate'];
-
-        $pricePlan->update($updateData);
+        $pricePlan->update($validator->validated());
+        $pricePlan->load('currency');
 
         return response()->json([
             'success' => true,

@@ -12,14 +12,12 @@ use App\Models\OrganizationPaymentGatewayIntegration;
 use App\Models\Merchant;
 use App\Models\ControlNumber;
 use App\Models\User;
-use App\Models\Subscription;
-use App\Models\PricePlan;
+use App\Services\FlutterwaveService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-use App\Services\SubscriptionService;
 
 class InvoiceController extends Controller
 {
@@ -29,101 +27,14 @@ class InvoiceController extends Controller
     protected $labId = 'KmiqL3yCLf1V68oRQrIv';
     protected $baseUrl = 'https://payservice.ecobank.com';
     protected $origin = 'https://payservice.ecobank.com/PayPortal';
-    protected $callBackUrl = 'https://safariapi.safaribook.africa/api/ecobank/notification';
+    protected $callBackUrl = 'https://billing.shulesoft.africa/api/ecobank/notification';
 
     /**
      * Display a listing of the resource.
-     * Request parameters:
-     * - organization_id: Filter invoices by organization
-     * - product_id: Filter invoices by product (returns invoices that contain this product)
-     * - per_page: Number of results per page (default: 15)
-     * - page: Page number (default: 1)
      */
-    public function index(Request $request)
+    public function index()
     {
-        try {
-            $organizationId = $request->input('organization_id');
-            $productId = $request->input('product_id');
-            $customerId = $request->input('customer_id') ?? null;
-            $perPage = $request->input('per_page', 15);
-
-            // Validate at least one filter is provided
-            if (!$organizationId && !$productId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Either organization_id or product_id must be provided'
-                ], 422);
-            }
-
-            // Validate organization exists if provided
-            if ($organizationId && !Organization::find($organizationId)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Organization not found'
-                ], 404);
-            }
-
-            // Validate product exists if provided
-            if ($productId && !Product::find($productId)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Product not found'
-                ], 404);
-            }
-
-            $query = Invoice::with(['customer', 'invoiceItems.pricePlan.product']);
-
-            // Filter by organization
-            if ($organizationId) {
-                $query->whereHas('customer', function ($q) use ($organizationId) {
-                    $q->where('organization_id', $organizationId);
-                });
-            }
-
-            // Filter by product
-            if ($productId) {
-                $query->whereHas('invoiceItems.pricePlan.product', function ($q) use ($productId) {
-                    $q->where('products.id', $productId);
-                });
-            }
-
-            // Filter by product
-            if ($customerId) {
-                $query->whereHas('invoiceItems.pricePlan.product', function ($q) use ($customerId) {
-                    $q->where('invoices.customer_id', $customerId);
-                });
-            }
-
-
-            // Paginate results
-            $invoices = $query->where('status', '!=', 'cancelled')->orderBy('created_at', 'desc')->paginate($perPage);
-
-            // Format response
-            $data = $invoices->map(function ($invoice) {
-                return $this->formatInvoiceDetailResponse($invoice);
-            });
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Invoices retrieved successfully',
-                'data' => $data,
-                'pagination' => [
-                    'total' => $invoices->total(),
-                    'per_page' => $invoices->perPage(),
-                    'current_page' => $invoices->currentPage(),
-                    'last_page' => $invoices->lastPage(),
-                    'from' => $invoices->firstItem(),
-                    'to' => $invoices->lastItem(),
-                ]
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Invoice retrieval failed: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Invoice retrieval failed: ' . $e->getMessage()
-            ], 500);
-        }
+        //
     }
 
     /**
@@ -131,22 +42,52 @@ class InvoiceController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate required parameters
-        $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|integer|exists:organizations,id',
-            'customer' => 'required|array',
-            'customer.name' => 'required|string',
-            'customer.email' => 'required|email',
-            'customer.phone' => 'required|string',
-            'products' => 'required|array|min:1',
-            'products.*.price_plan_id' => 'required|integer|exists:price_plans,id',
-            'products.*.amount' => 'required|numeric|min:0',
-            'description' => 'nullable|string',
-            'currency' => 'nullable|string|max:5',
-            'status' => 'nullable|string|in:draft,issued,paid,cancelled',
-            'date' => 'nullable|date_format:Y-m-d',
-            'due_date' => 'nullable|date_format:Y-m-d',
-        ]);
+        // First determine which validation set to use based on provided fields
+        $hasProductCode = $request->has('product_code');
+        $hasCustomerObject = $request->has('customer');
+        $hasProductId = $request->has('product_id');
+        $hasCustomerId = $request->has('customer_id');
+
+        // Flexible validation rules
+        $rules = [
+            'organization_id' => 'required|exists:organizations,id',
+            'invoice_type' => 'nullable|in:subscription,wallet_topup,plan_upgrade,plan_downgrade,one_time',
+            'amount' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|exists:currencies,code',
+            'plan_code' => 'nullable|string',
+            'billing_cycle' => 'nullable|string|in:monthly,yearly,weekly,daily',
+            'success_url' => 'nullable|url',
+            'cancel_url' => 'nullable|url',
+            'metadata' => 'nullable|array',
+            'payment_gateway' => 'nullable|string|in:control_number,flutterwave,both',
+        ];
+
+        // Conditional validation based on what's provided
+        if ($hasProductCode && $hasCustomerObject) {
+            // Full format with product_code and customer object
+            $rules['product_code'] = 'required|string';
+            $rules['customer'] = 'required|array';
+            $rules['customer.name'] = 'required|string|max:255';
+            $rules['customer.phone'] = 'required|string|max:20';
+            $rules['customer.email'] = 'nullable|email|max:255';
+            $rules['customer.external_ref'] = 'nullable|string|max:255';
+            $rules['customer.customer_type'] = 'nullable|string|in:individual,business,school,organization';
+        } elseif ($hasProductId && $hasCustomerId) {
+            // Simple format with IDs
+            $rules['product_id'] = 'required|exists:products,id';
+            $rules['customer_id'] = 'required|exists:customers,id';
+        } else {
+            // Invalid combination
+            return response()->json([
+                'success' => false,
+                'message' => 'Either provide (product_code + customer object) or (product_id + customer_id)',
+                'errors' => [
+                    'format' => ['You must provide either product_code with customer object, or product_id with customer_id']
+                ]
+            ], 422);
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return response()->json([
@@ -158,234 +99,301 @@ class InvoiceController extends Controller
         try {
             DB::beginTransaction();
 
-            $organizationId = $request->organization_id;
-            $customerData = $request->customer;
-            $productsData = $request->products;
-            $description = $request->description ?? 'Invoice for products';
-            $currency = $request->currency ?? 'TZS';
-            $status = $request->status ?? 'issued';
-            $date = $request->date ?? null;
-            $dueDate = $request->due_date ?? null;
-
-            // Step 2: Check if customer exists in the organization by phone or email
-            $customer = Customer::where('organization_id', $organizationId)
-                ->where(function ($query) use ($customerData) {
-                    $query->where('email', $customerData['email'])
-                        ->orWhere('phone', $customerData['phone']);
-                })
-                ->first();
-
-            // If customer doesn't exist, create a new one
-            if (!$customer) {
-                $customer = Customer::create([
-                    'organization_id' => $organizationId,
-                    'name' => $customerData['name'],
-                    'email' => $customerData['email'],
-                    'phone' => $customerData['phone'],
-                    'status' => 'active',
-                ]);
-            }
-
-            // Step 3 & 4: Process products and determine product types
-            $subscriptions = [];
-            $invoiceItems = [];
-            $subscriptionData = [];
-            $totalAmount = 0;
-            $oneTimeInvoiceItems = [];
-
-            foreach ($productsData as $productData) {
-                // Get price plan and its product
-                $pricePlan = PricePlan::with('product')->findOrFail($productData['price_plan_id']);
-                $product = $pricePlan->product;
-
-                // Validate product belongs to organization
-                if ($product->organization_id != $organizationId) {
-                    throw new \Exception('Product does not belong to the specified organization');
+            $organization = Organization::findOrFail($request->organization_id);
+            
+            // Handle product resolution
+            if ($hasProductCode) {
+                $product = Product::with('pricePlans')
+                    ->where('product_code', $request->product_code)
+                    ->where('organization_id', $request->organization_id)
+                    ->first();
+                
+                if (!$product) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Product not found with code: {$request->product_code}",
+                        'errors' => [
+                            'product_code' => ['Product with this code not found in your organization']
+                        ]
+                    ], 404);
                 }
-
-                $shouldCreateInvoiceItem = true;
-                $subscription = null;
-
-                // Check if product is not a one-time product (product_type_id != 1)
-                if ($product->product_type_id != 1) {
-                    // Check if subscription already exists with pending status
-                    $existingSubscription = Subscription::where('customer_id', $customer->id)
-                        ->where('price_plan_id', $pricePlan->id)
-                        ->where('status', 'pending')
-                        ->first();
-
-                    if ($existingSubscription) {
-                        $invoice = Invoice::where('customer_id', $customer->id)
-                            ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
-                            ->where('status', '!=', 'cancelled')
-                            ->first();
-                        // Subscription already exists - skip invoice item creation for this product
-                        $shouldCreateInvoiceItem = false;
-                    } else {
-                        // Create subscription record for recurring products
-                        $subscription = Subscription::create([
-                            'customer_id' => $customer->id,
-                            'price_plan_id' => $pricePlan->id,
-                            'status' => 'pending',
-                            'start_date' => null,
-                            'next_billing_date' => null,
-                        ]);
-                        $subscriptionData[$subscription->id] = [
-                            'id' => $subscription->id,
-                            'amount' => $productData['amount'],
-                        ];
-                    }
-                }
-
-                // Prepare invoice item data only if subscription doesn't already exist
-                if ($shouldCreateInvoiceItem) {
-                    $invoiceItems[] = [
-                        'price_plan_id' => $pricePlan->id,
-                        'subscription_id' => ($product->product_type_id != 1) ? ($subscription->id ?? null) : null,
-                        'quantity' => 1,
-                        'unit_price' => $productData['amount'],
-                        'total' => $productData['amount'],
-                    ];
-                    // filter onetime product
-                    if ($product->product_type_id == 1) {
-                        $oneTimeInvoiceItems[$pricePlan->id] = [
-                            'amount' =>  $productData['amount']
-                        ];
-                    }
-
-                    $totalAmount += $productData['amount'];
-                }
-            }
-
-            // If no invoice items to create, return response without creating invoice
-            if (empty($invoiceItems)) {
-                DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'All products have pending subscriptions - no invoice created',
-                    'data' => [
-                        'invoice' => null,
-                        'subscriptions' => $subscriptions,
-                        'payment_gateways' => [],
-                    ]
-                ], 201);
-            }
-
-            if (!$shouldCreateInvoiceItem) {
-                DB::commit();
-                $data = $this->formatInvoiceDetailResponse($invoice);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'All products have pending subscriptions - no invoice created',
-                    'data' => $data
-                ], 200);
             } else {
+                $product = Product::with('pricePlans')->findOrFail($request->product_id);
+                
+                // Verify product belongs to organization
+                if ($product->organization_id != $request->organization_id) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => ['product_id' => ['The selected product does not belong to this organization.']]
+                    ], 422);
+                }
+            }
 
-                // Create invoice
-                $invoice = Invoice::create([
+            // Handle customer resolution/creation
+            if ($hasCustomerObject) {
+                $customerData = $request->customer;
+                
+                // Try to find existing customer by phone or email
+                $customer = Customer::where('organization_id', $request->organization_id)
+                    ->where(function($query) use ($customerData) {
+                        $query->where('phone', $customerData['phone']);
+                        if (isset($customerData['email'])) {
+                            $query->orWhere('email', $customerData['email']);
+                        }
+                    })
+                    ->first();
+                
+                $customerCreated = false;
+                if (!$customer) {
+                    // Create new customer
+                    $customer = Customer::create([
+                        'organization_id' => $request->organization_id,
+                        'name' => $customerData['name'],
+                        'phone' => $customerData['phone'],
+                        'email' => $customerData['email'] ?? null,
+                        'external_ref' => $customerData['external_ref'] ?? null,
+                        'customer_type' => $customerData['customer_type'] ?? 'individual',
+                        'status' => 'active'
+                    ]);
+                    $customerCreated = true;
+                }
+            } else {
+                $customer = Customer::findOrFail($request->customer_id);
+                
+                // Verify customer belongs to organization
+                if ($customer->organization_id != $request->organization_id) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => ['customer_id' => ['The selected customer does not belong to this organization.']]
+                    ], 422);
+                }
+                $customerCreated = false;
+            }
+
+            // Determine amount (use provided amount or default from first price plan)
+            $amount = $request->amount;
+            if (!$amount && $product->pricePlans->isNotEmpty()) {
+                $amount = $product->pricePlans->first()->amount;
+            }
+            $amount = $amount ?: 0;
+
+            // Determine if this should create a subscription
+            $shouldCreateSubscription = ($request->invoice_type === 'subscription') && 
+                                      ($request->billing_cycle || $request->plan_code);
+
+            $subscription = null;
+            if ($shouldCreateSubscription) {
+                // Find the appropriate price plan
+                $pricePlan = $product->pricePlans()->first();
+                if ($request->plan_code) {
+                    $planByCode = $product->pricePlans()->where('name', 'LIKE', '%' . $request->plan_code . '%')->first();
+                    if ($planByCode) {
+                        $pricePlan = $planByCode;
+                        $amount = $pricePlan->amount; // Use plan amount instead
+                    }
+                }
+                
+                if (!$pricePlan) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No price plan found for this product to create subscription',
+                    ], 400);
+                }
+
+                // Create subscription
+                $subscription = \App\Models\Subscription::create([
                     'customer_id' => $customer->id,
-                    'invoice_number' => $this->generateInvoiceNumber(),
-                    'status' => $status,
-                    'description' => $description,
-                    'subtotal' => $totalAmount,
-                    'tax_total' => 0,
-                    'total' => $totalAmount,
-                    'date' => $date,
-                    'due_date' => $dueDate,
-                    'issued_at' => Carbon::now(),
+                    'price_plan_id' => $pricePlan->id,
+                    'subscription_number' => 'SUB' . now()->format('Ymd') . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
+                    'status' => 'active',
+                    'start_date' => now(),
+                    'next_billing_date' => $this->calculateNextBillingDate($request->billing_cycle ?: $pricePlan->billing_interval),
+                    'trial_ends_at' => $pricePlan->trial_period_days ? now()->addDays($pricePlan->trial_period_days) : null,
                 ]);
-
-                // Create invoice items only if invoice was newly created
-                foreach ($invoiceItems as $itemData) {
-                    $itemData['invoice_id'] = $invoice->id;
-                    InvoiceItem::create($itemData);
-                }
-                $subscriptionService = new SubscriptionService();
-                if (!empty($subscriptionData)) {
-                    $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
-                    if (!$subscriptions->isEmpty()) {
-                        foreach ($subscriptions as $subscription) {
-                            $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
-                        }
-                    }
-                }
-                if (!empty($oneTimeInvoiceItems)) {
-                    foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
-                        $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
-                    }
-                }
             }
 
-            // Get all organization integrated gateways
-            $organizationGateways = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
-                ->where('organization_id', $organizationId)
-                ->get();
+            // Create invoice
+            $invoice = Invoice::create([
+                'customer_id' => $customer->id,
+                'subscription_id' => $subscription ? $subscription->id : null,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'invoice_type' => $request->invoice_type ?: 'subscription',
+                'status' => 'issued',
+                'description' => $this->generateInvoiceDescription($product, $request),
+                'subtotal' => $amount,
+                'tax_total' => 0,
+                'total' => $amount,
+                'due_date' => Carbon::now()->addDays(30),
+                'issued_at' => Carbon::now(),
+                'metadata' => $request->metadata ?: [],
+            ]);
 
-            $paymentGateways = [];
+            // Create invoice items
+            // Try to get price plan from product if available
+            $pricePlan = $product->pricePlans()->first();
+            
+            InvoiceItem::create([
+                'invoice_id' => $invoice->id,
+                'price_plan_id' => $pricePlan ? $pricePlan->id : null,
+                'description' => $product->name,
+                'quantity' => 1,
+                'unit_price' => $amount,
+                'total' => $amount,
+            ]);
 
-            // Get all products associated with the price plans
-            $pricePlanIds = collect($productsData)->pluck('price_plan_id')->unique();
-            $products = Product::whereIn(
-                'id',
-                PricePlan::whereIn('id', $pricePlanIds)->pluck('product_id')
-            )->get();
+            // Generate control number (simplified for now)
+            $controlNumber = $this->generateControlNumber();
+            
+            // Determine payment gateway to use
+            $paymentGateway = $request->payment_gateway ?? 'control_number';
 
-            if ($products->isEmpty()) {
-                throw new \Exception('No products found for the provided price plans');
+            // Prepare response data
+            $responseData = [
+                'invoice' => [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'customer_id' => $customer->id,
+                    'subscription_id' => $subscription ? $subscription->id : null,
+                    'organization_id' => $organization->id,
+                    'invoice_type' => $invoice->invoice_type,
+                    'status' => $invoice->status,
+                    'description' => $invoice->description,
+                    'subtotal' => number_format($invoice->subtotal, 2),
+                    'tax_total' => number_format($invoice->tax_total, 2),
+                    'total' => number_format($invoice->total, 2),
+                    'currency' => $request->currency ?: 'TZS',
+                    'due_date' => $invoice->due_date->format('Y-m-d'),
+                    'issued_at' => $invoice->issued_at->toISOString(),
+                ],
+                'customer' => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'email' => $customer->email,
+                    'phone' => $customer->phone,
+                    'external_ref' => $customer->external_ref,
+                    'customer_type' => $customer->customer_type,
+                    'created' => $customerCreated
+                ],
+                'payment_details' => []
+            ];
+            
+            // Add control number if requested
+            if (in_array($paymentGateway, ['control_number', 'both'])) {
+                $responseData['payment_details']['control_number'] = $controlNumber;
+                $responseData['payment_details']['amount'] = number_format($amount, 2);
+                $responseData['payment_details']['currency'] = $request->currency ?: 'TZS';
+                $responseData['payment_details']['expires_at'] = Carbon::now()->addDays(7)->toISOString();
+                $responseData['payment_details']['payment_instructions'] = [
+                    'mobile_banking' => "Dial *150*01*{$controlNumber}# from your registered mobile number",
+                    'internet_banking' => 'Login to your internet banking and pay bill using control number',
+                    'agent_banking' => 'Visit any bank agent and provide the control number'
+                ];
             }
-
-            // Loop through products to all gateways
-            foreach ($products as $product) {
-                foreach ($organizationGateways as $orgGateway) {
-                    $gatewayData = [
-                        'id' => $orgGateway->id,
-                        'payment_gateway_id' => $orgGateway->payment_gateway_id,
-                        'gateway_name' => $orgGateway->paymentGateway->name,
-                        'status' => $orgGateway->status,
-                    ];
-
-                    // Check if gateway is Universal Control Number
-                    if (strtolower($orgGateway->paymentGateway->name) === 'universal control number') {
-                        // Fetch merchant record
-                        $merchant = $orgGateway->merchants()->first();
-
-                        if (!$merchant) {
-                            throw new \Exception('Merchant not found for Universal Control Number gateway');
+            
+            // Generate Flutterwave payment link if requested
+            if (in_array($paymentGateway, ['flutterwave', 'both'])) {
+                try {
+                    $flutterwaveService = new FlutterwaveService();
+                    
+                    if ($flutterwaveService->isActive()) {
+                        $flutterwavePayload = [
+                            'tx_ref' => $invoice->invoice_number . '-' . time(),
+                            'amount' => $amount,
+                            'currency' => $request->currency ?: 'TZS',
+                            'redirect_url' => $request->success_url ?: config('app.url') . '/payment/callback',
+                            'customer' => [
+                                'email' => $customer->email ?: 'customer@example.com',
+                                'name' => $customer->name,
+                                'phone' => $customer->phone,
+                            ],
+                            'title' => 'Invoice Payment',
+                            'description' => $invoice->description,
+                            'meta' => [
+                                'invoice_id' => $invoice->id,
+                                'invoice_number' => $invoice->invoice_number,
+                                'customer_id' => $customer->id,
+                                'organization_id' => $organization->id,
+                            ],
+                        ];
+                        
+                        $flutterwaveResult = $flutterwaveService->initializePayment($flutterwavePayload);
+                        
+                        if ($flutterwaveResult['success']) {
+                            $responseData['payment_details']['flutterwave'] = [
+                                'payment_link' => $flutterwaveResult['data']['payment_link'],
+                                'tx_ref' => $flutterwaveResult['data']['tx_ref'],
+                                'expires_at' => $flutterwaveResult['data']['expires_at'],
+                                'instructions' => 'Click the payment link to pay via card, mobile money, or bank transfer'
+                            ];
+                            
+                            Log::info('Flutterwave payment link generated successfully', [
+                                'invoice_id' => $invoice->id,
+                                'payment_link' => $flutterwaveResult['data']['payment_link'],
+                            ]);
+                        } else {
+                            // Log error but don't fail the invoice creation
+                            Log::warning('Flutterwave payment link generation failed', [
+                                'invoice_id' => $invoice->id,
+                                'error' => $flutterwaveResult['error'] ?? 'Unknown error',
+                            ]);
+                            
+                            // Add error message to response but don't fail
+                            $responseData['payment_details']['flutterwave_error'] = $flutterwaveResult['error'] ?? 'Payment link generation failed';
                         }
-                        // Create control number for each product
-                        $gatewayData['references'] = [];
-
-                        $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
-
-                        if (!$controlNumberData['success']) {
-                            throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
-                        }
-                        $gatewayData['references'] = $controlNumberData['control_number']['reference'];
                     } else {
-                        $gatewayData['references'] = [];
+                        Log::warning('Flutterwave gateway not active', [
+                            'invoice_id' => $invoice->id,
+                        ]);
+                        $responseData['payment_details']['flutterwave_error'] = 'Flutterwave gateway not configured or inactive';
                     }
-                    $paymentGateways[$product->id][] = $gatewayData;
+                } catch (\Exception $e) {
+                    // Log exception but don't fail the invoice creation
+                    Log::error('Flutterwave integration error', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    
+                    $responseData['payment_details']['flutterwave_error'] = 'An error occurred while generating payment link';
                 }
+            }
+
+            // Add subscription info if created
+            if ($subscription) {
+                $responseData['subscription'] = [
+                    'id' => $subscription->id,
+                    'subscription_number' => $subscription->subscription_number,
+                    'status' => $subscription->status,
+                    'start_date' => $subscription->start_date->format('Y-m-d'),
+                    'next_billing_date' => $subscription->next_billing_date->format('Y-m-d'),
+                    'trial_ends_at' => $subscription->trial_ends_at ? $subscription->trial_ends_at->format('Y-m-d H:i:s') : null,
+                ];
+            }
+
+            if ($request->success_url || $request->cancel_url) {
+                $responseData['urls'] = [
+                    'success_url' => $request->success_url,
+                    'cancel_url' => $request->cancel_url,
+                    'payment_url' => "http://localhost:8000/pay/{$controlNumber}"
+                ];
             }
 
             DB::commit();
-            $data = $this->formatInvoiceDetailResponse($invoice);
 
-            // Return response
             return response()->json([
                 'success' => true,
-                'message' => 'Invoice created successfully',
-                'data' => $data,
+                'message' => 'Control number generated successfully',
+                'data' => $responseData
             ], 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Invoice creation failed: ' . $e->getMessage());
 
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Invoice creation failed: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Invoice creation failed: ' . $e->getMessage()
+                'message' => 'Invoice creation failed',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -396,128 +404,92 @@ class InvoiceController extends Controller
     private function createControlNumber($merchant, $product, $customer, $orgGateway)
     {
         try {
-
-            // Check if control number already exists for this product, customer, and gateway
-            $existingControlNumber = ControlNumber::where('product_id', $product->id)
-                ->where('customer_id', $customer->id)
-                ->where('organization_payment_gateway_integration_id', $orgGateway->id)
-                ->first();
-
-            if ($existingControlNumber) {
+            // Get EcoBank token
+            $token = $this->createEcobankToken();
+            if (!$token) {
                 return [
-                    'success' => true,
-                    'control_number' => [
-                        'id' => $existingControlNumber->id,
-                        'reference' => $existingControlNumber->reference,
-                        'metadata' => $existingControlNumber->metadata,
-                        'terminal_id' => $existingControlNumber->reference,
-                        'created_at' => $existingControlNumber->created_at
-                    ],
-                    'message' => 'Existing control number returned'
+                    'success' => false,
+                    'message' => 'Failed to get EcoBank token'
                 ];
             }
 
-            // // Get EcoBank token
-            // $token = $this->createEcobankToken();
-            // if (!$token) {
-            //     return [
-            //         'success' => false,
-            //         'message' => 'Failed to get token'
-            //     ];
-            // }
+            // Prepare request data
+            $requestId = "TERMINAL_" .$customer->id.$product->id;
+            $postData = [
+                "requestId" => $requestId,
+                "affiliateCode" => "ETZ",
+                "merchantCode" => $merchant->merchant_code,
+                "terminalMobileNo" => $customer->phone ?? "0765406008",
+                "terminalName" => $customer->name,
+                "terminalEmail" => $customer->email ?? "support@shulesoft.africa",
+                "productCode" => $product->id . time(),
+                "dynamicQr" => "Y",
+                "callBackUrl" => $this->callBackUrl,
+            ];
 
-            // // Prepare request data
-            // $requestId = "TERMINAL_" . $customer->id . $product->id;
-            // $postData = [
-            //     "requestId" => $requestId,
-            //     "affiliateCode" => "ETZ",
-            //     "merchantCode" => $merchant->merchant_code,
-            //     "terminalMobileNo" => $customer->phone ?? "0765406008",
-            //     "terminalName" => $customer->name,
-            //     "terminalEmail" => $customer->email ?? "support@shulesoft.africa",
-            //     "productCode" => $product->id . time(),
-            //     "dynamicQr" => "Y",
-            //     "callBackUrl" => $this->callBackUrl,
-            // ];
+            // Generate secure hash
+            $payloadPart = implode('', array_values($postData));
+            $secureHash = $this->generateSecureHash($payloadPart);
+            
+            if (!$secureHash) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to generate secure hash'
+                ];
+            }
 
-            // // Generate secure hash
-            // $payloadPart = implode('', array_values($postData));
-            // $secureHash = $this->generateSecureHash($payloadPart);
+            $postData['secureHash'] = $secureHash;
+            $url = $this->baseUrl . '/corporateapi/merchant/createaddQr';
 
-            // if (!$secureHash) {
-            //     return [
-            //         'success' => false,
-            //         'message' => 'Failed to generate secure hash'
-            //     ];
-            // }
+            // Make API request
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Authorization: Bearer ' . $token,
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Origin: ' . $this->origin,
+            ]);
 
-            // $postData['secureHash'] = $secureHash;
-            // $url = $this->baseUrl . '/corporateapi/merchant/createaddQr';
+            $response = curl_exec($ch);
+            $curlError = curl_error($ch);
+            curl_close($ch);
 
-            // // Make API request
-            // $ch = curl_init($url);
-            // curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            // curl_setopt($ch, CURLOPT_POST, true);
-            // curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
-            // curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            //     'Authorization: Bearer ' . $token,
-            //     'Content-Type: application/json',
-            //     'Accept: application/json',
-            //     'Origin: ' . $this->origin,
-            // ]);
+            if ($curlError) {
+                Log::error('EcoBank API cURL Error: ' . $curlError);
+                return [
+                    'success' => false,
+                    'message' => 'API request failed: ' . $curlError
+                ];
+            }
 
-            // $response = curl_exec($ch);
-            // $curlError = curl_error($ch);
-
-            // if ($curlError) {
-            //     Log::error('EcoBank API cURL Error: ' . $curlError);
-            //     return [
-            //         'success' => false,
-            //         'message' => 'API request failed: ' . $curlError
-            //     ];
-            // }
-            // // $response = json_encode([
-            // //     "response_code" => 200,
-            // //     "response_message" => "Success",
-            // //     "response_content" => [
-            // //         "terminalId" => "00012345",
-            // //         "headerResponse" => "Control number generated successfully",
-            // //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
-            // //     ]
-            // // ]);
-
-
-            // $responseData = json_decode($response, true);
-            // Log::info('EcoBank Control Number Response: ' . $response);
+            $responseData = json_decode($response, true);
+            Log::info('EcoBank Control Number Response: ' . $response);
 
             // Process successful response
-            $responseData = [
-                "response_code" => 200,
-                "response_message" => "Success",
-                "response_content" => [
-                    "terminalId" => rand(100000, 9999999999),
-                    "headerResponse" => "Control number generated successfully",
-                    "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
-                ]
-            ];
             if (isset($responseData['response_code']) && $responseData['response_code'] === 200) {
                 $content = $responseData['response_content'];
+                
                 // Insert control number record
-                $data = [
+                $controlNumber = ControlNumber::create([
                     'customer_id' => $customer->id,
                     'reference' => $content['terminalId'],
                     'organization_payment_gateway_integration_id' => $orgGateway->id,
                     'product_id' => $product->id,
-                    'metadata' => json_encode(['qr_code' => $content['qrBase64String'] ?? null, 'header_response' => $content['headerResponse'] ?? null]),
-                ];
-                $controlNumber = ControlNumber::create($data);
+                    'type_id' => 9,
+                    'header_response' => $content['headerResponse'] ?? null,
+                    'qr_code' => $content['qrBase64String'] ?? null,
+                    'notified' => 1,
+                ]);
 
                 return [
                     'success' => true,
                     'control_number' => [
                         'id' => $controlNumber->id,
                         'reference' => $controlNumber->reference,
-                        'metadata' => $controlNumber->metadata,
+                        'qr_code' => $controlNumber->qr_code,
                         'terminal_id' => $content['terminalId'],
                         'created_at' => $controlNumber->created_at,
                     ]
@@ -525,12 +497,13 @@ class InvoiceController extends Controller
             } else {
                 $errorMessage = $responseData['response_message'] ?? 'Unknown error occurred';
                 Log::error('EcoBank API Error: ' . $errorMessage);
-
+                
                 return [
                     'success' => false,
                     'message' => 'Failed to create control number: ' . $errorMessage
                 ];
             }
+
         } catch (\Exception $e) {
             Log::error('Control number creation exception: ' . $e->getMessage());
             return [
@@ -550,7 +523,7 @@ class InvoiceController extends Controller
                 'userId' => $this->username,
                 'password' => $this->password
             ];
-
+            
             $url = $this->baseUrl . '/corporateapi/user/token';
             $ch = curl_init($url);
 
@@ -567,7 +540,7 @@ class InvoiceController extends Controller
             curl_close($ch);
 
             $responseData = json_decode($response, true);
-
+            
             if (isset($responseData['token'])) {
                 return $responseData['token'];
             }
@@ -611,7 +584,7 @@ class InvoiceController extends Controller
     {
         $prefix = 'INV';
         $date = Carbon::now()->format('Ymd');
-
+        
         $lastInvoice = Invoice::where('invoice_number', 'like', $prefix . $date . '%')
             ->orderBy('invoice_number', 'desc')
             ->first();
@@ -627,34 +600,112 @@ class InvoiceController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     * Returns detailed information about a single invoice including items and subscriptions
+     * Generate control number for payment
+     */
+    private function generateControlNumber()
+    {
+        // Generate a random control number for testing
+        // In production, this should integrate with actual payment gateway
+        return '99' . str_pad(rand(10000000, 99999999), 8, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Generate invoice description based on product and request data
+     */
+    private function generateInvoiceDescription($product, $request)
+    {
+        $description = $product->name;
+        
+        if ($request->plan_code) {
+            $description .= " - " . ucfirst($request->plan_code) . " Plan";
+        }
+        
+        if ($request->billing_cycle) {
+            $description .= " (" . ucfirst($request->billing_cycle) . ")";
+        }
+        
+        return $description;
+    }
+
+    /**
+     * Display the specified invoice.
      */
     public function show(string $id)
     {
         try {
-            $invoice = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription'])
-                ->find($id);
-
-            if (!$invoice) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invoice not found'
-                ], 404);
-            }
+            $invoice = Invoice::with([
+                'customer',
+                'invoiceItems.pricePlan.product',
+                'subscription.pricePlan'
+            ])->findOrFail($id);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Invoice details retrieved successfully',
-                'data' => $this->formatInvoiceDetailResponse($invoice)
+                'data' => [
+                    'invoice' => [
+                        'id' => $invoice->id,
+                        'invoice_number' => $invoice->invoice_number,
+                        'invoice_type' => $invoice->invoice_type,
+                        'status' => $invoice->status,
+                        'description' => $invoice->description,
+                        'subtotal' => $invoice->subtotal,
+                        'tax_total' => $invoice->tax_total,
+                        'total' => $invoice->total,
+                        'due_date' => $invoice->due_date,
+                        'issued_at' => $invoice->issued_at,
+                        'metadata' => $invoice->metadata,
+                        'created_at' => $invoice->created_at,
+                        'updated_at' => $invoice->updated_at
+                    ],
+                    'customer' => $invoice->customer ? [
+                        'id' => $invoice->customer->id,
+                        'name' => $invoice->customer->name,
+                        'email' => $invoice->customer->email,
+                        'phone' => $invoice->customer->phone,
+                        'customer_type' => $invoice->customer->customer_type,
+                    ] : null,
+                    'items' => $invoice->invoiceItems->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'description' => $item->description,
+                            'quantity' => $item->quantity,
+                            'unit_price' => $item->unit_price,
+                            'total' => $item->total,
+                            'price_plan' => $item->pricePlan ? [
+                                'id' => $item->pricePlan->id,
+                                'name' => $item->pricePlan->name,
+                                'amount' => $item->pricePlan->amount,
+                                'billing_interval' => $item->pricePlan->billing_interval,
+                                'product' => $item->pricePlan->product ? [
+                                    'id' => $item->pricePlan->product->id,
+                                    'name' => $item->pricePlan->product->name,
+                                    'product_code' => $item->pricePlan->product->product_code,
+                                ] : null
+                            ] : null
+                        ];
+                    }),
+                    'subscription' => $invoice->subscription ? [
+                        'id' => $invoice->subscription->id,
+                        'subscription_number' => $invoice->subscription->subscription_number,
+                        'status' => $invoice->subscription->status,
+                        'start_date' => $invoice->subscription->start_date,
+                        'next_billing_date' => $invoice->subscription->next_billing_date,
+                        'price_plan' => $invoice->subscription->pricePlan ? [
+                            'id' => $invoice->subscription->pricePlan->id,
+                            'name' => $invoice->subscription->pricePlan->name,
+                            'amount' => $invoice->subscription->pricePlan->amount,
+                            'billing_interval' => $invoice->subscription->pricePlan->billing_interval,
+                        ] : null
+                    ] : null
+                ]
             ], 200);
-        } catch (\Exception $e) {
-            Log::error('Invoice detail retrieval failed: ' . $e->getMessage());
 
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invoice detail retrieval failed: ' . $e->getMessage()
-            ], 500);
+                'message' => 'Invoice not found',
+                'error' => $e->getMessage()
+            ], 404);
         }
     }
 
@@ -675,162 +726,17 @@ class InvoiceController extends Controller
     }
 
     /**
-     * Format invoice response for list view
+     * Create wallet topup invoice
+     * POST /api/invoices/wallet-topup
      */
-    private function formatInvoiceResponse($invoice)
-    {
-        return [
-            'id' => $invoice->id,
-            'invoice_number' => $invoice->invoice_number,
-            'customer_id' => $invoice->customer_id,
-            'customer_name' => $invoice->customer->name,
-            'customer_email' => $invoice->customer->email,
-            'status' => $invoice->status,
-            'description' => $invoice->description,
-            'subtotal' => $invoice->subtotal,
-            'tax_total' => $invoice->tax_total,
-            'total' => $invoice->total,
-            'date' => $invoice->date,
-            'due_date' => $invoice->due_date,
-            'issued_at' => $invoice->issued_at,
-            'items_count' => $invoice->invoiceItems->count(),
-            'price_plans' => $invoice->invoiceItems->map(function ($item) {
-                return [
-                    'id' => $item->pricePlan->id,
-                    'name' => $item->pricePlan->name,
-                    'subscription_type' => $item->pricePlan->subscription_type,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'amount' => $item->total,
-                    'product_id' => $item->pricePlan->product_id,
-                    'product_name' => $item->pricePlan->product->name,
-                ];
-            })->unique('id')->values(),
-            'created_at' => $invoice->created_at,
-            'updated_at' => $invoice->updated_at,
-        ];
-    }
-
-    /**
-     * Format invoice response for detail view
-     */
-    private function formatInvoiceDetailResponse($invoice)
-    {
-        $invoiced = $invoice->total;
-        $paid = $invoice->payments->sum('pivot.amount');
-        $balance = $invoiced - $paid;
-        return [
-            'id' => $invoice->id,
-            'invoice_number' => $invoice->invoice_number,
-            'status' => $invoice->status,
-            'description' => $invoice->description,
-            'subtotal' => $invoice->subtotal,
-            'tax_total' => $invoice->tax_total,
-            'invoiced_amount' => $invoiced,
-            'paid_amount' => $paid,
-            'outstanding_amount' => $balance,
-            'date' => $invoice->date,
-            'due_date' => $invoice->due_date,
-            'issued_at' => $invoice->issued_at,
-            'created_at' => $invoice->created_at,
-            'updated_at' => $invoice->updated_at,
-            'customer' => [
-                'id' => $invoice->customer->id,
-                'name' => $invoice->customer->name,
-                'email' => $invoice->customer->email,
-                'phone' => $invoice->customer->phone,
-                'organization_id' => $invoice->customer->organization_id,
-            ],
-
-            'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice) {
-                $product = $item->pricePlan->product;
-                $customerId = $invoice->customer->id;
-                // Fetch control numbers for this customer and product to get payment gateways
-                $controlNumbers = ControlNumber::where('customer_id', $customerId)
-                    ->where('product_id', $product->id)
-                    ->with('organizationPaymentGatewayIntegration.paymentGateway')
-                    ->get();
-
-                // Map control numbers to payment gateways
-                $paymentGateways = $controlNumbers->map(function ($controlNumber) {
-                    $integration = $controlNumber->organizationPaymentGatewayIntegration;
-                    return [
-                        'id' => $integration->id,
-                        'payment_gateway_id' => $integration->payment_gateway_id,
-                        'gateway_name' => $integration->paymentGateway->name,
-                        'status' => $integration->status,
-                        'references' => $controlNumber->reference,
-                    ];
-                })->values();
-
-                return [
-                    'id' => $item->pricePlan->id,
-                    'name' => $item->pricePlan->name,
-                    'subscription_type' => $item->pricePlan->subscription_type,
-                    'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
-                    'amount' => $item->total,
-                    'product_id' => $product->id,
-                    'product_name' => $product->name,
-                    'payment_gateways' => $paymentGateways->toArray()
-                ];
-            })->unique('id')->values(),
-            'subscriptions' => $invoice->invoiceItems
-                ->filter(function ($item) {
-                    return $item->subscription !== null;
-                })
-                ->map(function ($item) {
-                    $subscription = $item->subscription;
-                    return [
-                        'id' => $subscription->id,
-                        'product_id' => $subscription->pricePlan->product_id,
-                        'product_name' => $subscription->pricePlan->product->name,
-                        'price_plan_id' => $subscription->pricePlan->id,
-                        'price_plan_name' => $subscription->pricePlan->name,
-                        'subscription_type' => $subscription->pricePlan->subscription_type,
-                        'price_plan_id' => $subscription->price_plan_id,
-                        'customer_id' => $subscription->customer_id,
-                        'status' => $subscription->status,
-                        'start_date' => $subscription->start_date,
-                        'end_date' => $subscription->end_date,
-                        'next_billing_date' => $subscription->next_billing_date,
-                        'created_at' => $subscription->created_at,
-                        'updated_at' => $subscription->updated_at,
-                    ];
-                })
-                ->unique('id')
-                ->values(),
-        ];
-    }
-    public function getByProduct(Request $request)
-    {
-        $request->validate([
-            'product_id' => 'required|integer|exists:products,id',
-        ]);
-
-        $invoices = Invoice::whereHas('invoiceItems', function ($query) use ($request) {
-            $query->where('product_id', $request->product_id);
-        })
-        ->where('status', '!=', 'cancelled')
-        ->get();
-
-        
-
-        return response()->json([
-            'success' => true,
-            'data' => $invoices
-        ]);
-    }
-
-    /**
-     * Return invoices created for the provided subscription ids.
-     * Request body: { subscription_ids: [1,2,3] }
-     */
-    public function getBySubscriptions(Request $request)
+    public function createWalletTopupInvoice(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'subscription_ids' => 'required|array|min:1',
-            'subscription_ids.*' => 'integer|exists:subscriptions,id',
+            'customer_id' => 'required|exists:customers,id',
+            'wallet_type' => 'required|string|max:50',
+            'units' => 'required|numeric|min:0.0001',
+            'unit_price' => 'required|numeric|min:0.01',
+            'description' => 'nullable|string|max:500'
         ]);
 
         if ($validator->fails()) {
@@ -841,45 +747,239 @@ class InvoiceController extends Controller
         }
 
         try {
-            $subscriptionIds = $request->input('subscription_ids');
+            DB::beginTransaction();
 
-            // Get invoice ids from invoice_items using subscription_id
-            $invoiceIds = InvoiceItem::whereIn('subscription_id', $subscriptionIds)
-                ->pluck('invoice_id')
-                ->unique()
-                ->values()
-                ->toArray();
+            $customer = Customer::findOrFail($request->customer_id);
+            $organization = $customer->organization;
 
-            if (empty($invoiceIds)) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'No invoices found for provided subscription ids',
-                    'data' => []
-                ], 200);
-            }
+            $units = $request->units;
+            $unitPrice = $request->unit_price;
+            $totalAmount = $units * $unitPrice;
 
-            // Eager load relations used by formatInvoiceDetailResponse
-            $invoices = Invoice::with(['customer', 'invoiceItems.pricePlan.product', 'invoiceItems.subscription', 'payments'])
-                ->whereIn('id', $invoiceIds)
-                ->where('status', '!=', 'cancelled')
-                ->get();
+            // Create wallet topup invoice
+            $invoice = Invoice::create([
+                'customer_id' => $customer->id,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'invoice_type' => 'wallet_topup',
+                'status' => 'issued',
+                'description' => $request->description ?: "Wallet topup - {$units} {$request->wallet_type}",
+                'subtotal' => $totalAmount,
+                'tax_total' => 0.00,
+                'total' => $totalAmount,
+                'due_date' => now()->addDays(14),
+                'issued_at' => now(),
+                'metadata' => [
+                    'wallet_type' => $request->wallet_type,
+                    'units' => $units,
+                    'unit_price' => $unitPrice
+                ]
+            ]);
 
-            $data = $invoices->map(function ($invoice) {
-                return $this->formatInvoiceDetailResponse($invoice);
-            });
+            // Create invoice item
+            InvoiceItem::create([
+                'invoice_id' => $invoice->id,
+                'price_plan_id' => null, // Wallet topups don't have price plans
+                'description' => "Wallet credits - {$request->wallet_type}",
+                'quantity' => $units,
+                'unit_price' => $unitPrice,
+                'total' => $totalAmount
+            ]);
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Invoices retrieved successfully',
-                'data' => $data
-            ], 200);
+                'message' => 'Wallet topup invoice created successfully',
+                'data' => [
+                    'invoice' => $invoice->load('items'),
+                    'customer' => $customer,
+                    'organization' => $organization
+                ]
+            ], 201);
+
         } catch (\Exception $e) {
-            Log::error('Get invoices by subscriptions failed: ' . $e->getMessage());
+            DB::rollback();
+            Log::error('Wallet topup invoice creation failed: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to retrieve invoices: ' . $e->getMessage()
+                'message' => 'Failed to create wallet topup invoice',
+                'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Create plan upgrade invoice
+     * POST /api/invoices/plan-upgrade
+     */
+    public function createPlanUpgradeInvoice(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'subscription_id' => 'required|exists:subscriptions,id',
+            'new_price_plan_id' => 'required|exists:price_plans,id',
+            'effective_date' => 'required|date|after_or_equal:today',
+            'proration_method' => 'required|in:immediate,next_cycle,credit'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $subscription = \App\Models\Subscription::with(['customer', 'pricePlan.currency'])->findOrFail($request->subscription_id);
+            $newPricePlan = \App\Models\PricePlan::with('currency')->findOrFail($request->new_price_plan_id);
+            
+            $currentPlan = $subscription->pricePlan;
+            $priceDifference = $newPricePlan->amount - $currentPlan->amount;
+            
+            // Calculate proration based on method
+            $prorationAmount = 0;
+            $prorationCredit = 0;
+            
+            if ($request->proration_method === 'immediate' && $priceDifference > 0) {
+                // Calculate remaining days in current billing cycle
+                $nextBilling = Carbon::parse($subscription->next_billing_date);
+                $daysRemaining = now()->diffInDays($nextBilling);
+                $totalDaysInCycle = $currentPlan->billing_interval === 'monthly' ? 30 : 365;
+                
+                $prorationAmount = ($priceDifference * $daysRemaining) / $totalDaysInCycle;
+            } elseif ($request->proration_method === 'credit' && $priceDifference < 0) {
+                // Downgrade - create credit for difference
+                $prorationCredit = abs($priceDifference);
+            }
+
+            // Create upgrade invoice
+            $invoice = Invoice::create([
+                'customer_id' => $subscription->customer_id,
+                'subscription_id' => $subscription->id,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'invoice_type' => $priceDifference > 0 ? 'plan_upgrade' : 'plan_downgrade',
+                'status' => 'issued',
+                'description' => "Plan " . ($priceDifference > 0 ? 'upgrade' : 'downgrade') . " - {$currentPlan->name} to {$newPricePlan->name}",
+                'subtotal' => max(0, $prorationAmount),
+                'tax_total' => 0.00,
+                'proration_credit' => $prorationCredit,
+                'total' => max(0, $prorationAmount - $prorationCredit),
+                'due_date' => now()->addDays(7),
+                'issued_at' => now(),
+                'metadata' => [
+                    'old_plan_id' => $currentPlan->id,
+                    'new_plan_id' => $newPricePlan->id,
+                    'effective_date' => $request->effective_date,
+                    'proration_method' => $request->proration_method,
+                    'price_difference' => $priceDifference
+                ]
+            ]);
+
+            if ($prorationAmount > 0) {
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'price_plan_id' => $newPricePlan->id,
+                    'description' => "Plan upgrade proration - {$newPricePlan->name}",
+                    'quantity' => 1,
+                    'unit_price' => $prorationAmount,
+                    'total' => $prorationAmount
+                ]);
+            }
+
+            // Record subscription change
+            DB::table('subscription_changes')->insert([
+                'subscription_id' => $subscription->id,
+                'change_type' => $priceDifference > 0 ? 'upgrade' : 'downgrade',
+                'old_price_plan_id' => $currentPlan->id,
+                'new_price_plan_id' => $newPricePlan->id,
+                'proration_amount' => $prorationAmount,
+                'effective_date' => $request->effective_date,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Plan change invoice created successfully',
+                'data' => [
+                    'invoice' => $invoice->load('items'),
+                    'subscription' => $subscription,
+                    'old_plan' => $currentPlan,
+                    'new_plan' => $newPricePlan,
+                    'proration_amount' => $prorationAmount,
+                    'proration_credit' => $prorationCredit
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Plan change invoice creation failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create plan change invoice',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create plan downgrade invoice
+     * POST /api/invoices/plan-downgrade
+     */
+    public function createPlanDowngradeInvoice(Request $request)
+    {
+        // Reuse the upgrade logic but ensure we're handling downgrades
+        return $this->createPlanUpgradeInvoice($request);
+    }
+
+    /**
+     * Calculate next billing date based on billing cycle
+     */
+    private function calculateNextBillingDate($billingCycle)
+    {
+        switch (strtolower($billingCycle)) {
+            case 'weekly':
+                return now()->addWeek();
+            case 'monthly':
+            case 'month':
+                return now()->addMonth();
+            case 'quarterly':
+            case 'quarter':
+                return now()->addMonths(3);
+            case 'semi-annual':
+            case 'semi-annually':
+                return now()->addMonths(6);
+            case 'annual':
+            case 'annually':
+            case 'yearly':
+                return now()->addYear();
+            default:
+                return now()->addMonth(); // Default to monthly
+        }
+    }
+
+    /**
+     * Get all invoices for a given product ID
+     * GET /api/invoices?product_id={id}
+     */
+    public function getByProduct(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|integer|exists:products,id',
+        ]);
+
+        $invoices = Invoice::whereHas('invoiceItems', function($query) use ($request) {
+            $query->where('product_id', $request->product_id);
+        })->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $invoices
+        ]);
     }
 }
