@@ -31,10 +31,14 @@ class PaymentController extends Controller
             'date_from' => 'required|date',
             'date_to' => 'required|date',
         ]);
+        $customer =  request('customer_id') ?? null;
 
         $payments = Payment::whereDate('created_at', '>=', $request->date_from)
-            ->whereDate('created_at', '<=', $request->date_to)
-            ->get();
+            ->whereDate('created_at', '<=', $request->date_to);
+        if ($customer) {
+            $payments->where('customer_id', $customer);
+        }
+        $payments = $payments->get();
 
         return response()->json([
             'success' => true,
