@@ -14,9 +14,12 @@ use App\Http\Controllers\Api\PricePlanController;
 use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\InvoiceController;
+
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\TaxRateController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
-use App\Http\Controllers\WalletController;
 use App\Http\Controllers\PaymentGatewayTestController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Hash;
@@ -227,6 +230,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('payment-gateways', PaymentGatewayController::class);
     Route::apiResource('bank-accounts', BankAccountController::class);
     Route::apiResource('invoices', InvoiceController::class);
+    Route::apiResource('tax-rates', TaxRateController::class);
 
     // Organization payment gateway integration
     Route::post('organizations/integrate-payment-gateway', [OrganizationController::class, 'integratePaymentGateway']);
@@ -301,4 +305,4 @@ Route::get('payments/by-invoice/{invoice_id}', [\App\Http\Controllers\Api\Paymen
 Route::get('payments', [\App\Http\Controllers\Api\PaymentController::class, 'getByDateRange']);
 Route::get('payments/verify/{transaction_id}', [\App\Http\Controllers\Api\PaymentController::class, 'verifyFlutterwavePayment']);
 Route::get('invoices', [\App\Http\Controllers\Api\InvoiceController::class, 'getByProduct']);
-Route::get('wallets/transactions', [\App\Http\Controllers\WalletController::class, 'getTransactionsByWallet']);
+Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);

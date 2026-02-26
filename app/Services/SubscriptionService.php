@@ -340,7 +340,7 @@ class SubscriptionService
     {
         return DB::transaction(function () use ($subscriptionId) {
             $subscription = Subscription::lockForUpdate()->find($subscriptionId);
-
+            
             if (!$subscription) {
                 throw new \Exception('Subscription not found');
             }
@@ -369,9 +369,9 @@ class SubscriptionService
                         }else{
                             // recognize it as advance payment
                              AdvancePayment::create([
-                                'payment_id' => $$payment->id,
+                                'payment_id' => $payment->id,
                                 'customer_id' =>  $subscription->customer_id,
-                                'product_id' => $subscription->price_plan->product_id,
+                                'product_id' => $subscription->pricePlan->product_id,
                                 'reminder' => $invoicePayment->amount,
                                 'amount' => $invoicePayment->amount,
                             ]);
@@ -1125,7 +1125,7 @@ class SubscriptionService
 
             $url = $base ? rtrim($base, '/') : "https://{$customer->username}.shulesoft.africa/api";
 
-            $webhookUrl = $url . '/subscriptionWebhook';
+            $webhookUrl = $url . '/billing/subscriptionWebhook';
 
 
             // Prepare subscription details payload

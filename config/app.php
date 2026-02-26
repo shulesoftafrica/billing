@@ -133,6 +133,5 @@ return [
     |
     */
 
-    'webhook_base_url' => env('WEBHOOK_BASE_URL', 'http://localhost/api'),
-
+    'webhook_base_url' => env('WEBHOOK_BASE_URL'),
 ];
