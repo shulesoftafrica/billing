@@ -11,6 +11,7 @@ class ControlNumber extends Model
         'reference',
         'organization_payment_gateway_integration_id',
         'product_id',
+        'metadata',
         'type_id',
         'header_response',
         'qr_code',

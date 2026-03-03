@@ -19,9 +19,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Services\SubscriptionService;
+use App\Services\FlutterwaveService;
+use App\Services\Flutterwave\Models\CreateCustomerRequest;
+use App\Services\Flutterwave\Models\CreateOrderRequest;
+use App\Services\Flutterwave\Models\CreatePaymentMethodRequest;
+use App\Traits\ValidatePhoneNumber;
+
+use function Pest\Laravel\json;
 
 class InvoiceController extends Controller
 {
+    use ValidatePhoneNumber;
+
     // EcoBank API Configuration
     protected $username = 'ETZSHULESOFT';
     protected $password = '$2a$10$jdNZI4uiE86yRhcFNrBenOo0nBQji9zqy9IVa.roj0ST5EhlE4sVe';
@@ -403,6 +412,11 @@ class InvoiceController extends Controller
                             throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
                         }
                         $gatewayData['references'] = $controlNumberData['control_number']['reference'];
+                    } elseif (strtolower($orgGateway->paymentGateway->name) === 'flutterwave') {
+                        $flutterwaveData = $this->createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway);
+                        $gatewayData['references'] = $flutterwaveData['success']
+                            ? $flutterwaveData['control_number']['reference']
+                            : [];
                     } else {
                         $gatewayData['references'] = [];
                     }
@@ -957,10 +971,10 @@ class InvoiceController extends Controller
         $invoices = Invoice::whereHas('invoiceItems', function ($query) use ($request) {
             $query->where('product_id', $request->product_id);
         })
-        ->where('status', '!=', 'cancelled')
-        ->get();
+            ->where('status', '!=', 'cancelled')
+            ->get();
 
-        
+
 
         return response()->json([
             'success' => true,
@@ -1036,4 +1050,217 @@ class InvoiceController extends Controller
             ], 500);
         }
     }
+    public function createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway)
+    {
+        try {
+            // $existingControlNumber = ControlNumber::where('product_id', $product->id)
+            //     ->where('customer_id', $customer->id)
+            //     ->where('organization_payment_gateway_integration_id', $orgGateway->id)
+            //     ->first();
+
+            // if ($existingControlNumber) {
+            //     return [
+            //         'success' => true,
+            //         'control_number' => [
+            //             'id' => $existingControlNumber->id,
+            //             'reference' => $existingControlNumber->reference,
+            //             'metadata' => $existingControlNumber->metadata,
+            //             'created_at' => $existingControlNumber->created_at,
+            //         ],
+            //         'message' => 'Existing flutterwave reference returned',
+            //     ];
+            // }
+
+            $flutterwaveService = new FlutterwaveService();
+        // dd($this->resolveBearerToken());
+
+            if (!$flutterwaveService->isActive()) {
+                Log::warning('Flutterwave gateway not active', [
+                    'invoice_id' => $invoice->id,
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Flutterwave gateway not configured or inactive',
+                ];
+            }
+
+            // $resolvedFlutterwaveCustomerId =  $request->input('flutterwave_customer_id');
+            $resolvedFlutterwaveCustomerId = 'cus_WU8C56hDji' ;// $request->input('flutterwave_customer_id');
+
+         
+            if (!$resolvedFlutterwaveCustomerId) {
+                $customerEmail = $customer->email ?: 'customer@example.com';
+                $validatedPhone = $this->validatePhone((string) $customer->phone);
+                $phonePayload = null;
+
+                if ($validatedPhone !== false) {
+                    $phonePayload = [
+                        'country_code' => $validatedPhone['country_code'],
+                        'number' => $validatedPhone['national_number'],
+                    ];
+                }
+
+                $existingCustomers = $flutterwaveService->searchCustomers($customerEmail, 1, 10);
+                if (!empty($existingCustomers['data'][0])) {
+                    $resolvedFlutterwaveCustomerId = $existingCustomers['data'][0]->id;
+                } else {
+                    $nameParts = preg_split('/\s+/', trim((string) $customer->name)) ?: ['Customer'];
+                    $createdCustomer = $flutterwaveService->createCustomer(new CreateCustomerRequest(
+                        email: $customerEmail,
+                        name: [
+                            'first' => $nameParts[0] ?? 'Customer',
+                            'last' => $nameParts[1] ?? 'User',
+                        ],
+                        phone: $phonePayload,
+                        meta: [
+                            'local_customer_id' => $customer->id,
+                            'organization_id' => $customer->organization_id,
+                        ]
+                    ));
+
+                    $resolvedFlutterwaveCustomerId = $createdCustomer->id;
+                }
+            }
+           
+
+            $resolvedPaymentMethodId = 'pmd_MxRH2NMrGs'; //TESTING - Remove this line in production
+
+            if (!$resolvedPaymentMethodId) {
+                $providedPaymentMethod = $request->input('flutterwave_payment_method', []);
+                $paymentMethodType = (string) ($providedPaymentMethod['type'] ?? 'card');
+                $paymentMethodPayload = (array) ($providedPaymentMethod['payload'] ?? []);
+
+                if (strtolower($paymentMethodType) === 'card') {
+                    $paymentMethodPayload = array_merge(
+                        $this->generateRandomCardTestPayload(),
+                        $paymentMethodPayload
+                    );
+                }
+                $createdPaymentMethod = $flutterwaveService->createPaymentMethod(new CreatePaymentMethodRequest(
+                    type: $paymentMethodType,
+                    paymentData: $paymentMethodPayload,
+                    customerId: $resolvedFlutterwaveCustomerId,
+                    meta: [
+                        'invoice_id' => $invoice->id,
+                        'invoice_number' => $invoice->invoice_number,
+                    ],
+                ));
+                
+
+                $resolvedPaymentMethodId = $createdPaymentMethod->id;
+            }
+          
+            $orderReference = $invoice->invoice_number . '-' . $product->id . '-' . str_replace('.', '', (string) microtime(true));
+            $orderMeta = [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'local_customer_id' => $customer->id,
+                'flutterwave_customer_id' => $resolvedFlutterwaveCustomerId,
+                'flutterwave_payment_method_id' => $resolvedPaymentMethodId,
+                'organization_id' => $customer->organization_id,
+                'product_id' => $product->id,
+            ];
+
+            $order = $flutterwaveService->createOrder(new CreateOrderRequest(
+                amount: (float) $invoice->total,
+                currency: (string) ($request->currency ?: 'TZS'),
+                reference: $orderReference,
+                customerId: $resolvedFlutterwaveCustomerId,
+                paymentMethodId: $resolvedPaymentMethodId,
+                redirectUrl: $request->success_url ?: config('app.url') . '/payment/callback',
+                meta: $orderMeta,
+                merchantVatAmount: (float) $invoice->tax_total,
+            ));
+            $flutterwaveData = $order->toArray();
+            $txRef = $order->reference ?: $orderReference;
+            $paymentLink = $order->redirectUrl();
+
+            if (empty($order->id)) {
+                Log::warning('Flutterwave order creation returned empty id', [
+                    'invoice_id' => $invoice->id,
+                    'reference' => $orderReference,
+                    'response' => $flutterwaveData,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Payment order creation failed',
+                ];
+            }
+
+            $controlNumber = ControlNumber::create([
+                'customer_id' => $customer->id,
+                'reference' => $txRef,
+                'organization_payment_gateway_integration_id' => $orgGateway->id,
+                'product_id' => $product->id,
+                'metadata' => json_encode([
+                    'order_id' => $order->id,
+                    'payment_link' => $paymentLink,
+                    'reference' => $txRef,
+                    'status' => $order->status,
+                    'next_action' => $flutterwaveData['next_action'] ?? null,
+                    'processor_response' => $flutterwaveData['processor_response'] ?? null,
+                    'payment_method_details' => $flutterwaveData['payment_method_details'] ?? null,
+                    'billing_details' => $flutterwaveData['billing_details'] ?? null,
+                    'created_datetime' => $flutterwaveData['created_datetime'] ?? null,
+                    'expires_at' => $flutterwaveData['expires_at'] ?? null,
+                    'instructions' => 'Click the payment link to pay via card, mobile money, or bank transfer',
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'customer_id' => $customer->id,
+                    'organization_id' => $customer->organization_id,
+                    'product_id' => $product->id,
+                ]),
+            ]);
+
+            Log::info('Flutterwave payment link generated successfully', [
+                'invoice_id' => $invoice->id,
+                'order_id' => $order->id,
+                'payment_link' => $paymentLink,
+                'tx_ref' => $txRef,
+                'status' => $order->status,
+            ]);
+
+            return [
+                'success' => true,
+                'control_number' => [
+                    'id' => $controlNumber->id,
+                    'reference' => $controlNumber->reference,
+                    'metadata' => $controlNumber->metadata,
+                    'created_at' => $controlNumber->created_at,
+                ],
+                'message' => 'Flutterwave reference stored successfully',
+            ];
+        } catch (\Exception $e) {
+            Log::error('Flutterwave integration error', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while generating payment link',
+            ];
+        }
+    }
+
+    private function generateRandomCardTestPayload(): array
+    {
+        $month = str_pad((string) random_int(1, 12), 2, '0', STR_PAD_LEFT);
+        $year = (string) random_int((int) Carbon::now()->format('Y') + 1, (int) Carbon::now()->format('Y') + 8);
+        $cardNumber = '4' . str_pad((string) random_int(0, 999999999999999), 15, '0', STR_PAD_LEFT);
+        $cvv = str_pad((string) random_int(0, 999), 3, '0', STR_PAD_LEFT);
+
+        return [
+            'card_number' => '5505580003319001',
+            'expiry_month' => '02',
+            'expiry_year' => '2030',
+            'cvv' => 761,
+            'cof' => [
+                'enabled' => false,
+            ],
+        ];
+    }
+
 }
