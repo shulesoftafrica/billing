@@ -36,6 +36,7 @@ return [
     ],
     'flutterwave' => [
         'encryption_key' => env('ENCRYPTION_KEY'),
+        'secret_hash' => env('FLUTTERWAVE_SECRET_HASH'),
     ],
 
 ];

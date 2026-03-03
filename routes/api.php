@@ -135,6 +135,7 @@ Route::prefix('webhooks')->group(function () {
     Route::post('unc-payment', [WebhookController::class, 'handleUNCPayment']);
 
     Route::post('test', [WebhookController::class, 'handleTestWebhook']);
+    Route::post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']);
 });
 
 // Payment endpoints

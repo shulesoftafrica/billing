@@ -23,7 +23,7 @@ class FlutterwaveService
 
     public function __construct()
     {
-        $this->gateway = PaymentGateway::where('name', 'Flutterwave')
+        $this->gateway = PaymentGateway::whereRaw('LOWER(name) = ?', ['flutterwave'])
             ->where('active', true)
             ->first();
     }
