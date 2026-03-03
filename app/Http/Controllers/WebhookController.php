@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\UCNPaymentService;
+use App\Services\WebhookPaymentProcessingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -10,15 +11,19 @@ use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\PaymentGateway;
 use App\Models\ControlNumber;
+use App\Models\Customer;
+use App\Models\Product;
 use Illuminate\Support\Facades\Validator;
 
 class WebhookController extends Controller
 {
     protected UCNPaymentService $ucnPaymentService;
+    protected WebhookPaymentProcessingService $webhookPaymentProcessingService;
 
-    public function __construct(UCNPaymentService $ucnPaymentService)
+    public function __construct(UCNPaymentService $ucnPaymentService, WebhookPaymentProcessingService $webhookPaymentProcessingService)
     {
         $this->ucnPaymentService = $ucnPaymentService;
+        $this->webhookPaymentProcessingService = $webhookPaymentProcessingService;
     }
 
     /**
@@ -157,89 +162,6 @@ class WebhookController extends Controller
     }
 
     /**
-     * Handle test webhook for development
-     * POST /api/webhooks/test
-     */
-    public function handleTestWebhook(Request $request): JsonResponse
-    {
-        Log::info('Test webhook received', [
-            'payload' => $request->all(),
-            'ip' => $request->ip()
-        ]);
-
-        $validator = Validator::make($request->all(), [
-            'transaction_id' => 'required|string',
-            'invoice_id' => 'required|exists:invoices,id',
-            'amount' => 'required|numeric|min:0',
-            'status' => 'required|in:success,failed,pending',
-            'payment_method' => 'nullable|string'
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            $invoice = Invoice::findOrFail($request->invoice_id);
-
-            // Find or create payment record
-            $payment = Payment::updateOrCreate(
-                [
-                    'invoice_id' => $invoice->id,
-                    'gateway_reference' => $request->transaction_id
-                ],
-                [
-                    'gateway_id' => PaymentGateway::where('name', 'Test Gateway')->first()->id ?? 1,
-                    'customer_id' => $invoice->customer_id,
-                    'amount' => $request->amount,
-                    'status' => $request->status === 'success' ? 'success' : 'failed',
-                    'payment_method' => $request->payment_method ?? 'test',
-                    'gateway_response' => $request->all(),
-                    'paid_at' => $request->status === 'success' ? now() : null
-                ]
-            );
-
-            // Update invoice status
-            if ($request->status === 'success') {
-                $invoice->update(['status' => 'paid']);
-
-                // If it's a wallet topup invoice, add credits to wallet
-                if ($invoice->invoice_type === 'wallet_topup' && isset($invoice->metadata['wallet_type'])) {
-                    $walletService = app(\app\Services\WalletService::class);
-                    $walletService->addCredits(
-                        $invoice->customer_id,
-                        $invoice->metadata['wallet_type'],
-                        $invoice->metadata['units'],
-                        "Wallet topup from invoice {$invoice->invoice_number}",
-                        $invoice->id,
-                        $invoice->metadata['unit_price']
-                    );
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Test webhook processed successfully',
-                'data' => [
-                    'payment' => $payment,
-                    'invoice_status' => $invoice->fresh()->status
-                ]
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Test webhook processing failed: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Test webhook processing failed',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Generate FlutterWave webhook hash for a payload
      * POST /api/webhooks/flutterwave/hash
      */
@@ -298,7 +220,7 @@ class WebhookController extends Controller
 
             $invoice = Invoice::findOrFail($invoiceId);
 
-            Payment::updateOrCreate(
+            $payment = Payment::updateOrCreate(
                 [
                     'invoice_id' => $invoice->id,
                     'gateway_reference' => $paymentIntent['id']
@@ -313,8 +235,7 @@ class WebhookController extends Controller
                     'paid_at' => now()
                 ]
             );
-
-            $invoice->update(['status' => 'paid']);
+            $this->webhookPaymentProcessingService->processByInvoice($invoice, $payment);
 
             return response()->json(['success' => true], 200);
         } catch (\Exception $e) {
@@ -379,14 +300,33 @@ class WebhookController extends Controller
                 $decodedMetadata = json_decode($controlMetadata, true);
                 $controlMetadata = json_last_error() === JSON_ERROR_NONE ? $decodedMetadata : [];
             }
-
+            //invoice
             $invoiceId = $charge['meta']['invoice_id'] ?? $controlMetadata['invoice_id'] ?? null;
             if (!$invoiceId) {
                 throw new \Exception('Invoice ID not found in charge metadata');
             }
 
-            $invoice = Invoice::findOrFail($invoiceId);
+            $invoice = Invoice::find($invoiceId);
+            if (!$invoice) {
+                throw new \Exception('Invoice details not found');
+            }
+
+            //product
+            $productId = $charge['meta']['product_id'] ?? $controlMetadata['product_id'] ?? null;
+            if (!$productId) {
+                throw new \Exception('product ID not found in charge metadata');
+            }
+
+            $product = Product::find($productId);
+            if (!$product) {
+                throw new \Exception('product details not found');
+            }
+            // customer
             $customerId = $controlNumber->customer_id ?? $invoice->customer_id;
+            $customer = Customer::find($customerId);
+            if (!$customer) {
+                throw new \Exception('Customer not found for this transaction');
+            }
             $gateway = PaymentGateway::whereRaw('LOWER(name) = ?', ['flutterwave'])
                 ->where('active', true)
                 ->first();
@@ -395,10 +335,9 @@ class WebhookController extends Controller
                 throw new \Exception('Flutterwave gateway not configured');
             }
 
-            $gatewayReference = $charge['id'] ?? $reference;
+            $gatewayReference = $charge['id'];
 
             $duplicateTransaction = Payment::where('gateway_reference', $gatewayReference)
-                ->orWhere('payment_reference', $reference)
                 ->exists();
 
             if ($duplicateTransaction) {
@@ -408,20 +347,20 @@ class WebhookController extends Controller
                 ], 409);
             }
 
-            Payment::create([
+            $payment = Payment::create([
                 'invoice_id' => $invoice->id,
                 'gateway_reference' => $gatewayReference,
                 'gateway_id' => $gateway->id,
                 'customer_id' => $customerId,
                 'amount' => $charge['amount'],
-                'status' => 'success',
+                'status' => 'pending',
                 'payment_method' => $charge['payment_type'] ?? 'card',
                 'payment_reference' => $reference,
                 'gateway_response' => $charge,
                 'paid_at' => now(),
             ]);
 
-            $invoice->update(['status' => 'paid']);
+            $this->webhookPaymentProcessingService->processByProductAndCustomer($product, $customer, $payment);
 
             return response()->json(['success' => true], 200);
         } catch (\Exception $e) {

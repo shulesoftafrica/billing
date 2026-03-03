@@ -2,22 +2,21 @@
 
 namespace App\Services;
 
-use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Models\ControlNumber;
 use App\Models\Customer;
 use App\Models\Payment;
-use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\Configuration;
-use App\Models\InvoiceItem;
-use App\Models\Subscription;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-use App\Services\SubscriptionService;
 
 class UCNPaymentService
 {
+    public function __construct(private readonly WebhookPaymentProcessingService $webhookPaymentProcessingService)
+    {
+    }
+
     /**
      * Process UCN payment webhook
      *
@@ -131,28 +130,7 @@ class UCNPaymentService
                     $payment->update(['notification_status' => 'failed']);
                     $message .= 'Signature key not configured for this organization and payment gateway';
                 }
-                $subscriptionService = new SubscriptionService();
-                if (!empty($product) && $product->product_type_id == 2) {
-                    // Check subscription status for non-standard products
-                    $pricePlanIds = $product->pricePlans()->pluck('id');
-                    $subscription = Subscription::where('customer_id', $customer->id)
-                        ->whereIn('price_plan_id', $pricePlanIds)
-                        ->where('status', 'pending')
-                        ->first();
-
-                    if (!$subscription) {
-                        $message .= 'No pending subscription found for this product';
-                    } else {
-                        $invoiceItem = InvoiceItem::where('price_plan_id', $subscription->price_plan_id)->where('subscription_id', $subscription->id)->first();
-                        // Check and enable subscription
-
-                        $subscriptionService->enableSubscription($invoiceItem->invoice_id, $subscription, $invoiceItem->total, $payment);
-                    }
-                } elseif (!empty($product) && $product->product_type_id == 1) {
-                    $subscriptionService->getOneTimePendingInvoice($product->id, $customer->id, $payment);
-                } elseif (!empty($product) && $product->product_type_id == 3) {
-                    $subscriptionService->createProductPurchase($product->id, $customer->id, $payment);
-                }
+                $this->webhookPaymentProcessingService->processByProductAndCustomer($product, $customer, $payment);
 
                 // Step 7: Create API request object
                 $notificationPayload = [

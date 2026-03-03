@@ -907,7 +907,11 @@ class InvoiceController extends Controller
                 $controlNumbers = $controlNumbersMap[$mapKey] ?? collect();
 
                 // Map control numbers to payment gateways
-                $paymentGateways = $controlNumbers->map(function ($controlNumber) {
+                $paymentGateways = $controlNumbers
+                    ->filter(function ($controlNumber) use ($invoice) {
+                        return $this->shouldIncludeControlNumberForInvoice($controlNumber, $invoice->id);
+                    })
+                    ->map(function ($controlNumber) {
                     $integration = $controlNumber->organizationPaymentGatewayIntegration;
 
                     if (!$integration || !$integration->paymentGateway) {
@@ -961,6 +965,53 @@ class InvoiceController extends Controller
                 ->unique('id')
                 ->values(),
         ];
+    }
+
+    private function shouldIncludeControlNumberForInvoice($controlNumber, $invoiceId): bool
+    {
+        $integration = $controlNumber->organizationPaymentGatewayIntegration;
+
+        if (!$integration || !$integration->paymentGateway) {
+            return false;
+        }
+
+        $gatewayName = strtolower(trim((string) $integration->paymentGateway->name));
+
+        // Keep existing UCN mapping behavior (customer + product based)
+        if ($gatewayName === 'universal control number') {
+            return true;
+        }
+
+        // Flutterwave and Stripe are invoice-scoped via metadata
+        if ($gatewayName === 'flutterwave' || $gatewayName === 'stripe') {
+            $metadataInvoiceId = $this->extractInvoiceIdFromControlNumberMetadata($controlNumber->metadata);
+
+            if ($metadataInvoiceId === null) {
+                return false;
+            }
+
+            return (int) $metadataInvoiceId === (int) $invoiceId;
+        }
+
+        return true;
+    }
+
+    private function extractInvoiceIdFromControlNumberMetadata($metadata): ?int
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            $metadata = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($metadata)) {
+            return null;
+        }
+
+        // Supports new structure: {"meta": {"invoice_id": ...}}
+        // and legacy structure: {"invoice_id": ...}
+        $invoiceId = data_get($metadata, 'meta.invoice_id', data_get($metadata, 'invoice_id'));
+
+        return is_numeric($invoiceId) ? (int) $invoiceId : null;
     }
     public function getByProduct(Request $request)
     {
