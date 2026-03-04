@@ -21,7 +21,8 @@ use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\PaymentGatewayTestController;
+use App\Http\Controllers\Api\PaymentGatewayTestController;
+use App\Http\Controllers\StripeWebhookController;
 
 // Authentication routes - Public (no authentication, with strict rate limiting to prevent brute force)
 Route::middleware('throttle:5,1')->group(function () {
@@ -32,7 +33,6 @@ Route::middleware('throttle:5,1')->group(function () {
 // Webhook routes - Public (no authentication, with strict rate limiting)
 Route::middleware('throttle:30,1')->group(function () {
     Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
-    Route::post('stripe', [WebhookController::class, 'handleStripeWebhook']); //stripe
     Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
 });
 
@@ -133,6 +133,7 @@ Route::prefix('payment-gateways')->group(function () {
 // Public webhook routes (no authentication needed)
 Route::prefix('webhooks')->group(function () {
     Route::post('unc-payment', [WebhookController::class, 'handleUNCPayment']);
+    Route::post('stripe', StripeWebhookController::class);
 
     Route::post('test', [WebhookController::class, 'handleTestWebhook']);
     Route::post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']);
@@ -141,6 +142,7 @@ Route::prefix('webhooks')->group(function () {
 // Payment endpoints
 Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
 Route::get('payments', [PaymentController::class, 'getByDateRange']);
+Route::post('payments/intent', [PaymentController::class, 'createIntent']);
 Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
 Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
 Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);

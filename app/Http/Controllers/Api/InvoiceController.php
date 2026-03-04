@@ -20,10 +20,13 @@ use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Services\SubscriptionService;
 use App\Services\FlutterwaveService;
+use App\Services\Stripe\PaymentIntentService;
 use App\Services\Flutterwave\Models\CreateCustomerRequest;
 use App\Services\Flutterwave\Models\CreateOrderRequest;
 use App\Services\Flutterwave\Models\CreatePaymentMethodRequest;
+use App\Services\Stripe\StripeAmountHelper;
 use App\Traits\ValidatePhoneNumber;
+use Stripe\Exception\ApiErrorException;
 
 use function Pest\Laravel\json;
 
@@ -416,6 +419,11 @@ class InvoiceController extends Controller
                         $flutterwaveData = $this->createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway);
                         $gatewayData['references'] = $flutterwaveData['success']
                             ? $flutterwaveData['control_number']['reference']
+                            : [];
+                    } elseif (strtolower($orgGateway->paymentGateway->name) === 'stripe') {
+                        $stripeData = $this->createStripeReference($invoice, $product, $customer, $request, $orgGateway);
+                        $gatewayData['references'] = $stripeData['success']
+                            ? $stripeData['control_number']['reference']
                             : [];
                     } else {
                         $gatewayData['references'] = [];
@@ -1292,6 +1300,100 @@ class InvoiceController extends Controller
             return [
                 'success' => false,
                 'message' => 'An error occurred while generating payment link',
+            ];
+        }
+    }
+
+    public function createStripeReference($invoice, $product, $customer, $request, $orgGateway)
+    {
+        try {
+            $paymentIntentService = app(PaymentIntentService::class);
+            
+
+           $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($request->currency ?: 'TZS'));
+            if ($stripeAmount <= 0 || (StripeAmountHelper::countDigits($stripeAmount)) > 8) {
+                Log::warning('Calculated Stripe amount is invalid', [
+                    'invoice_id' => $invoice->id,
+                    'calculated_amount' => $stripeAmount,
+                    'currency' => $request->currency,
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Invalid invoice total for Stripe PaymentIntent',
+                ];
+            }
+
+            $currency = strtolower((string) ($request->currency ?: 'TZS'));
+            $orderId = $invoice->invoice_number . '-' . $product->id;
+            $intent = $paymentIntentService->create([
+                'amount' => $stripeAmount,
+                'currency' => $currency,
+                'description' => 'Invoice ' . $invoice->invoice_number . ' payment',
+                'receipt_email' => $customer->email,
+                'metadata' => [
+                    'order_id' => $orderId,
+                    'user_id' => (string) $customer->id,
+                    'invoice_id' => (string) $invoice->id,
+                    'invoice_number' => (string) $invoice->invoice_number,
+                    'organization_id' => (string) $customer->organization_id,
+                    'product_id' => (string) $product->id,
+                ],
+            ]);
+
+            $reference = (string) ($intent->id ?: $orderId);
+
+            $controlNumber = ControlNumber::create([
+                'customer_id' => $customer->id,
+                'reference' => $reference,
+                'organization_payment_gateway_integration_id' => $orgGateway->id,
+                'product_id' => $product->id,
+                'metadata' => json_encode([
+                    'payment_intent_id' => $intent->id,
+                    'client_secret' => $intent->client_secret,
+                    'status' => $intent->status,
+                    'amount' => $intent->amount,
+                    'currency' => $intent->currency,
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'customer_id' => $customer->id,
+                    'organization_id' => $customer->organization_id,
+                    'product_id' => $product->id,
+                    'meta' => [
+                        'invoice_id' => $invoice->id,
+                    ],
+                ]),
+            ]);
+
+            return [
+                'success' => true,
+                'control_number' => [
+                    'id' => $controlNumber->id,
+                    'reference' => $controlNumber->reference,
+                    'metadata' => $controlNumber->metadata,
+                    'created_at' => $controlNumber->created_at,
+                ],
+                'message' => 'Stripe PaymentIntent reference stored successfully',
+            ];
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe integration error while creating reference', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Stripe error while generating payment reference',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Unexpected Stripe reference error', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while generating Stripe payment reference',
             ];
         }
     }

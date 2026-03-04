@@ -126,7 +126,7 @@ class OrganizationController extends Controller
     /**
      * Integrate payment gateway with organization
      * Supported gateways: Universal Control Number (UCN), Stripe, PayPal, Flutterwave
-     * Currently implemented: UCN only
+     * Currently implemented: UCN, Stripe, Flutterwave
      */
     public function integratePaymentGateway(Request $request)
     {
@@ -168,10 +168,7 @@ class OrganizationController extends Controller
             if ($gatewayName === 'universal control number' || $gatewayName === 'ucn') {
                 $result = $this->integrateUCN($organization, $gateway, $request->endpoint);
             } elseif ($gatewayName === 'stripe') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Stripe integration is not yet implemented. Coming soon.'
-                ], 422);
+                $result = $this->integrateStripe($organization, $gateway, $request->endpoint);
             } elseif ($gatewayName === 'paypal') {
                 return response()->json([
                     'success' => false,
@@ -663,6 +660,60 @@ class OrganizationController extends Controller
     private function integrateFlutterWave($organization, $gateway, $endpoint)
     {
         // Step 1: Create organization_payment_gateway_integration (no bank account for Flutterwave)
+        $integrationId = DB::table('organization_payment_gateway_integrations')->insertGetId([
+            'payment_gateway_id' => $gateway->id,
+            'organization_id' => $organization->id,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Step 2: Create configurations
+        $apiKey = $this->generateApiKey();
+        $signatureKey = $this->generateSignatureKey();
+
+        $configurationId = DB::table('configurations')->insertGetId([
+            'env' => 'testing',
+            'config' => json_encode([
+                'api_key' => $apiKey,
+                'signature_key' => $signatureKey,
+                'api_endpoint' => $endpoint,
+            ]),
+            'organization_id' => $organization->id,
+            'payment_gateway_id' => $gateway->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $configuration = DB::table('configurations')->where('id', $configurationId)->first();
+
+        // Step 3: Ensure integration status is active
+        DB::table('organization_payment_gateway_integrations')
+            ->where('id', $integrationId)
+            ->update(['status' => 'active']);
+
+        // Build and return gateway details
+        $gatewayDetails = $gateway->toArray();
+        $gatewayDetails['configuration'] = $configuration;
+        return $gatewayDetails;
+    }
+
+    /**
+     * Integrate Stripe gateway
+     *
+     * Mirrors Flutterwave integration flow:
+     * creates integration + configuration without bank-account allocation
+     * and merchant creation.
+     *
+     * @param Organization $organization
+     * @param PaymentGateway $gateway
+     * @param string $endpoint API endpoint for the organization
+     * @return array Gateway details with configuration
+     * @throws Exception
+     */
+    private function integrateStripe($organization, $gateway, $endpoint)
+    {
+        // Step 1: Create organization_payment_gateway_integration (no bank account for Stripe)
         $integrationId = DB::table('organization_payment_gateway_integrations')->insertGetId([
             'payment_gateway_id' => $gateway->id,
             'organization_id' => $organization->id,

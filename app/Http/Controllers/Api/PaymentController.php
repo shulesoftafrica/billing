@@ -5,9 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Payment;
+use App\Services\Stripe\PaymentIntentService;
+use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
 {
+    public function __construct(
+        private readonly PaymentIntentService $paymentIntentService
+    ) {
+    }
+
     /**
      * Get all payments for a given invoice ID
      * GET /api/payments/by-invoice/{invoice_id}
@@ -44,5 +51,42 @@ class PaymentController extends Controller
             'success' => true,
             'data' => $payments
         ]);
+    }
+
+    /**
+     * Create a Stripe PaymentIntent.
+     * POST /api/payments/intent
+     */
+    public function createIntent(Request $request)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|integer|min:1',
+            'currency' => 'required|string|size:3',
+            'customer' => 'nullable|string',
+            'description' => 'nullable|string',
+            'metadata' => 'nullable|array',
+            'receipt_email' => 'nullable|email',
+            'capture_method' => 'nullable|string|in:automatic,automatic_async,manual',
+            'statement_descriptor' => 'nullable|string|max:22',
+        ]);
+
+        try {
+            $intent = $this->paymentIntentService->create($validated);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'payment_intent_id' => $intent->id,
+                    'client_secret' => $intent->client_secret,
+                    'amount' => $intent->amount,
+                    'currency' => $intent->currency,
+                    'status' => $intent->status,
+                ],
+            ], 200);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withMessages([
+                'payment' => [$e->getMessage()],
+            ]);
+        }
     }
 }
