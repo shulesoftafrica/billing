@@ -926,13 +926,21 @@ class InvoiceController extends Controller
                         return null;
                     }
 
-                    return [
+                    $gatewayName = (string) $integration->paymentGateway->name;
+
+                    $gatewayData = [
                         'id' => $integration->id,
                         'payment_gateway_id' => $integration->payment_gateway_id,
-                        'gateway_name' => $integration->paymentGateway->name,
+                        'gateway_name' => $gatewayName,
                         'status' => $integration->status,
                         'references' => $controlNumber->reference,
                     ];
+
+                    if (strtolower(trim($gatewayName)) === 'stripe') {
+                        $gatewayData['client_secret'] = $this->extractClientSecretFromControlNumberMetadata($controlNumber->metadata);
+                    }
+
+                    return $gatewayData;
                 })->filter()->values();
 
                 return [
@@ -1006,20 +1014,36 @@ class InvoiceController extends Controller
 
     private function extractInvoiceIdFromControlNumberMetadata($metadata): ?int
     {
-        if (is_string($metadata)) {
-            $decoded = json_decode($metadata, true);
-            $metadata = is_array($decoded) ? $decoded : [];
-        }
-
-        if (!is_array($metadata)) {
-            return null;
-        }
+        $metadata = $this->normalizeControlNumberMetadata($metadata);
 
         // Supports new structure: {"meta": {"invoice_id": ...}}
         // and legacy structure: {"invoice_id": ...}
         $invoiceId = data_get($metadata, 'meta.invoice_id', data_get($metadata, 'invoice_id'));
 
         return is_numeric($invoiceId) ? (int) $invoiceId : null;
+    }
+
+    private function extractClientSecretFromControlNumberMetadata($metadata): ?string
+    {
+        $metadata = $this->normalizeControlNumberMetadata($metadata);
+
+        $clientSecret = data_get(
+            $metadata,
+            'client_secret',
+            data_get($metadata, 'meta.client_secret', data_get($metadata, 'payment_intent.client_secret'))
+        );
+
+        return is_string($clientSecret) && trim($clientSecret) !== '' ? $clientSecret : null;
+    }
+
+    private function normalizeControlNumberMetadata($metadata): array
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($metadata) ? $metadata : [];
     }
     public function getByProduct(Request $request)
     {
