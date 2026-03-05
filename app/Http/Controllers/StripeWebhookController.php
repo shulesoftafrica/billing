@@ -2,8 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ControlNumber;
+use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\PaymentGateway;
+use App\Models\Product;
+use App\Services\Stripe\StripeAmountHelper;
+use App\Services\SubscriptionService;
+use App\Services\WebhookPaymentProcessingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,23 +22,30 @@ class StripeWebhookController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        try {
-            $event = Webhook::constructEvent(
-                $request->getContent(),
-                (string) $request->header('Stripe-Signature'),
-                (string) config('services.stripe.webhook_secret')
-            );
-        } catch (UnexpectedValueException|SignatureVerificationException $e) {
-            Log::warning('Invalid Stripe webhook signature', [
-                'message' => $e->getMessage(),
-            ]);
+        if (app()->environment('local')) {
 
-            return response()->json([
-                'error' => 'Invalid webhook signature',
-            ], 400);
+            // Skip signature verification locally
+            $payload = $request->getContent();
+            $event = json_decode($payload);
+        } else {
+            try {
+                $event = Webhook::constructEvent(
+                    $request->getContent(),
+                    (string) $request->header('Stripe-Signature'),
+                    (string) config('services.stripe.webhook_secret')
+                );
+            } catch (UnexpectedValueException | SignatureVerificationException $e) {
+                Log::warning('Invalid Stripe webhook signature', [
+                    'message' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'error' => 'Invalid webhook signature',
+                ], 400);
+            }
         }
-
-        app()->terminating(function () use ($event): void {
+        // $this->processEvent($event->type, $event->data->object);
+        app()->terminating(function () use ($event): void { // process the event after the response is sent to avoid timeouts
             $this->processEvent($event->type, $event->data->object);
         });
 
@@ -47,12 +60,11 @@ class StripeWebhookController extends Controller
             Log::info('Ignoring Stripe event without PaymentIntent payload', [
                 'event' => $eventType,
             ]);
-
             return;
         }
 
         match ($eventType) {
-            'payment_intent.succeeded' => $this->handleSucceeded($object),
+            'payment_intent.succeeded' => $this->handleSucceeded($object), // we are interested in this event only
             'payment_intent.payment_failed' => $this->handleFailed($object),
             'payment_intent.canceled' => $this->handleCanceled($object),
             'payment_intent.requires_action' => $this->handleRequiresAction($object),
@@ -61,113 +73,114 @@ class StripeWebhookController extends Controller
         };
     }
 
-    private function handleSucceeded(PaymentIntent $intent): void
+    private function handleSucceeded(PaymentIntent $intent)
     {
-        $invoice = $this->resolveBillingRecord($intent);
-
-        if (!$invoice) {
-            Log::warning('Stripe succeeded event with unknown billing record', [
-                'payment_intent_id' => $intent->id,
-                'metadata' => $intent->metadata->toArray(),
-            ]);
-
-            return;
+        $metadata = $intent->metadata;
+        if (method_exists($metadata, 'toArray')) {
+            $metadata = $metadata->toArray();
+        } else {
+            $metadata = (array) $metadata;
         }
 
-        $invoice->status = 'paid';
-        $invoice->save();
+        //invoice
+        $invoiceId = $metadata['invoice_id'] ?? null;
+        if (!$invoiceId) {
+            throw new \Exception('Invoice ID not found in charge metadata');
+        }
 
-        Log::info('Stripe payment succeeded', [
+        $invoice = Invoice::find($invoiceId);
+        if (!$invoice) {
+            throw new \Exception('Invoice details not found');
+        }
+
+        //product
+        $productId = $metadata['product_id'] ?? null;
+        if (!$productId) {
+            throw new \Exception('product ID not found in charge metadata');
+        }
+
+        $product = Product::find($productId);
+        if (!$product) {
+            throw new \Exception('product details not found');
+        }
+        // customer
+        $customerId = $metadata['user_id'] ?? null;
+        if (!$customerId) {
+            throw new \Exception('Customer ID not found in charge metadata');
+        }
+        $customer = Customer::find($customerId);
+        if (!$customer) {
+            throw new \Exception('Customer not found for this transaction');
+        }
+        $gateway = PaymentGateway::whereRaw('LOWER(name) = ?', ['stripe'])
+            ->where('active', true)
+            ->first();
+
+        if (!$gateway) {
+            throw new \Exception('Flutterwave gateway not configured');
+        }
+
+        $gatewayReference = $intent->id;
+
+        $duplicateTransaction = Payment::where('gateway_reference', $gatewayReference)
+            ->exists();
+
+        if ($duplicateTransaction) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Duplicate transaction',
+            ], 409);
+        }
+        $stripeAmount = StripeAmountHelper::fromStripeAmount($intent->amount_received, $intent->currency);
+        $payment = Payment::create([
             'invoice_id' => $invoice->id,
-            'payment_intent_id' => $intent->id,
+            'gateway_reference' => $gatewayReference,
+            'gateway_id' => $gateway->id,
+            'customer_id' => $customerId,
+            'amount' => $stripeAmount,
+            'status' => 'pending',
+            'payment_method' => $charge['payment_type'] ?? 'card',
+            'payment_reference' => $gatewayReference,
+            'gateway_response' => $intent,
+            'paid_at' => now(),
         ]);
+        $webhookerController = new WebhookPaymentProcessingService(app(SubscriptionService::class));
+        $webhookerController->processByProductAndCustomer($product, $customer, $payment);
+        return response()->json(['success' => true], 200);
     }
 
     private function handleFailed(PaymentIntent $intent): void
     {
-        $invoice = $this->resolveBillingRecord($intent);
-
-        Log::warning('Stripe payment failed', [
-            'invoice_id' => $invoice?->id,
-            'payment_intent_id' => $intent->id,
-            'last_payment_error' => $intent->last_payment_error?->message,
-        ]);
-
-        if ($invoice) {
-            $invoice->status = 'failed';
-            $invoice->save();
-        }
+        return;
     }
 
     private function handleCanceled(PaymentIntent $intent): void
     {
-        $invoice = $this->resolveBillingRecord($intent);
-
-        if ($invoice) {
-            $invoice->status = 'cancelled';
-            $invoice->save();
-        }
+        return;
     }
 
     private function handleRequiresAction(PaymentIntent $intent): void
     {
-        Log::info('Stripe payment requires additional action (3DS)', [
-            'payment_intent_id' => $intent->id,
-            'status' => $intent->status,
-        ]);
+        return;
     }
 
-    private function handleProcessing(PaymentIntent $intent): void
+    private function handleProcessing($intent): void
     {
-        $invoice = $this->resolveBillingRecord($intent);
-
-        if ($invoice) {
-            $invoice->status = 'processing';
-            $invoice->save();
-        }
+        return;
     }
 
-    private function resolveBillingRecord(PaymentIntent $intent): ?Invoice
+    function generateStripeSignature(string $payload, string $secret, ?int $timestamp = null): string
     {
-        $metadata = $intent->metadata->toArray();
-        $orderId = $metadata['order_id'] ?? null;
-        $userId = $metadata['user_id'] ?? null;
+        // Use current time if timestamp not provided
+        $timestamp = $timestamp ?? time();
 
-        if (is_numeric($orderId)) {
-            $invoice = Invoice::find((int) $orderId);
+        // Stripe signed payload format
+        $signedPayload = $timestamp . '.' . $payload;
 
-            if ($invoice) {
-                return $invoice;
-            }
-        }
+        // Generate HMAC SHA256 signature
+        $signature = hash_hmac('sha256', $signedPayload, $secret);
 
-        if (is_string($orderId) && $orderId !== '') {
-            $invoice = Invoice::where('invoice_number', $orderId)->first();
-
-            if ($invoice) {
-                return $invoice;
-            }
-
-            $controlNumber = ControlNumber::where('reference', $orderId)->first();
-            if ($controlNumber) {
-                $metadata = is_string($controlNumber->metadata)
-                    ? (json_decode($controlNumber->metadata, true) ?: [])
-                    : ((array) $controlNumber->metadata);
-
-                $invoiceId = data_get($metadata, 'invoice_id') ?? data_get($metadata, 'meta.invoice_id');
-
-                if (is_numeric($invoiceId)) {
-                    return Invoice::find((int) $invoiceId);
-                }
-            }
-        }
-
-        if (is_numeric($userId)) {
-            return Invoice::where('customer_id', (int) $userId)
-                ->orderByDesc('id')
-                ->first();
-        }
-
-        return null;
-     }
- }
+        // Return header value
+        return "t={$timestamp},v1={$signature}";
+    }
+}

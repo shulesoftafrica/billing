@@ -31,10 +31,7 @@ Route::middleware('throttle:5,1')->group(function () {
 });
 
 // Webhook routes - Public (no authentication, with strict rate limiting)
-Route::middleware('throttle:30,1')->group(function () {
-    Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
-    Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
-});
+
 
 // Protected API routes - all require Sanctum authentication with rate limiting
 // Route::middleware(['auth:sanctum', 'throttle:30,1'])->group(function () {
@@ -130,13 +127,16 @@ Route::prefix('payment-gateways')->group(function () {
     Route::get('test-all-connections', [PaymentGatewayTestController::class, 'testAllConnections']);
 });
 
-// Public webhook routes (no authentication needed)
-Route::prefix('webhooks')->group(function () {
-    Route::post('unc-payment', [WebhookController::class, 'handleUNCPayment']);
-    Route::post('stripe', StripeWebhookController::class);
 
-    Route::post('test', [WebhookController::class, 'handleTestWebhook']);
-    Route::post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']);
+Route::post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']); // gen hash for flutterwave payloads, useful for testing and verification
+
+// Public webhook routes (no authentication needed)
+Route::middleware('throttle:30,1')->group(function () {
+    Route::prefix('webhooks')->group(function () {
+        Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
+        Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
+        Route::post('stripe', StripeWebhookController::class); //stripe
+    });
 });
 
 // Payment endpoints
