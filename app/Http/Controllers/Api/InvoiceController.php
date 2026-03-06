@@ -488,89 +488,89 @@ class InvoiceController extends Controller
                 ];
             }
 
-            // // Get EcoBank token
-            // $token = $this->createEcobankToken();
-            // if (!$token) {
-            //     return [
-            //         'success' => false,
-            //         'message' => 'Failed to get token'
-            //     ];
-            // }
+            // Get EcoBank token
+            $token = $this->createEcobankToken();
+            if (!$token) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to get token'
+                ];
+            }
 
-            // // Prepare request data
-            // $requestId = "TERMINAL_" . $customer->id . $product->id;
-            // $postData = [
-            //     "requestId" => $requestId,
-            //     "affiliateCode" => "ETZ",
-            //     "merchantCode" => $merchant->merchant_code,
-            //     "terminalMobileNo" => $customer->phone ?? "0765406008",
-            //     "terminalName" => $customer->name,
-            //     "terminalEmail" => $customer->email ?? "support@shulesoft.africa",
-            //     "productCode" => $product->id . time(),
-            //     "dynamicQr" => "Y",
-            //     "callBackUrl" => $this->callBackUrl,
-            // ];
+            // Prepare request data
+            $requestId = "TERMINAL_" . $customer->id . $product->id;
+            $postData = [
+                "requestId" => $requestId,
+                "affiliateCode" => "ETZ",
+                "merchantCode" => $merchant->merchant_code,
+                "terminalMobileNo" => $customer->phone ?? "0765406008",
+                "terminalName" => $customer->name,
+                "terminalEmail" => $customer->email ?? "support@shulesoft.africa",
+                "productCode" => $product->id . time(),
+                "dynamicQr" => "Y",
+                "callBackUrl" => $this->callBackUrl,
+            ];
 
-            // // Generate secure hash
-            // $payloadPart = implode('', array_values($postData));
-            // $secureHash = $this->generateSecureHash($payloadPart);
+            // Generate secure hash
+            $payloadPart = implode('', array_values($postData));
+            $secureHash = $this->generateSecureHash($payloadPart);
 
-            // if (!$secureHash) {
-            //     return [
-            //         'success' => false,
-            //         'message' => 'Failed to generate secure hash'
-            //     ];
-            // }
+            if (!$secureHash) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to generate secure hash'
+                ];
+            }
 
-            // $postData['secureHash'] = $secureHash;
-            // $url = $this->baseUrl . '/corporateapi/merchant/createaddQr';
+            $postData['secureHash'] = $secureHash;
+            $url = $this->baseUrl . '/corporateapi/merchant/createaddQr';
 
-            // // Make API request
-            // $ch = curl_init($url);
-            // curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            // curl_setopt($ch, CURLOPT_POST, true);
-            // curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
-            // curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            //     'Authorization: Bearer ' . $token,
-            //     'Content-Type: application/json',
-            //     'Accept: application/json',
-            //     'Origin: ' . $this->origin,
+            // Make API request
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Authorization: Bearer ' . $token,
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Origin: ' . $this->origin,
+            ]);
+
+            $response = curl_exec($ch);
+            $curlError = curl_error($ch);
+
+            if ($curlError) {
+                Log::error('EcoBank API cURL Error: ' . $curlError);
+                return [
+                    'success' => false,
+                    'message' => 'API request failed: ' . $curlError
+                ];
+            }
+            // $response = json_encode([
+            //     "response_code" => 200,
+            //     "response_message" => "Success",
+            //     "response_content" => [
+            //         "terminalId" => "00012345",
+            //         "headerResponse" => "Control number generated successfully",
+            //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
+            //     ]
             // ]);
 
-            // $response = curl_exec($ch);
-            // $curlError = curl_error($ch);
 
-            // if ($curlError) {
-            //     Log::error('EcoBank API cURL Error: ' . $curlError);
-            //     return [
-            //         'success' => false,
-            //         'message' => 'API request failed: ' . $curlError
-            //     ];
-            // }
-            // // $response = json_encode([
-            // //     "response_code" => 200,
-            // //     "response_message" => "Success",
-            // //     "response_content" => [
-            // //         "terminalId" => "00012345",
-            // //         "headerResponse" => "Control number generated successfully",
-            // //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
-            // //     ]
-            // // ]);
-
-
-            // $responseData = json_decode($response, true);
+            $responseData = json_decode($response, true);
             // Log::info('EcoBank Control Number Response: ' . $response);
 
             // Process successful response
-            $responseData = [
-                "response_code" => 200,
-                "response_message" => "Success",
-                "response_content" => [
-                    "terminalId" => rand(100000, 9999999999),
-                    "headerResponse" => "Control number generated successfully",
-                    "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
-                ]
-            ];
+            // $responseData = [
+            //     "response_code" => 200,
+            //     "response_message" => "Success",
+            //     "response_content" => [
+            //         "terminalId" => rand(100000, 9999999999),
+            //         "headerResponse" => "Control number generated successfully",
+            //         "qrBase64String" => "iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAYAAAC1n1..."
+            //     ]
+            // ];
             if (isset($responseData['response_code']) && $responseData['response_code'] === 200) {
                 $content = $responseData['response_content'];
                 // Insert control number record
