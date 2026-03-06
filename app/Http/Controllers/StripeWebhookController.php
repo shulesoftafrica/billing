@@ -59,6 +59,7 @@ class StripeWebhookController extends Controller
         if (!$object instanceof PaymentIntent) {
             Log::info('Ignoring Stripe event without PaymentIntent payload', [
                 'event' => $eventType,
+                'payload' => $object,
             ]);
             return;
         }
@@ -144,7 +145,7 @@ class StripeWebhookController extends Controller
             'gateway_response' => $intent,
             'paid_at' => now(),
         ]);
-        $webhookerController = new WebhookPaymentProcessingService(app(SubscriptionService::class));
+        $webhookerController = app(WebhookPaymentProcessingService::class);
         $webhookerController->processByProductAndCustomer($product, $customer, $payment);
         return response()->json(['success' => true], 200);
     }

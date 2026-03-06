@@ -431,6 +431,16 @@ class SubscriptionService
             // Step 5: Check the total payments against the invoiced amount
             $totalPaid = InvoicePayment::where('invoice_id', $invoice_id)->sum('amount');
             $balance = $invoicedAmount - $totalPaid;
+             Log:info('Calculating total payments for subscription enablement', [
+                'customer_id' => $customerId,
+                'product_id' => $productId,
+                'pending_payments_sum' => $pendingPaymentsSum,
+                'advance_payments_sum' => $advancePaymentsSum,
+                'total_payments' => $totalPayments,
+                'invoiced_amount' => $invoicedAmount,
+                'balance'=>$balance,
+                'payment'=>$payment
+            ]);
             // Now use $balance as the invoiced amount
             // Step 6: Compare and execute logic
             if ($totalPayments == $balance) {
