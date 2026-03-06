@@ -176,6 +176,7 @@ class SubscriptionService
         $invoice = Invoice::create([
             'customer_id' => $customer->id,
             'invoice_number' => $invoiceNumber,
+            'currency' => strtoupper((string) ($pricePlans->first()?->currency ?? 'TZS')),
             'status' => 'issued',
             'description' => 'Subscription invoice for ' . count($pricePlans) . ' plan(s)',
             'subtotal' => $subtotal,
@@ -1076,6 +1077,7 @@ class SubscriptionService
             $newInvoice = Invoice::create([
                 'customer_id' => $customerId,
                 'invoice_number' => $this->generateInvoiceNumber(),
+                'currency' => strtoupper((string) ($lastSubscription->PricePlan->currency ?? 'TZS')),
                 'status' => 'issued',
                 'description' => 'Excess payment invoice for product usage',
                 'subtotal' => $amount,

@@ -163,7 +163,7 @@ class InvoiceController extends Controller
             'tax_rate_ids' => 'nullable|array',
             'tax_rate_ids.*' => 'integer|distinct|exists:tax_rates,id',
             'description' => 'nullable|string',
-            'currency' => 'nullable|string|max:5',
+            'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
             'status' => 'nullable|string|in:draft,issued,paid,cancelled',
             'date' => 'nullable|date_format:Y-m-d',
             'due_date' => 'nullable|date_format:Y-m-d',
@@ -183,7 +183,7 @@ class InvoiceController extends Controller
             $customerData = $request->customer;
             $productsData = $request->products;
             $description = $request->description ?? 'Invoice for products';
-            $currency = $request->currency ?? 'TZS';
+            $currency = strtoupper((string) $request->currency);
             $status = $request->status ?? 'issued';
             $date = $request->date ?? null;
             $dueDate = $request->due_date ?? null;
@@ -327,6 +327,7 @@ class InvoiceController extends Controller
                 $invoice = Invoice::create([
                     'customer_id' => $customer->id,
                     'invoice_number' => $this->generateInvoiceNumber(),
+                    'currency' => $currency,
                     'status' => $status,
                     'description' => $description,
                     'subtotal' => $totalAmount,
@@ -836,6 +837,7 @@ class InvoiceController extends Controller
             'customer_name' => $invoice->customer->name,
             'customer_email' => $invoice->customer->email,
             'status' => $invoice->status,
+            'currency' => $invoice->currency,
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
             'tax_total' => $invoice->tax_total,
@@ -887,6 +889,7 @@ class InvoiceController extends Controller
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'status' => $invoice->status,
+            'currency' => $invoice->currency,
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
             'tax_breakdown' => $taxBreakdown,
@@ -1246,7 +1249,7 @@ class InvoiceController extends Controller
 
             $order = $flutterwaveService->createOrder(new CreateOrderRequest(
                 amount: (float) $invoice->total,
-                currency: (string) ($request->currency ?: 'TZS'),
+                currency: (string) ($invoice->currency ?: 'TZS'),
                 reference: $orderReference,
                 customerId: $resolvedFlutterwaveCustomerId,
                 paymentMethodId: $resolvedPaymentMethodId,
@@ -1334,12 +1337,12 @@ class InvoiceController extends Controller
             $paymentIntentService = app(PaymentIntentService::class);
             
 
-           $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($request->currency ?: 'TZS'));
+           $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($invoice->currency ?: 'TZS'));
             if ($stripeAmount <= 0 || (StripeAmountHelper::countDigits($stripeAmount)) > 8) {
                 Log::warning('Calculated Stripe amount is invalid', [
                     'invoice_id' => $invoice->id,
                     'calculated_amount' => $stripeAmount,
-                    'currency' => $request->currency,
+                    'currency' => $invoice->currency,
                 ]);
                 return [
                     'success' => false,
@@ -1347,7 +1350,7 @@ class InvoiceController extends Controller
                 ];
             }
 
-            $currency = strtolower((string) ($request->currency ?: 'TZS'));
+            $currency = strtolower((string) ($invoice->currency ?: 'TZS'));
             $orderId = $invoice->invoice_number . '-' . $product->id;
             $intent = $paymentIntentService->create([
                 'amount' => $stripeAmount,

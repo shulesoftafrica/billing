@@ -13,6 +13,7 @@ class Invoice extends Model
     protected $fillable = [
         'customer_id',
         'invoice_number',
+        'currency',
         'date',
         'status',
         'description',
@@ -27,6 +28,7 @@ class Invoice extends Model
         'subtotal' => 'decimal:2',
         'tax_total' => 'decimal:2',
         'total' => 'decimal:2',
+        'currency' => 'string',
         'date' => 'date',
         'due_date' => 'date',
         'issued_at' => 'datetime',
