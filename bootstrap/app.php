@@ -4,6 +4,8 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Auth\AuthenticationException;
+use App\Http\Middleware\HandleCors;
+use App\Exceptions\StripePaymentException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -34,5 +36,14 @@ return Application::configure(basePath: dirname(__DIR__))
             
             // For web requests, redirect to login (but we don't have one)
             return redirect()->guest('/login');
+        });
+
+        $exceptions->render(function (StripePaymentException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $e->toArray(),
+                ], $e->httpStatus());
+            }
         });
     })->create();

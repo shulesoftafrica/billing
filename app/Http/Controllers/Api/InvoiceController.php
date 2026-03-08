@@ -10,11 +10,7 @@ use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\OrganizationPaymentGatewayIntegration;
 use App\Models\ControlNumber;
-
 use App\Models\User;
-use App\Services\FlutterwaveService;
-use App\Services\SubscriptionService;
-
 use App\Models\TaxRate;
 use App\Models\Subscription;
 use App\Models\PricePlan;
@@ -23,10 +19,28 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+
 use Carbon\Carbon;
+
+use App\Services\FlutterwaveService;
+use App\Services\SubscriptionService;
+use App\Services\Stripe\PaymentIntentService;
+use App\Services\Stripe\StripeAmountHelper;
+
+use App\Services\Flutterwave\Models\CreateCustomerRequest;
+use App\Services\Flutterwave\Models\CreateOrderRequest;
+use App\Services\Flutterwave\Models\CreatePaymentMethodRequest;
+
+use App\Traits\ValidatePhoneNumber;
+
+use Stripe\Exception\ApiErrorException;
+
+use function Pest\Laravel\json;
 
 class InvoiceController extends Controller
 {
+    use ValidatePhoneNumber;
+
     // EcoBank API Configuration
     protected $username = 'ETZSHULESOFT';
     protected $password = '$2a$10$jdNZI4uiE86yRhcFNrBenOo0nBQji9zqy9IVa.roj0ST5EhlE4sVe';
@@ -154,7 +168,7 @@ class InvoiceController extends Controller
             'tax_rate_ids' => 'nullable|array',
             'tax_rate_ids.*' => 'integer|distinct|exists:tax_rates,id',
             'description' => 'nullable|string',
-            'currency' => 'nullable|string|max:5',
+            'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
             'status' => 'nullable|string|in:draft,issued,paid,cancelled',
             'date' => 'nullable|date_format:Y-m-d',
             'due_date' => 'nullable|date_format:Y-m-d',
@@ -201,7 +215,7 @@ class InvoiceController extends Controller
             $customerData = $request->customer;
             $productsData = $request->products;
             $description = $request->description ?? 'Invoice for products';
-            $currency = $request->currency ?? 'TZS';
+            $currency = strtoupper((string) $request->currency);
             $status = $request->status ?? 'issued';
             $date = $request->date ?? null;
             $dueDate = $request->due_date ?? null;
@@ -392,6 +406,7 @@ class InvoiceController extends Controller
             $invoice = Invoice::create([
                 'customer_id' => $customer->id,
                 'invoice_number' => $this->generateInvoiceNumber(),
+                'currency' => $currency,
                 'status' => $status,
                 'description' => $description,
                 'subtotal' => $totalAmount,
@@ -428,9 +443,66 @@ class InvoiceController extends Controller
                     }
                 }
             }
-            if (!empty($oneTimeInvoiceItems)) {
-                foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
-                    $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
+
+            // Get all organization integrated gateways
+            $organizationGateways = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
+                ->where('organization_id', $organizationId)
+                ->get();
+
+            $paymentGateways = [];
+
+            // Get all products associated with the price plans
+            $pricePlanIds = collect($productsData)->pluck('price_plan_id')->unique();
+            $products = Product::whereIn(
+                'id',
+                PricePlan::whereIn('id', $pricePlanIds)->pluck('product_id')
+            )->get();
+
+            if ($products->isEmpty()) {
+                throw new \Exception('No products found for the provided price plans');
+            }
+
+            // Loop through products to all gateways
+            foreach ($products as $product) {
+                foreach ($organizationGateways as $orgGateway) {
+                    $gatewayData = [
+                        'id' => $orgGateway->id,
+                        'payment_gateway_id' => $orgGateway->payment_gateway_id,
+                        'gateway_name' => $orgGateway->paymentGateway->name,
+                        'status' => $orgGateway->status,
+                    ];
+
+                    // Check if gateway is Universal Control Number
+                    if (strtolower($orgGateway->paymentGateway->name) === 'universal control number') {
+                        // Fetch merchant record
+                        $merchant = $orgGateway->merchants()->first();
+
+                        if (!$merchant) {
+                            throw new \Exception('Merchant not found for Universal Control Number gateway');
+                        }
+                        // Create control number for each product
+                        $gatewayData['references'] = [];
+
+                        $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
+
+                        if (!$controlNumberData['success']) {
+                            throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
+                        }
+                        $gatewayData['references'] = $controlNumberData['control_number']['reference'];
+                    } elseif (strtolower($orgGateway->paymentGateway->name) === 'flutterwave') {
+                        $flutterwaveData = $this->createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway);
+                        $gatewayData['references'] = $flutterwaveData['success']
+                            ? $flutterwaveData['control_number']['reference']
+                            : [];
+                    } elseif (strtolower($orgGateway->paymentGateway->name) === 'stripe') {
+                        $stripeData = $this->createStripeReference($invoice, $product, $customer, $request, $orgGateway);
+                        $gatewayData['references'] = $stripeData['success']
+                            ? $stripeData['control_number']['reference']
+                            : [];
+                    } else {
+                        $gatewayData['references'] = [];
+                    }
+                    $paymentGateways[$product->id][] = $gatewayData;
                 }
             }
 
@@ -577,7 +649,7 @@ class InvoiceController extends Controller
             }
 
             // Prepare request data
-            $requestId = "TERMINAL_" .$customer->id.$product->id;
+            $requestId = "TERMINAL_" . $customer->id . $product->id;
             $postData = [
                 "requestId" => $requestId,
                 "affiliateCode" => "ETZ",
@@ -593,7 +665,7 @@ class InvoiceController extends Controller
             // Generate secure hash
             $payloadPart = implode('', array_values($postData));
             $secureHash = $this->generateSecureHash($payloadPart);
-            
+
             if (!$secureHash) {
                 return [
                     'success' => false,
@@ -1050,6 +1122,7 @@ class InvoiceController extends Controller
             'customer_name' => $invoice->customer->name,
             'customer_email' => $invoice->customer->email,
             'status' => $invoice->status,
+            'currency' => $invoice->currency,
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
             'tax_total' => $invoice->tax_total,
@@ -1101,6 +1174,7 @@ class InvoiceController extends Controller
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'status' => $invoice->status,
+            'currency' => $invoice->currency,
             'description' => $invoice->description,
             'subtotal' => $invoice->subtotal,
             'tax_breakdown' => $taxBreakdown,
@@ -1129,20 +1203,32 @@ class InvoiceController extends Controller
                 $controlNumbers = $controlNumbersMap[$mapKey] ?? collect();
 
                 // Map control numbers to payment gateways
-                $paymentGateways = $controlNumbers->map(function ($controlNumber) {
+                $paymentGateways = $controlNumbers
+                    ->filter(function ($controlNumber) use ($invoice) {
+                        return $this->shouldIncludeControlNumberForInvoice($controlNumber, $invoice->id);
+                    })
+                    ->map(function ($controlNumber) {
                     $integration = $controlNumber->organizationPaymentGatewayIntegration;
 
                     if (!$integration || !$integration->paymentGateway) {
                         return null;
                     }
 
-                    return [
+                    $gatewayName = (string) $integration->paymentGateway->name;
+
+                    $gatewayData = [
                         'id' => $integration->id,
                         'payment_gateway_id' => $integration->payment_gateway_id,
-                        'gateway_name' => $integration->paymentGateway->name,
+                        'gateway_name' => $gatewayName,
                         'status' => $integration->status,
                         'references' => $controlNumber->reference,
                     ];
+
+                    if (strtolower(trim($gatewayName)) === 'stripe') {
+                        $gatewayData['client_secret'] = $this->extractClientSecretFromControlNumberMetadata($controlNumber->metadata);
+                    }
+
+                    return $gatewayData;
                 })->filter()->values();
 
                 return [
@@ -1185,6 +1271,69 @@ class InvoiceController extends Controller
         ];
     }
 
+    private function shouldIncludeControlNumberForInvoice($controlNumber, $invoiceId): bool
+    {
+        $integration = $controlNumber->organizationPaymentGatewayIntegration;
+
+        if (!$integration || !$integration->paymentGateway) {
+            return false;
+        }
+
+        $gatewayName = strtolower(trim((string) $integration->paymentGateway->name));
+
+        // Keep existing UCN mapping behavior (customer + product based)
+        if ($gatewayName === 'universal control number') {
+            return true;
+        }
+
+        // Flutterwave and Stripe are invoice-scoped via metadata
+        if ($gatewayName === 'flutterwave' || $gatewayName === 'stripe') {
+            $metadataInvoiceId = $this->extractInvoiceIdFromControlNumberMetadata($controlNumber->metadata);
+
+            if ($metadataInvoiceId === null) {
+                return false;
+            }
+
+            return (int) $metadataInvoiceId === (int) $invoiceId;
+        }
+
+        return true;
+    }
+
+    private function extractInvoiceIdFromControlNumberMetadata($metadata): ?int
+    {
+        $metadata = $this->normalizeControlNumberMetadata($metadata);
+
+        // Supports new structure: {"meta": {"invoice_id": ...}}
+        // and legacy structure: {"invoice_id": ...}
+        $invoiceId = data_get($metadata, 'meta.invoice_id', data_get($metadata, 'invoice_id'));
+
+        return is_numeric($invoiceId) ? (int) $invoiceId : null;
+    }
+
+    private function extractClientSecretFromControlNumberMetadata($metadata): ?string
+    {
+        $metadata = $this->normalizeControlNumberMetadata($metadata);
+
+        $clientSecret = data_get(
+            $metadata,
+            'client_secret',
+            data_get($metadata, 'meta.client_secret', data_get($metadata, 'payment_intent.client_secret'))
+        );
+
+        return is_string($clientSecret) && trim($clientSecret) !== '' ? $clientSecret : null;
+    }
+
+    private function normalizeControlNumberMetadata($metadata): array
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($metadata) ? $metadata : [];
+    }
+
     /**
      * Get all invoices for a given product ID
      * GET /api/invoices?product_id={id}
@@ -1198,8 +1347,8 @@ class InvoiceController extends Controller
         $invoices = Invoice::whereHas('invoiceItems', function ($query) use ($request) {
             $query->where('product_id', $request->product_id);
         })
-        ->where('status', '!=', 'cancelled')
-        ->get();
+            ->where('status', '!=', 'cancelled')
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -1399,5 +1548,312 @@ class InvoiceController extends Controller
             default:
                 return now()->addMonth(); // Default to monthly
         }
+    }
+
+    public function createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway)
+    {
+        try {
+            // $existingControlNumber = ControlNumber::where('product_id', $product->id)
+            //     ->where('customer_id', $customer->id)
+            //     ->where('organization_payment_gateway_integration_id', $orgGateway->id)
+            //     ->first();
+
+            // if ($existingControlNumber) {
+            //     return [
+            //         'success' => true,
+            //         'control_number' => [
+            //             'id' => $existingControlNumber->id,
+            //             'reference' => $existingControlNumber->reference,
+            //             'metadata' => $existingControlNumber->metadata,
+            //             'created_at' => $existingControlNumber->created_at,
+            //         ],
+            //         'message' => 'Existing flutterwave reference returned',
+            //     ];
+            // }
+
+            $flutterwaveService = new FlutterwaveService();
+        // dd($this->resolveBearerToken());
+
+            if (!$flutterwaveService->isActive()) {
+                Log::warning('Flutterwave gateway not active', [
+                    'invoice_id' => $invoice->id,
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Flutterwave gateway not configured or inactive',
+                ];
+            }
+
+            // $resolvedFlutterwaveCustomerId =  $request->input('flutterwave_customer_id');
+            $resolvedFlutterwaveCustomerId = 'cus_WU8C56hDji' ;// $request->input('flutterwave_customer_id');
+
+         
+            if (!$resolvedFlutterwaveCustomerId) {
+                $customerEmail = $customer->email ?: 'customer@example.com';
+                $validatedPhone = $this->validatePhone((string) $customer->phone);
+                $phonePayload = null;
+
+                if ($validatedPhone !== false) {
+                    $phonePayload = [
+                        'country_code' => $validatedPhone['country_code'],
+                        'number' => $validatedPhone['national_number'],
+                    ];
+                }
+
+                $existingCustomers = $flutterwaveService->searchCustomers($customerEmail, 1, 10);
+                if (!empty($existingCustomers['data'][0])) {
+                    $resolvedFlutterwaveCustomerId = $existingCustomers['data'][0]->id;
+                } else {
+                    $nameParts = preg_split('/\s+/', trim((string) $customer->name)) ?: ['Customer'];
+                    $createdCustomer = $flutterwaveService->createCustomer(new CreateCustomerRequest(
+                        email: $customerEmail,
+                        name: [
+                            'first' => $nameParts[0] ?? 'Customer',
+                            'last' => $nameParts[1] ?? 'User',
+                        ],
+                        phone: $phonePayload,
+                        meta: [
+                            'local_customer_id' => $customer->id,
+                            'organization_id' => $customer->organization_id,
+                        ]
+                    ));
+
+                    $resolvedFlutterwaveCustomerId = $createdCustomer->id;
+                }
+            }
+           
+
+            $resolvedPaymentMethodId = 'pmd_MxRH2NMrGs'; //TESTING - Remove this line in production
+
+            if (!$resolvedPaymentMethodId) {
+                $providedPaymentMethod = $request->input('flutterwave_payment_method', []);
+                $paymentMethodType = (string) ($providedPaymentMethod['type'] ?? 'card');
+                $paymentMethodPayload = (array) ($providedPaymentMethod['payload'] ?? []);
+
+                if (strtolower($paymentMethodType) === 'card') {
+                    $paymentMethodPayload = array_merge(
+                        $this->generateRandomCardTestPayload(),
+                        $paymentMethodPayload
+                    );
+                }
+                $createdPaymentMethod = $flutterwaveService->createPaymentMethod(new CreatePaymentMethodRequest(
+                    type: $paymentMethodType,
+                    paymentData: $paymentMethodPayload,
+                    customerId: $resolvedFlutterwaveCustomerId,
+                    meta: [
+                        'invoice_id' => $invoice->id,
+                        'invoice_number' => $invoice->invoice_number,
+                    ],
+                ));
+                
+
+                $resolvedPaymentMethodId = $createdPaymentMethod->id;
+            }
+          
+            $orderReference = $invoice->invoice_number . '-' . $product->id . '-' . str_replace('.', '', (string) microtime(true));
+            $orderMeta = [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'local_customer_id' => $customer->id,
+                'flutterwave_customer_id' => $resolvedFlutterwaveCustomerId,
+                'flutterwave_payment_method_id' => $resolvedPaymentMethodId,
+                'organization_id' => $customer->organization_id,
+                'product_id' => $product->id,
+            ];
+
+            $order = $flutterwaveService->createOrder(new CreateOrderRequest(
+                amount: (float) $invoice->total,
+                currency: (string) ($invoice->currency ?: 'TZS'),
+                reference: $orderReference,
+                customerId: $resolvedFlutterwaveCustomerId,
+                paymentMethodId: $resolvedPaymentMethodId,
+                redirectUrl: $request->success_url ?: config('app.url') . '/payment/callback',
+                meta: $orderMeta,
+                merchantVatAmount: (float) $invoice->tax_total,
+            ));
+            $flutterwaveData = $order->toArray();
+            $txRef = $order->reference ?: $orderReference;
+            $paymentLink = $order->redirectUrl();
+
+            if (empty($order->id)) {
+                Log::warning('Flutterwave order creation returned empty id', [
+                    'invoice_id' => $invoice->id,
+                    'reference' => $orderReference,
+                    'response' => $flutterwaveData,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Payment order creation failed',
+                ];
+            }
+
+            $controlNumber = ControlNumber::create([
+                'customer_id' => $customer->id,
+                'reference' => $txRef,
+                'organization_payment_gateway_integration_id' => $orgGateway->id,
+                'product_id' => $product->id,
+                'metadata' => json_encode([
+                    'order_id' => $order->id,
+                    'payment_link' => $paymentLink,
+                    'reference' => $txRef,
+                    'status' => $order->status,
+                    'next_action' => $flutterwaveData['next_action'] ?? null,
+                    'processor_response' => $flutterwaveData['processor_response'] ?? null,
+                    'payment_method_details' => $flutterwaveData['payment_method_details'] ?? null,
+                    'billing_details' => $flutterwaveData['billing_details'] ?? null,
+                    'created_datetime' => $flutterwaveData['created_datetime'] ?? null,
+                    'expires_at' => $flutterwaveData['expires_at'] ?? null,
+                    'instructions' => 'Click the payment link to pay via card, mobile money, or bank transfer',
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'customer_id' => $customer->id,
+                    'organization_id' => $customer->organization_id,
+                    'product_id' => $product->id,
+                ]),
+            ]);
+
+            Log::info('Flutterwave payment link generated successfully', [
+                'invoice_id' => $invoice->id,
+                'order_id' => $order->id,
+                'payment_link' => $paymentLink,
+                'tx_ref' => $txRef,
+                'status' => $order->status,
+            ]);
+
+            return [
+                'success' => true,
+                'control_number' => [
+                    'id' => $controlNumber->id,
+                    'reference' => $controlNumber->reference,
+                    'metadata' => $controlNumber->metadata,
+                    'created_at' => $controlNumber->created_at,
+                ],
+                'message' => 'Flutterwave reference stored successfully',
+            ];
+        } catch (\Exception $e) {
+            Log::error('Flutterwave integration error', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while generating payment link',
+            ];
+        }
+    }
+
+    public function createStripeReference($invoice, $product, $customer, $request, $orgGateway)
+    {
+        try {
+            $paymentIntentService = app(PaymentIntentService::class);
+            
+
+           $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($invoice->currency ?: 'TZS'));
+            if ($stripeAmount <= 0 || (StripeAmountHelper::countDigits($stripeAmount)) > 8) {
+                Log::warning('Calculated Stripe amount is invalid', [
+                    'invoice_id' => $invoice->id,
+                    'calculated_amount' => $stripeAmount,
+                    'currency' => $invoice->currency,
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Invalid invoice total for Stripe PaymentIntent',
+                ];
+            }
+
+            $currency = strtolower((string) ($invoice->currency ?: 'TZS'));
+            $orderId = $invoice->invoice_number . '-' . $product->id;
+            $intent = $paymentIntentService->create([
+                'amount' => $stripeAmount,
+                'currency' => $currency,
+                'description' => 'Invoice ' . $invoice->invoice_number . ' payment',
+                'receipt_email' => $customer->email,
+                'metadata' => [
+                    'order_id' => $orderId,
+                    'user_id' => (string) $customer->id,
+                    'invoice_id' => (string) $invoice->id,
+                    'invoice_number' => (string) $invoice->invoice_number,
+                    'organization_id' => (string) $customer->organization_id,
+                    'product_id' => (string) $product->id,
+                ],
+            ]);
+
+            $reference = (string) ($intent->id ?: $orderId);
+
+            $controlNumber = ControlNumber::create([
+                'customer_id' => $customer->id,
+                'reference' => $reference,
+                'organization_payment_gateway_integration_id' => $orgGateway->id,
+                'product_id' => $product->id,
+                'metadata' => json_encode([
+                    'payment_intent_id' => $intent->id,
+                    'client_secret' => $intent->client_secret,
+                    'status' => $intent->status,
+                    'amount' => $intent->amount,
+                    'currency' => $intent->currency,
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'customer_id' => $customer->id,
+                    'organization_id' => $customer->organization_id,
+                    'product_id' => $product->id,
+                    'meta' => [
+                        'invoice_id' => $invoice->id,
+                    ],
+                ]),
+            ]);
+
+            return [
+                'success' => true,
+                'control_number' => [
+                    'id' => $controlNumber->id,
+                    'reference' => $controlNumber->reference,
+                    'metadata' => $controlNumber->metadata,
+                    'created_at' => $controlNumber->created_at,
+                ],
+                'message' => 'Stripe PaymentIntent reference stored successfully',
+            ];
+        } catch (ApiErrorException $e) {
+            Log::error('Stripe integration error while creating reference', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Stripe error while generating payment reference',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Unexpected Stripe reference error', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'An error occurred while generating Stripe payment reference',
+            ];
+        }
+    }
+
+    private function generateRandomCardTestPayload(): array
+    {
+        $month = str_pad((string) random_int(1, 12), 2, '0', STR_PAD_LEFT);
+        $year = (string) random_int((int) Carbon::now()->format('Y') + 1, (int) Carbon::now()->format('Y') + 8);
+        $cardNumber = '4' . str_pad((string) random_int(0, 999999999999999), 15, '0', STR_PAD_LEFT);
+        $cvv = str_pad((string) random_int(0, 999), 3, '0', STR_PAD_LEFT);
+
+        return [
+            'card_number' => '5505580003319001',
+            'expiry_month' => '02',
+            'expiry_year' => '2030',
+            'cvv' => 761,
+            'cof' => [
+                'enabled' => false,
+            ],
+        ];
     }
 }

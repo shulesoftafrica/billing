@@ -20,8 +20,9 @@ use App\Http\Controllers\Api\TaxRateController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
-use App\Http\Controllers\PaymentGatewayTestController;
-use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Api\PaymentGatewayTestController;
+use App\Http\Controllers\StripeWebhookController;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 
@@ -292,17 +293,22 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
+
+Route::post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']); // gen hash for flutterwave payloads, useful for testing and verification
+
 // Public webhook routes (no authentication needed)
-Route::prefix('webhooks')->group(function () {
-    Route::post('unc-payment', [WebhookController::class, 'handleUNCPayment']);
-    Route::post('stripe', [WebhookController::class, 'handleStripeWebhook']);
-    Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']);
-    Route::post('test', [WebhookController::class, 'handleTestWebhook']);
+Route::middleware('throttle:30,1')->group(function () {
+    Route::prefix('webhooks')->group(function () {
+        Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
+        Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
+        Route::post('stripe', StripeWebhookController::class); //stripe
+    });
 });
 
 // Payment endpoints
-Route::get('payments/by-invoice/{invoice_id}', [\App\Http\Controllers\Api\PaymentController::class, 'getByInvoice']);
-Route::get('payments', [\App\Http\Controllers\Api\PaymentController::class, 'getByDateRange']);
-Route::get('payments/verify/{transaction_id}', [\App\Http\Controllers\Api\PaymentController::class, 'verifyFlutterwavePayment']);
-Route::get('invoices', [\App\Http\Controllers\Api\InvoiceController::class, 'getByProduct']);
+Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
+Route::get('payments', [PaymentController::class, 'getByDateRange']);
+Route::post('payments/intent', [PaymentController::class, 'createIntent']);
+Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
+Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
 Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);

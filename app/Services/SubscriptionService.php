@@ -176,6 +176,7 @@ class SubscriptionService
         $invoice = Invoice::create([
             'customer_id' => $customer->id,
             'invoice_number' => $invoiceNumber,
+            'currency' => strtoupper((string) ($pricePlans->first()?->currency ?? 'TZS')),
             'status' => 'issued',
             'description' => 'Subscription invoice for ' . count($pricePlans) . ' plan(s)',
             'subtotal' => $subtotal,
@@ -431,6 +432,16 @@ class SubscriptionService
             // Step 5: Check the total payments against the invoiced amount
             $totalPaid = InvoicePayment::where('invoice_id', $invoice_id)->sum('amount');
             $balance = $invoicedAmount - $totalPaid;
+             Log:info('Calculating total payments for subscription enablement', [
+                'customer_id' => $customerId,
+                'product_id' => $productId,
+                'pending_payments_sum' => $pendingPaymentsSum,
+                'advance_payments_sum' => $advancePaymentsSum,
+                'total_payments' => $totalPayments,
+                'invoiced_amount' => $invoicedAmount,
+                'balance'=>$balance,
+                'payment'=>$payment
+            ]);
             // Now use $balance as the invoiced amount
             // Step 6: Compare and execute logic
             if ($totalPayments == $balance) {
@@ -1066,6 +1077,7 @@ class SubscriptionService
             $newInvoice = Invoice::create([
                 'customer_id' => $customerId,
                 'invoice_number' => $this->generateInvoiceNumber(),
+                'currency' => strtoupper((string) ($lastSubscription->PricePlan->currency ?? 'TZS')),
                 'status' => 'issued',
                 'description' => 'Excess payment invoice for product usage',
                 'subtotal' => $amount,

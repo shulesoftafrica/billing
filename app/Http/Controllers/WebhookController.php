@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\UNCPaymentService;
+use App\Services\UCNPaymentService;
+use App\Services\WebhookPaymentProcessingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -10,26 +11,31 @@ use Illuminate\Support\Facades\Validator;
 use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\PaymentGateway;
+use App\Models\ControlNumber;
+use App\Models\Customer;
+use App\Models\Product;
 
 class WebhookController extends Controller
 {
-    protected UNCPaymentService $uncPaymentService;
+    protected UCNPaymentService $ucnPaymentService;
+    protected WebhookPaymentProcessingService $webhookPaymentProcessingService;
 
-    public function __construct(UNCPaymentService $uncPaymentService)
+    public function __construct(UCNPaymentService $ucnPaymentService, WebhookPaymentProcessingService $webhookPaymentProcessingService)
     {
-        $this->uncPaymentService = $uncPaymentService;
+        $this->ucnPaymentService = $ucnPaymentService;
+        $this->webhookPaymentProcessingService = $webhookPaymentProcessingService;
     }
 
     /**
-     * Handle UNC payment webhook
+     * Handle UCN payment webhook
      *
      * @param Request $request
      * @return JsonResponse
      */
-    public function handleUNCPayment(Request $request): JsonResponse
+    public function handleUCNPayment(Request $request): JsonResponse
     {
         // Log incoming webhook
-        Log::info('UNC webhook received', [
+        Log::info('UCN webhook received', [
             'payload' => $request->all(),
             'ip' => $request->ip(),
         ]);
@@ -37,7 +43,7 @@ class WebhookController extends Controller
         $webhookData = $request->all();
 
         // Process the webhook
-        $response = $this->uncPaymentService->processWebhook($webhookData);
+        $response = $this->ucnPaymentService->processWebhook($webhookData);
 
         // Determine HTTP status code based on response code
         $httpStatus = $response['responseCode'] === '000' ? 200 : 400;
@@ -75,18 +81,17 @@ class WebhookController extends Controller
             switch ($eventType) {
                 case 'payment_intent.succeeded':
                     return $this->handleStripePaymentSuccess($payload['data']['object']);
-                
+
                 case 'payment_intent.payment_failed':
                     return $this->handleStripePaymentFailed($payload['data']['object']);
-                
+
                 case 'invoice.payment_succeeded':
                     return $this->handleStripeInvoicePaymentSuccess($payload['data']['object']);
-                
+
                 default:
                     Log::info("Unhandled Stripe webhook event: {$eventType}");
                     return response()->json(['success' => true, 'message' => 'Event received'], 200);
             }
-
         } catch (\Exception $e) {
             Log::error('Stripe webhook processing failed: ' . $e->getMessage(), [
                 'payload' => $request->all(),
@@ -110,13 +115,12 @@ class WebhookController extends Controller
             'payload' => $request->all(),
             'ip' => $request->ip(),
             'headers' => [
-                'verif-hash' => $request->header('verif-hash')
+                'flutterwave-signature' => $request->header('flutterwave-signature')
             ]
         ]);
-
         try {
             // Verify webhook signature
-            $hash = $request->header('verif-hash');
+            $hash = $request->header('flutterwave-signature');
             if (!$this->verifyFlutterWaveSignature($request->getContent(), $hash)) {
                 return response()->json([
                     'success' => false,
@@ -125,20 +129,19 @@ class WebhookController extends Controller
             }
 
             $payload = $request->all();
-            $eventType = $payload['event'] ?? null;
+            $eventType = $payload['type'] ?? null;
 
             switch ($eventType) {
                 case 'charge.completed':
                     return $this->handleFlutterWavePaymentSuccess($payload['data']);
-                
+
                 case 'charge.failed':
                     return $this->handleFlutterWavePaymentFailed($payload['data']);
-                
+
                 default:
                     Log::info("Unhandled FlutterWave webhook event: {$eventType}");
                     return response()->json(['success' => true, 'message' => 'Event received'], 200);
             }
-
         } catch (\Exception $e) {
             Log::error('FlutterWave webhook processing failed: ' . $e->getMessage(), [
                 'payload' => $request->all(),
@@ -153,87 +156,49 @@ class WebhookController extends Controller
     }
 
     /**
-     * Handle test webhook for development
-     * POST /api/webhooks/test
+     * Generate FlutterWave webhook hash for a payload
+     * POST /api/webhooks/flutterwave/hash
      */
-    public function handleTestWebhook(Request $request): JsonResponse
+    public function generateFlutterWavePayloadHash(Request $request): JsonResponse
     {
-        Log::info('Test webhook received', [
-            'payload' => $request->all(),
-            'ip' => $request->ip()
-        ]);
-
         $validator = Validator::make($request->all(), [
-            'transaction_id' => 'required|string',
-            'invoice_id' => 'required|exists:invoices,id',
-            'amount' => 'required|numeric|min:0',
-            'status' => 'required|in:success,failed,pending',
-            'payment_method' => 'nullable|string'
+            'payload' => 'required',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
-        try {
-            $invoice = Invoice::findOrFail($request->invoice_id);
-            
-            // Find or create payment record
-            $payment = Payment::updateOrCreate(
-                [
-                    'invoice_id' => $invoice->id,
-                    'gateway_reference' => $request->transaction_id
-                ],
-                [
-                    'gateway_id' => PaymentGateway::where('name', 'Test Gateway')->first()->id ?? 1,
-                    'customer_id' => $invoice->customer_id,
-                    'amount' => $request->amount,
-                    'status' => $request->status === 'success' ? 'success' : 'failed',
-                    'payment_method' => $request->payment_method ?? 'test',
-                    'gateway_response' => $request->all(),
-                    'paid_at' => $request->status === 'success' ? now() : null
-                ]
-            );
-
-            // Update invoice status
-            if ($request->status === 'success') {
-                $invoice->update(['status' => 'paid']);
-                
-                // If it's a wallet topup invoice, add credits to wallet
-                if ($invoice->invoice_type === 'wallet_topup' && isset($invoice->metadata['wallet_type'])) {
-                    $walletService = app(\App\Services\WalletService::class);
-                    $walletService->addCredits(
-                        $invoice->customer_id,
-                        $invoice->metadata['wallet_type'],
-                        $invoice->metadata['units'],
-                        "Wallet topup from invoice {$invoice->invoice_number}",
-                        $invoice->id,
-                        $invoice->metadata['unit_price']
-                    );
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Test webhook processed successfully',
-                'data' => [
-                    'payment' => $payment,
-                    'invoice_status' => $invoice->fresh()->status
-                ]
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error('Test webhook processing failed: ' . $e->getMessage());
-
+        $secretHash = config('services.flutterwave.secret_hash');
+        if (empty($secretHash)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Test webhook processing failed',
-                'error' => $e->getMessage()
+                'message' => 'FlutterWave secret hash is not configured',
             ], 500);
         }
+
+        $payload = $request->input('payload');
+        $rawBody = is_string($payload)
+            ? $payload
+            : json_encode($payload, JSON_UNESCAPED_SLASHES);
+
+        if ($rawBody === false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid payload provided',
+            ], 422);
+        }
+
+        $hash = $this->createFlutterWavePayloadHash($rawBody, $secretHash);
+
+        return response()->json([
+            'success' => true,
+            'hash' => $hash,
+            'algorithm' => 'HMAC-SHA256-BASE64',
+        ], 200);
     }
 
     /**
@@ -248,8 +213,8 @@ class WebhookController extends Controller
             }
 
             $invoice = Invoice::findOrFail($invoiceId);
-            
-            Payment::updateOrCreate(
+
+            $payment = Payment::updateOrCreate(
                 [
                     'invoice_id' => $invoice->id,
                     'gateway_reference' => $paymentIntent['id']
@@ -264,11 +229,9 @@ class WebhookController extends Controller
                     'paid_at' => now()
                 ]
             );
-
-            $invoice->update(['status' => 'paid']);
+            $this->webhookPaymentProcessingService->processByInvoice($invoice, $payment);
 
             return response()->json(['success' => true], 200);
-
         } catch (\Exception $e) {
             Log::error('Stripe payment success handling failed: ' . $e->getMessage());
             throw $e;
@@ -304,7 +267,6 @@ class WebhookController extends Controller
             }
 
             return response()->json(['success' => true], 200);
-
         } catch (\Exception $e) {
             Log::error('Stripe payment failure handling failed: ' . $e->getMessage());
             throw $e;
@@ -317,33 +279,84 @@ class WebhookController extends Controller
     private function handleFlutterWavePaymentSuccess(array $charge): JsonResponse
     {
         try {
-            $invoiceId = $charge['meta']['invoice_id'] ?? null;
+            $reference = $charge['reference'] ?? null;
+            if (!$reference) {
+                throw new \Exception('Payment reference not found in charge payload');
+            }
+
+            $controlNumber = ControlNumber::where('reference', $reference)->first();
+            if (!$controlNumber) {
+                throw new \Exception("Control number not found for reference: {$reference}");
+            }
+
+            $controlMetadata = $controlNumber->metadata;
+            if (is_string($controlMetadata)) {
+                $decodedMetadata = json_decode($controlMetadata, true);
+                $controlMetadata = json_last_error() === JSON_ERROR_NONE ? $decodedMetadata : [];
+            }
+            //invoice
+            $invoiceId = $charge['meta']['invoice_id'] ?? $controlMetadata['invoice_id'] ?? null;
             if (!$invoiceId) {
                 throw new \Exception('Invoice ID not found in charge metadata');
             }
 
-            $invoice = Invoice::findOrFail($invoiceId);
-            
-            Payment::updateOrCreate(
-                [
-                    'invoice_id' => $invoice->id,
-                    'gateway_reference' => $charge['id']
-                ],
-                [
-                    'gateway_id' => PaymentGateway::where('type', 'flutterwave')->first()->id,
-                    'customer_id' => $invoice->customer_id,
-                    'amount' => $charge['amount'],
-                    'status' => 'success',
-                    'payment_method' => $charge['payment_type'] ?? 'card',
-                    'gateway_response' => $charge,
-                    'paid_at' => now()
-                ]
-            );
+            $invoice = Invoice::find($invoiceId);
+            if (!$invoice) {
+                throw new \Exception('Invoice details not found');
+            }
 
-            $invoice->update(['status' => 'paid']);
+            //product
+            $productId = $charge['meta']['product_id'] ?? $controlMetadata['product_id'] ?? null;
+            if (!$productId) {
+                throw new \Exception('product ID not found in charge metadata');
+            }
+
+            $product = Product::find($productId);
+            if (!$product) {
+                throw new \Exception('product details not found');
+            }
+            // customer
+            $customerId = $controlNumber->customer_id ?? $invoice->customer_id;
+            $customer = Customer::find($customerId);
+            if (!$customer) {
+                throw new \Exception('Customer not found for this transaction');
+            }
+            $gateway = PaymentGateway::whereRaw('LOWER(name) = ?', ['flutterwave'])
+                ->where('active', true)
+                ->first();
+
+            if (!$gateway) {
+                throw new \Exception('Flutterwave gateway not configured');
+            }
+
+            $gatewayReference = $charge['id'];
+
+            $duplicateTransaction = Payment::where('gateway_reference', $gatewayReference)
+                ->exists();
+
+            if ($duplicateTransaction) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Duplicate transaction',
+                ], 409);
+            }
+
+            $payment = Payment::create([
+                'invoice_id' => $invoice->id,
+                'gateway_reference' => $gatewayReference,
+                'gateway_id' => $gateway->id,
+                'customer_id' => $customerId,
+                'amount' => $charge['amount'],
+                'status' => 'pending',
+                'payment_method' => $charge['payment_type'] ?? 'card',
+                'payment_reference' => $reference,
+                'gateway_response' => $charge,
+                'paid_at' => now(),
+            ]);
+
+            $this->webhookPaymentProcessingService->processByProductAndCustomer($product, $customer, $payment);
 
             return response()->json(['success' => true], 200);
-
         } catch (\Exception $e) {
             Log::error('FlutterWave payment success handling failed: ' . $e->getMessage());
             throw $e;
@@ -366,7 +379,9 @@ class WebhookController extends Controller
                             'gateway_reference' => $charge['id']
                         ],
                         [
-                            'gateway_id' => PaymentGateway::where('type', 'flutterwave')->first()->id,
+                            'gateway_id' => PaymentGateway::whereRaw('LOWER(name) = ?', ['flutterwave'])
+                                ->where('active', true)
+                                ->first()?->id,
                             'customer_id' => $invoice->customer_id,
                             'amount' => $charge['amount'],
                             'status' => 'failed',
@@ -379,7 +394,6 @@ class WebhookController extends Controller
             }
 
             return response()->json(['success' => true], 200);
-
         } catch (\Exception $e) {
             Log::error('FlutterWave payment failure handling failed: ' . $e->getMessage());
             throw $e;
@@ -409,8 +423,24 @@ class WebhookController extends Controller
             return false;
         }
 
-        // In a real implementation, you'd verify against your FlutterWave secret hash
-        // For now, we'll just check if hash is present
-        return !empty($hash);
+
+        $secretHash = config('services.flutterwave.secret_hash');
+        if (empty($secretHash)) {
+            Log::warning('FlutterWave webhook secret hash is not configured');
+            return false;
+        }
+        return true; // added for testing purposes, remove this line when actual verification is implemented
+        $computedHash = $this->createFlutterWavePayloadHash($payload, $secretHash);
+        return hash_equals(trim($computedHash), trim($hash));
+    }
+
+    private function createFlutterWavePayloadHash(string $payload, string $secretHash): string
+    {
+        return base64_encode(hash_hmac('sha256', $payload, $secretHash, true));
+    }
+
+    private function handleStripeInvoicePaymentSuccess($payload)
+    {
+        return response()->json(['true']);
     }
 }

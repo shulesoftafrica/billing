@@ -20,37 +20,36 @@ class OrganizationController extends Controller
     public function index()
     {
         $organizations = Organization::with(['country'])->get();
-        
+
         $organizationsData = [];
-        
+
         foreach ($organizations as $organization) {
             // Fetch payment gateways with configurations and merchants
             $paymentGatewayDetails = [];
-            
+
             $gateways = DB::table('organization_payment_gateway_integrations as opgi')
                 ->join('payment_gateways as pg', 'opgi.payment_gateway_id', '=', 'pg.id')
                 ->where('opgi.organization_id', $organization->id)
                 ->select('pg.*', 'opgi.id as integration_id')
                 ->get();
-            
+
             foreach ($gateways as $gateway) {
                 // Get configuration
                 $configuration = DB::table('configurations')
                     ->where('organization_id', $organization->id)
                     ->where('payment_gateway_id', $gateway->id)
                     ->first();
-                
+
                 // Get merchant (only for UCN)
                 $merchant = DB::table('merchants')
                     ->where('organization_payment_gateway_integration_id', $gateway->integration_id)
                     ->first();
-                
+
                 // Build gateway data
                 $gatewayData = [
                     'id' => $gateway->id,
                     'name' => $gateway->name,
                     'type' => $gateway->type,
-                    'webhook_secret' => $gateway->webhook_secret,
                     'config' => json_decode($gateway->config),
                     'active' => (bool)$gateway->active,
                     'created_at' => $gateway->created_at,
@@ -58,16 +57,16 @@ class OrganizationController extends Controller
                     'configuration' => $configuration,
                     'merchants' => $merchant,
                 ];
-                
+
                 $paymentGatewayDetails[] = $gatewayData;
             }
-            
+
             $organizationsData[] = [
                 'organization_detail' => $organization,
                 'payment_gateways' => $paymentGatewayDetails,
             ];
         }
-        
+
         return response()->json([
             'success' => true,
             'data' => $organizationsData
@@ -127,7 +126,7 @@ class OrganizationController extends Controller
     /**
      * Integrate payment gateway with organization
      * Supported gateways: Universal Control Number (UCN), Stripe, PayPal, Flutterwave
-     * Currently implemented: UCN only
+     * Currently implemented: UCN, Stripe, Flutterwave
      */
     public function integratePaymentGateway(Request $request)
     {
@@ -165,24 +164,18 @@ class OrganizationController extends Controller
 
             // Route to appropriate gateway integration method
             $gatewayName = strtolower($gateway->name);
-            
+
             if ($gatewayName === 'universal control number' || $gatewayName === 'ucn') {
                 $result = $this->integrateUCN($organization, $gateway, $request->endpoint);
             } elseif ($gatewayName === 'stripe') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Stripe integration is not yet implemented. Coming soon.'
-                ], 422);
+                $result = $this->integrateStripe($organization, $gateway, $request->endpoint);
             } elseif ($gatewayName === 'paypal') {
                 return response()->json([
                     'success' => false,
                     'message' => 'PayPal integration is not yet implemented. Coming soon.'
                 ], 422);
             } elseif ($gatewayName === 'flutterwave') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Flutterwave integration is not yet implemented. Coming soon.'
-                ], 422);
+                $result = $this->integrateFlutterWave($organization, $gateway, $request->endpoint);
             } else {
                 return response()->json([
                     'success' => false,
@@ -286,7 +279,7 @@ class OrganizationController extends Controller
         ]);
 
         $configuration = DB::table('configurations')->where('id', $configurationId)->first();
-    
+
 
         // Step 6: Create UCN merchant via EcoBank API
         /*
@@ -304,7 +297,7 @@ class OrganizationController extends Controller
             'qr_code' => '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',
             'terminal_id' => '26561424',
             'terminal_name' => 'ShuleSoft High School',
-            'secret_key'=>'I._avb?1ph',
+            'secret_key' => 'I._avb?1ph',
 
         ];
         // $merchantData = $this->createMerchantQR($organization, $bankAccount->account_number);
@@ -387,7 +380,7 @@ class OrganizationController extends Controller
 
         // Get token
         $token = $this->createEcobankToken($baseUrl, $origin, $username, $password, $labId);
-       
+
         if ($token == 0) {
             return 'Failed to get EcoBank token';
         }
@@ -651,5 +644,111 @@ class OrganizationController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : 'An error occurred while deleting the organization',
             ], 500);
         }
+    }
+    /**
+     * Integrate Flutterwave gateway
+     *
+     * Mirrors UCN integration flow without virtual-account allocation,
+     * bank-account creation, and merchant creation.
+     *
+     * @param Organization $organization
+     * @param PaymentGateway $gateway
+     * @param string $endpoint API endpoint for the organization
+     * @return array Gateway details with configuration
+     * @throws Exception
+     */
+    private function integrateFlutterWave($organization, $gateway, $endpoint)
+    {
+        // Step 1: Create organization_payment_gateway_integration (no bank account for Flutterwave)
+        $integrationId = DB::table('organization_payment_gateway_integrations')->insertGetId([
+            'payment_gateway_id' => $gateway->id,
+            'organization_id' => $organization->id,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Step 2: Create configurations
+        $apiKey = $this->generateApiKey();
+        $signatureKey = $this->generateSignatureKey();
+
+        $configurationId = DB::table('configurations')->insertGetId([
+            'env' => 'testing',
+            'config' => json_encode([
+                'api_key' => $apiKey,
+                'signature_key' => $signatureKey,
+                'api_endpoint' => $endpoint,
+            ]),
+            'organization_id' => $organization->id,
+            'payment_gateway_id' => $gateway->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $configuration = DB::table('configurations')->where('id', $configurationId)->first();
+
+        // Step 3: Ensure integration status is active
+        DB::table('organization_payment_gateway_integrations')
+            ->where('id', $integrationId)
+            ->update(['status' => 'active']);
+
+        // Build and return gateway details
+        $gatewayDetails = $gateway->toArray();
+        $gatewayDetails['configuration'] = $configuration;
+        return $gatewayDetails;
+    }
+
+    /**
+     * Integrate Stripe gateway
+     *
+     * Mirrors Flutterwave integration flow:
+     * creates integration + configuration without bank-account allocation
+     * and merchant creation.
+     *
+     * @param Organization $organization
+     * @param PaymentGateway $gateway
+     * @param string $endpoint API endpoint for the organization
+     * @return array Gateway details with configuration
+     * @throws Exception
+     */
+    private function integrateStripe($organization, $gateway, $endpoint)
+    {
+        // Step 1: Create organization_payment_gateway_integration (no bank account for Stripe)
+        $integrationId = DB::table('organization_payment_gateway_integrations')->insertGetId([
+            'payment_gateway_id' => $gateway->id,
+            'organization_id' => $organization->id,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Step 2: Create configurations
+        $apiKey = $this->generateApiKey();
+        $signatureKey = $this->generateSignatureKey();
+
+        $configurationId = DB::table('configurations')->insertGetId([
+            'env' => 'testing',
+            'config' => json_encode([
+                'api_key' => $apiKey,
+                'signature_key' => $signatureKey,
+                'api_endpoint' => $endpoint,
+            ]),
+            'organization_id' => $organization->id,
+            'payment_gateway_id' => $gateway->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $configuration = DB::table('configurations')->where('id', $configurationId)->first();
+
+        // Step 3: Ensure integration status is active
+        DB::table('organization_payment_gateway_integrations')
+            ->where('id', $integrationId)
+            ->update(['status' => 'active']);
+
+        // Build and return gateway details
+        $gatewayDetails = $gateway->toArray();
+        $gatewayDetails['configuration'] = $configuration;
+        return $gatewayDetails;
     }
 }

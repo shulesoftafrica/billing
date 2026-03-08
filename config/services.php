@@ -34,5 +34,15 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'flutterwave' => [
+        'encryption_key' => env('ENCRYPTION_KEY'),
+        'secret_hash' => env('FLUTTERWAVE_SECRET_HASH'),
+    ],
+
+    'stripe' => [
+        'secret' => env('STRIPE_SECRETE_KEY'),
+        'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'), 
+    ],
 
 ];
