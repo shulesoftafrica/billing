@@ -25,10 +25,10 @@ use App\Http\Controllers\Api\PaymentGatewayTestController;
 use App\Http\Controllers\StripeWebhookController;
 
 // Authentication routes - Public (no authentication, with strict rate limiting to prevent brute force)
-Route::middleware('throttle:5,1')->group(function () {
-    Route::post('auth/register', [AuthController::class, 'register']);
-    Route::post('auth/login', [AuthController::class, 'login']);
-});
+// Route::middleware('throttle:5,1')->group(function () {
+//     Route::post('auth/register', [AuthController::class, 'register']);
+//     Route::post('auth/login', [AuthController::class, 'login']);
+// });
 
 // Webhook routes - Public (no authentication, with strict rate limiting)
 
@@ -36,9 +36,9 @@ Route::middleware('throttle:5,1')->group(function () {
 // Protected API routes - all require APP_ACCESS_TOKEN authentication with rate limiting
 Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     // Auth routes
-    Route::post('auth/logout', [AuthController::class, 'logout']);
-    Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
-    Route::get('auth/me', [AuthController::class, 'me']);
+    // Route::post('auth/logout', [AuthController::class, 'logout']);
+    // Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
+    // Route::get('auth/me', [AuthController::class, 'me']);
 
     // User endpoint
     Route::get('/user', function (Request $request) {
