@@ -26,4 +26,5 @@ Thumbs.db
 /storage/logs
 /tests
 /postman-data
-*.md
+/*.md
+!/docs/*.md
