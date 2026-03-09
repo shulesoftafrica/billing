@@ -33,10 +33,8 @@ Route::middleware('throttle:5,1')->group(function () {
 // Webhook routes - Public (no authentication, with strict rate limiting)
 
 
-// Protected API routes - all require Sanctum authentication with rate limiting
-// Route::middleware(['auth:sanctum', 'throttle:30,1'])->group(function () {
-
-Route::middleware(['throttle:30,1'])->group(function () {
+// Protected API routes - all require APP_ACCESS_TOKEN authentication with rate limiting
+Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     // Auth routes
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
@@ -99,7 +97,7 @@ Route::middleware(['throttle:30,1'])->group(function () {
 
 
 // Wallet Management Routes (Phase 1 Implementation) - Protected
-Route::prefix('wallets')->group(function () {
+Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('wallets')->group(function () {
     Route::get('balance', [WalletController::class, 'getBalance']);
     Route::post('credit', [WalletController::class, 'addCredits']);
     Route::post('deduct', [WalletController::class, 'deductCredits']);
@@ -109,26 +107,26 @@ Route::prefix('wallets')->group(function () {
 });
 
 // Phase 2: Advanced Invoice Types - Protected
-Route::prefix('invoices')->group(function () {
+Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('invoices')->group(function () {
     Route::post('wallet-topup', [App\Http\Controllers\Api\InvoiceController::class, 'createWalletTopupInvoice']);
     Route::post('plan-upgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanUpgradeInvoice']);
     Route::post('plan-downgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanDowngradeInvoice']);
 });
 
 // Phase 2: Enhanced Customer Management - Protected
-Route::prefix('customers')->group(function () {
+Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('customers')->group(function () {
     Route::get('by-phone/{phone}/status', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); //okay
     Route::get('by-email/{email}/status', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']); //okay
 });
 
 // Phase 2: Payment Gateway Testing - Protected
-Route::prefix('payment-gateways')->group(function () {
+Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('payment-gateways')->group(function () {
     Route::get('test-connection', [PaymentGatewayTestController::class, 'testConnection']);
     Route::get('test-all-connections', [PaymentGatewayTestController::class, 'testAllConnections']);
 });
 
 
-Route::post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']); // gen hash for flutterwave payloads, useful for testing and verification
+Route::middleware(['app.access.token', 'throttle:30,1'])->post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']); // gen hash for flutterwave payloads, useful for testing and verification
 
 // Public webhook routes (no authentication needed)
 Route::middleware('throttle:30,1')->group(function () {
@@ -140,9 +138,11 @@ Route::middleware('throttle:30,1')->group(function () {
 });
 
 // Payment endpoints
-Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
-Route::get('payments', [PaymentController::class, 'getByDateRange']);
-Route::post('payments/intent', [PaymentController::class, 'createIntent']);
-Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
-Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
-Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);
+Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
+    Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
+    Route::get('payments', [PaymentController::class, 'getByDateRange']);
+    Route::post('payments/intent', [PaymentController::class, 'createIntent']);
+    Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
+    Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
+    Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);
+});

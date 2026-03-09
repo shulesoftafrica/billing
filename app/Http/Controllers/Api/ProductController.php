@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
@@ -73,7 +74,14 @@ class ProductController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|exists:organizations,id',
             'product_type_id' => 'required|exists:product_types,id',
-            'name' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('products')->where(function ($query) use ($request) {
+                    return $query->where('organization_id', $request->organization_id);
+                }),
+            ],
             'description' => 'nullable|string',
             'unit' => 'nullable|string|max:255',
             'status' => 'required|in:active,inactive,archived',
@@ -189,10 +197,33 @@ class ProductController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|required|exists:organizations,id',
             'product_type_id' => 'sometimes|required|exists:product_types,id',
-            'name' => 'sometimes|required|string|max:255',
+            'name' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('products')->where(function ($query) use ($request, $product) {
+                    $organizationId = $request->input('organization_id', $product->organization_id);
+
+                    return $query->where('organization_id', $organizationId);
+                })->ignore($product->id),
+            ],
             'description' => 'nullable|string',
             'status' => 'sometimes|required|in:active,inactive,archived',
         ]);
+
+        if ($request->has('organization_id') && !$request->has('name')) {
+            $validator->after(function ($validator) use ($request, $product) {
+                $exists = Product::where('organization_id', $request->organization_id)
+                    ->where('name', $product->name)
+                    ->where('id', '!=', $product->id)
+                    ->exists();
+
+                if ($exists) {
+                    $validator->errors()->add('name', 'The name has already been taken for this organization.');
+                }
+            });
+        }
 
         if ($validator->fails()) {
             return response()->json([

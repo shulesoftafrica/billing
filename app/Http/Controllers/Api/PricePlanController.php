@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\PricePlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class PricePlanController extends Controller
 {
@@ -46,8 +47,25 @@ class PricePlanController extends Controller
             ], 404);
         }
 
+        $subscriptionType = $request->input('subscription_type');
+
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('price_plans')->where(function ($query) use ($productId, $subscriptionType) {
+                    $query->where('product_id', $productId);
+
+                    if (is_null($subscriptionType)) {
+                        $query->whereNull('subscription_type');
+                    } else {
+                        $query->where('subscription_type', $subscriptionType);
+                    }
+
+                    return $query;
+                }),
+            ],
             'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
             'amount' => 'required|numeric|min:0',
             'currency' => 'nullable|string|min:2|max:5',
@@ -130,13 +148,53 @@ class PricePlanController extends Controller
             ], 404);
         }
 
+        $incomingName = $request->input('name', $pricePlan->name);
+        $incomingSubscriptionType = $request->has('subscription_type')
+            ? $request->input('subscription_type')
+            : $pricePlan->subscription_type;
+
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255',
+            'name' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('price_plans')->where(function ($query) use ($productId, $incomingSubscriptionType, $incomingName) {
+                    $query->where('product_id', $productId)
+                        ->where('name', $incomingName);
+
+                    if (is_null($incomingSubscriptionType)) {
+                        $query->whereNull('subscription_type');
+                    } else {
+                        $query->where('subscription_type', $incomingSubscriptionType);
+                    }
+
+                    return $query;
+                })->ignore($pricePlan->id),
+            ],
             'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
             'amount' => 'sometimes|required|numeric|min:0',
             'currency' => 'nullable|string|min:2|max:5',
             'rate' => 'nullable|integer|min:1',
         ]);
+
+        if ($request->has('subscription_type') && !$request->has('name')) {
+            $validator->after(function ($validator) use ($productId, $incomingName, $incomingSubscriptionType, $pricePlan) {
+                $query = PricePlan::where('product_id', $productId)
+                    ->where('name', $incomingName)
+                    ->where('id', '!=', $pricePlan->id);
+
+                if (is_null($incomingSubscriptionType)) {
+                    $query->whereNull('subscription_type');
+                } else {
+                    $query->where('subscription_type', $incomingSubscriptionType);
+                }
+
+                if ($query->exists()) {
+                    $validator->errors()->add('name', 'The name has already been taken for this product and subscription type.');
+                }
+            });
+        }
 
         if ($validator->fails()) {
             return response()->json([

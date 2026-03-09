@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\HandleCors;
+use App\Http\Middleware\AppAccessTokenMiddleware;
 use App\Exceptions\StripePaymentException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -18,6 +19,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // API requests should not use encrypted cookies or session
         $middleware->statefulApi();
+
+        $middleware->alias([
+            'app.access.token' => AppAccessTokenMiddleware::class,
+        ]);
         
         // Register CORS middleware for API routes
         $middleware->web(HandleCors::class);
@@ -27,7 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
-                    'message' => 'Unauthenticated. Please provide a valid Bearer token.',
+                    'message' => 'Unauthenticated',
                     'error' => 'authentication_required'
                 ], 401);
             }
