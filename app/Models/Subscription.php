@@ -31,6 +31,10 @@ class Subscription extends Model
     {
         return $this->belongsTo(PricePlan::class);
     }
+    public function invoice_item()
+    {
+        return $this->hasOne(InvoiceItem::class);
+    }
 
    
 }

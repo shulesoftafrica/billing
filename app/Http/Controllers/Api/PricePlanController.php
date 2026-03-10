@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\PricePlan;
-use App\Models\Currency;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class PricePlanController extends Controller
 {
@@ -25,7 +25,7 @@ class PricePlanController extends Controller
             ], 404);
         }
 
-        $pricePlans = $product->pricePlans()->with('currency')->get();
+        $pricePlans = $product->pricePlans()->get();
 
         return response()->json([
             'success' => true,
@@ -47,26 +47,30 @@ class PricePlanController extends Controller
             ], 404);
         }
 
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'billing_type' => 'required|in:one_time,recurring,usage',
-            'billing_interval' => 'required_if:billing_type,recurring|in:monthly,yearly',
-            'amount' => 'required|numeric|min:0',
-            'currency_code' => 'nullable|string|exists:currencies,code',
-            'currency_name' => 'nullable|string|exists:currencies,name',
-            'features' => 'nullable|array',
-            'active' => 'required|boolean',
-        ]);
+        $subscriptionType = $request->input('subscription_type');
 
-        // Custom validation: either currency_code or currency_name must be provided
-        $validator->after(function ($validator) use ($request) {
-            if (empty($request->input('currency_code')) && empty($request->input('currency_name'))) {
-                $validator->errors()->add('currency', 'Either currency_code or currency_name is required.');
-            }
-            if (!empty($request->input('currency_code')) && !empty($request->input('currency_name'))) {
-                $validator->errors()->add('currency', 'Provide either currency_code or currency_name, not both.');
-            }
-        });
+        $validator = Validator::make($request->all(), [
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('price_plans')->where(function ($query) use ($productId, $subscriptionType) {
+                    $query->where('product_id', $productId);
+
+                    if (is_null($subscriptionType)) {
+                        $query->whereNull('subscription_type');
+                    } else {
+                        $query->where('subscription_type', $subscriptionType);
+                    }
+
+                    return $query;
+                }),
+            ],
+            'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
+            'amount' => 'required|numeric|min:0',
+            'currency' => 'nullable|string|min:2|max:5',
+            'rate' => 'nullable|integer|min:1',
+        ]);
 
         if ($validator->fails()) {
             return response()->json([
@@ -75,31 +79,15 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $validatedData = $validator->validated();
-        
-        // Handle features as metadata
-        if (isset($validatedData['features'])) {
-            $validatedData['metadata'] = ['features' => $validatedData['features']];
-            unset($validatedData['features']);
-        }
-        
-        // Resolve currency_code or currency_name to currency_id
-        if (isset($validatedData['currency_code'])) {
-            $currency = Currency::where('code', $validatedData['currency_code'])->first();
-            if ($currency) {
-                $validatedData['currency_id'] = $currency->id;
-                unset($validatedData['currency_code']);
-            }
-        } elseif (isset($validatedData['currency_name'])) {
-            $currency = Currency::where('name', $validatedData['currency_name'])->first();
-            if ($currency) {
-                $validatedData['currency_id'] = $currency->id;
-                unset($validatedData['currency_name']);
-            }
-        }
+        $validated = $validator->validated();
 
-        $pricePlan = $product->pricePlans()->create($validatedData);
-        $pricePlan->load('currency');
+        $pricePlan = $product->pricePlans()->create([
+            'name' => $validated['name'],
+            'subscription_type' => $validated['subscription_type'] ?? null,
+            'amount' => $validated['amount'],
+            'currency' => $validated['currency'] ?? 'TZS',
+            'rate' => $validated['rate'] ?? 1,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -131,8 +119,6 @@ class PricePlanController extends Controller
             ], 404);
         }
 
-        $pricePlan->load('currency');
-
         return response()->json([
             'success' => true,
             'data' => $pricePlan
@@ -162,14 +148,53 @@ class PricePlanController extends Controller
             ], 404);
         }
 
+        $incomingName = $request->input('name', $pricePlan->name);
+        $incomingSubscriptionType = $request->has('subscription_type')
+            ? $request->input('subscription_type')
+            : $pricePlan->subscription_type;
+
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255',
-            'billing_type' => 'sometimes|required|in:one_time,recurring,usage',
-            'billing_interval' => 'sometimes|required_if:billing_type,recurring|in:monthly,yearly',
+            'name' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('price_plans')->where(function ($query) use ($productId, $incomingSubscriptionType, $incomingName) {
+                    $query->where('product_id', $productId)
+                        ->where('name', $incomingName);
+
+                    if (is_null($incomingSubscriptionType)) {
+                        $query->whereNull('subscription_type');
+                    } else {
+                        $query->where('subscription_type', $incomingSubscriptionType);
+                    }
+
+                    return $query;
+                })->ignore($pricePlan->id),
+            ],
+            'subscription_type' => 'nullable|in:daily,weekly,monthly,quarterly,semi_annually,yearly',
             'amount' => 'sometimes|required|numeric|min:0',
-            'currency_id' => 'sometimes|required|exists:currencies,id',
-            'active' => 'sometimes|required|boolean',
+            'currency' => 'nullable|string|min:2|max:5',
+            'rate' => 'nullable|integer|min:1',
         ]);
+
+        if ($request->has('subscription_type') && !$request->has('name')) {
+            $validator->after(function ($validator) use ($productId, $incomingName, $incomingSubscriptionType, $pricePlan) {
+                $query = PricePlan::where('product_id', $productId)
+                    ->where('name', $incomingName)
+                    ->where('id', '!=', $pricePlan->id);
+
+                if (is_null($incomingSubscriptionType)) {
+                    $query->whereNull('subscription_type');
+                } else {
+                    $query->where('subscription_type', $incomingSubscriptionType);
+                }
+
+                if ($query->exists()) {
+                    $validator->errors()->add('name', 'The name has already been taken for this product and subscription type.');
+                }
+            });
+        }
 
         if ($validator->fails()) {
             return response()->json([
@@ -178,8 +203,17 @@ class PricePlanController extends Controller
             ], 422);
         }
 
-        $pricePlan->update($validator->validated());
-        $pricePlan->load('currency');
+        $validated = $validator->validated();
+
+        // Prepare update data with defaults for optional fields
+        $updateData = [];
+        if (isset($validated['name'])) $updateData['name'] = $validated['name'];
+        if (isset($validated['subscription_type'])) $updateData['subscription_type'] = $validated['subscription_type'];
+        if (isset($validated['amount'])) $updateData['amount'] = $validated['amount'];
+        if (isset($validated['currency'])) $updateData['currency'] = $validated['currency'];
+        if (isset($validated['rate'])) $updateData['rate'] = $validated['rate'];
+
+        $pricePlan->update($updateData);
 
         return response()->json([
             'success' => true,

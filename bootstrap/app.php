@@ -3,8 +3,10 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\HandleCors;
+use App\Http\Middleware\AppAccessTokenMiddleware;
 use App\Exceptions\StripePaymentException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -15,27 +17,25 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // For API routes, don't redirect unauthenticated users
-        $middleware->redirectGuestsTo(function ($request) {
-            return $request->expectsJson() ? null : '/login';
-        });
-        
-        // Disable sessions for API routes (we use tokens)
+        // API requests should not use encrypted cookies or session
         $middleware->statefulApi();
+
+        $middleware->alias([
+            'app.access.token' => AppAccessTokenMiddleware::class,
+        ]);
+        
+        // Register CORS middleware for API routes
+        $middleware->web(HandleCors::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Handle authentication exceptions for API requests
-        $exceptions->render(function (AuthenticationException $e, $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+        // Return JSON response for unauthenticated API requests
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->is('api/*')) {
                 return response()->json([
-                    'success' => false,
                     'message' => 'Unauthenticated',
-                    'error' => 'Authentication required'
+                    'error' => 'authentication_required'
                 ], 401);
             }
-            
-            // For web requests, redirect to login (but we don't have one)
-            return redirect()->guest('/login');
         });
 
         $exceptions->render(function (StripePaymentException $e, Request $request) {

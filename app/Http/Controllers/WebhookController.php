@@ -156,52 +156,6 @@ class WebhookController extends Controller
     }
 
     /**
-     * Generate FlutterWave webhook hash for a payload
-     * POST /api/webhooks/flutterwave/hash
-     */
-    public function generateFlutterWavePayloadHash(Request $request): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'payload' => 'required',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        $secretHash = config('services.flutterwave.secret_hash');
-        if (empty($secretHash)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'FlutterWave secret hash is not configured',
-            ], 500);
-        }
-
-        $payload = $request->input('payload');
-        $rawBody = is_string($payload)
-            ? $payload
-            : json_encode($payload, JSON_UNESCAPED_SLASHES);
-
-        if ($rawBody === false) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid payload provided',
-            ], 422);
-        }
-
-        $hash = $this->createFlutterWavePayloadHash($rawBody, $secretHash);
-
-        return response()->json([
-            'success' => true,
-            'hash' => $hash,
-            'algorithm' => 'HMAC-SHA256-BASE64',
-        ], 200);
-    }
-
-    /**
      * Handle Stripe payment success
      */
     private function handleStripePaymentSuccess(array $paymentIntent): JsonResponse

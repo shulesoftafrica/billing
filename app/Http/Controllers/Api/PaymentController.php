@@ -5,8 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Payment;
-use App\Services\FlutterwaveService;
-use Illuminate\Support\Facades\Log;
 use App\Services\Stripe\PaymentIntentService;
 use Illuminate\Validation\ValidationException;
 
@@ -23,10 +21,22 @@ class PaymentController extends Controller
      */
     public function getByInvoice($invoice_id)
     {
-        $payments = Payment::where('invoice_id', $invoice_id)->get();
+        $payments = Payment::with([
+            'customer',
+            'paymentGateway',
+            'invoices' => function ($query) use ($invoice_id) {
+                $query->where('invoices.id', $invoice_id);
+            },
+        ])
+            ->whereHas('invoices', function ($query) use ($invoice_id) {
+                $query->where('invoices.id', $invoice_id);
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+
         return response()->json([
             'success' => true,
-            'data' => $payments
+            'data' => $this->formatPaymentsResponse($payments)
         ]);
     }
 
@@ -42,107 +52,37 @@ class PaymentController extends Controller
         ]);
         $customer =  request('customer_id') ?? null;
 
-        $payments = Payment::whereDate('created_at', '>=', $request->date_from)
+        $payments = Payment::with(['customer', 'paymentGateway'])->whereDate('created_at', '>=', $request->date_from)
             ->whereDate('created_at', '<=', $request->date_to);
         if ($customer) {
             $payments->where('customer_id', $customer);
         }
-        $payments = $payments->get();
+        $payments = $payments->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'success' => true,
-            'data' => $payments
+            'data' => $this->formatPaymentsResponse($payments)
         ]);
     }
 
-    /**
-     * Verify Flutterwave payment transaction (Optional)
-     * GET /api/payments/verify/{transaction_id}
-     * 
-     * Note: Payment verification is also done automatically via webhooks.
-     * This endpoint is provided for manual verification if needed.
-     */
-    public function verifyFlutterwavePayment($transactionId)
+    private function formatPaymentsResponse($payments)
     {
-        try {
-            $flutterwaveService = new FlutterwaveService();
-            
-            if (!$flutterwaveService->isActive()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Flutterwave gateway not configured or inactive'
-                ], 503);
-            }
+        return $payments->map(function ($payment) {
+            return [
+                'id' => $payment->id,
+                'gateway_id' => $payment->gateway_id,
+                'gateway_name' => $payment->paymentGateway?->name,
+                'customer_id' => $payment->customer_id,
+                'amount' => $payment->amount,
+                'transaction_reference' => $payment->gateway_reference,
+                'payment_reference' => $payment->payment_reference,
+                'status' => $payment->status,
+                'paid_at' => $payment->paid_at,
+                'created_at' => $payment->created_at,
+                'updated_at' => $payment->updated_at,
+                                'customer' => $payment->customer,
 
-            $result = $flutterwaveService->verifyPayment($transactionId);
-
-            if ($result['success']) {
-                Log::info('Payment verification successful', [
-                    'transaction_id' => $transactionId,
-                    'tx_ref' => $result['data']['tx_ref'] ?? null,
-                ]);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Payment verified successfully',
-                    'data' => $result['data']
-                ]);
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => $result['error'] ?? 'Payment verification failed',
-                'data' => $result['data'] ?? null
-            ], 400);
-
-        } catch (\Exception $e) {
-            Log::error('Payment verification error', [
-                'transaction_id' => $transactionId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'An error occurred during payment verification',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Create a Stripe PaymentIntent.
-     * POST /api/payments/intent
-     */
-    public function createIntent(Request $request)
-    {
-        $validated = $request->validate([
-            'amount' => 'required|integer|min:1',
-            'currency' => 'required|string|size:3',
-            'customer' => 'nullable|string',
-            'description' => 'nullable|string',
-            'metadata' => 'nullable|array',
-            'receipt_email' => 'nullable|email',
-            'capture_method' => 'nullable|string|in:automatic,automatic_async,manual',
-            'statement_descriptor' => 'nullable|string|max:22',
-        ]);
-
-        try {
-            $intent = $this->paymentIntentService->create($validated);
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'payment_intent_id' => $intent->id,
-                    'client_secret' => $intent->client_secret,
-                    'amount' => $intent->amount,
-                    'currency' => $intent->currency,
-                    'status' => $intent->status,
-                ],
-            ], 200);
-        } catch (\InvalidArgumentException $e) {
-            throw ValidationException::withMessages([
-                'payment' => [$e->getMessage()],
-            ]);
-        }
+            ];
+        })->values();
     }
 }

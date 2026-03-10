@@ -86,6 +86,12 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        if (!$request->user() || !$request->user()->currentAccessToken()) {
+            return response()->json([
+                'message' => 'Not authenticated.',
+            ], 401);
+        }
+
         // Revoke the current token
         $request->user()->currentAccessToken()->delete();
 
@@ -102,6 +108,12 @@ class AuthController extends Controller
      */
     public function logoutAll(Request $request)
     {
+        if (!$request->user()) {
+            return response()->json([
+                'message' => 'No authenticated user found for logout-all.',
+            ], 401);
+        }
+
         // Revoke all tokens
         $request->user()->tokens()->delete();
 
@@ -118,6 +130,13 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
+        if (!$request->user()) {
+            return response()->json([
+                'message' => 'No authenticated user context available.',
+                'user' => null,
+            ], 401);
+        }
+
         return response()->json([
             'user' => $request->user(),
         ], 200);

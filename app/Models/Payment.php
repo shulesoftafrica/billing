@@ -25,11 +25,6 @@ class Payment extends Model
         'paid_at' => 'datetime',
     ];
 
-    public function invoice(): BelongsTo
-    {
-        return $this->belongsTo(Invoice::class);
-    }
-
     public function paymentGateway(): BelongsTo
     {
         return $this->belongsTo(PaymentGateway::class, 'gateway_id');

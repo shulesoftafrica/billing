@@ -79,7 +79,6 @@ class SubscriptionController extends Controller
                     ],
                 ],
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -98,12 +97,12 @@ class SubscriptionController extends Controller
     {
         try {
             $filters = [];
-            
+
             // Optional filters
             if ($request->has('status')) {
                 $filters['status'] = $request->input('status');
             }
-            
+
             if ($request->has('customer_id')) {
                 $filters['customer_id'] = $request->input('customer_id');
             }
@@ -138,7 +137,6 @@ class SubscriptionController extends Controller
                     ];
                 }),
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -158,7 +156,7 @@ class SubscriptionController extends Controller
     {
         try {
             $status = $request->input('status');
-            
+
             $subscriptions = $this->subscriptionService->getCustomerSubscriptions($customerId, $status);
 
             return response()->json([
@@ -166,25 +164,24 @@ class SubscriptionController extends Controller
                 'data' => $subscriptions->map(function ($subscription) {
                     return [
                         'id' => $subscription->id,
+                        'status' => $subscription->status,
+                        'start_date' => $subscription->start_date,
+                        'end_date' => $subscription->end_date,
+                        'next_billing_date' => $subscription->next_billing_date,
+                        'created_at' => $subscription->created_at,
                         'price_plan' => [
                             'id' => $subscription->pricePlan->id,
                             'name' => $subscription->pricePlan->name,
-                            'amount' => $subscription->pricePlan->amount,
+                            'amount' => $subscription->invoice_item->total, // Use total from invoice item for accurate amount
                             'billing_interval' => $subscription->pricePlan->billing_interval,
                             'product' => [
                                 'id' => $subscription->pricePlan->product->id,
                                 'name' => $subscription->pricePlan->product->name,
                             ],
                         ],
-                        'status' => $subscription->status,
-                        'start_date' => $subscription->start_date,
-                        'end_date' => $subscription->end_date,
-                        'next_billing_date' => $subscription->next_billing_date,
-                        'created_at' => $subscription->created_at,
                     ];
                 }),
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -221,7 +218,6 @@ class SubscriptionController extends Controller
                     'status' => $subscription->status,
                 ],
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

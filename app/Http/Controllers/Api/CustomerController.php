@@ -14,15 +14,31 @@ class CustomerController extends Controller
      */
     public function index(Request $request)
     {
-        // Get organization_id from authenticated user
-        $organizationId = $request->user()->organization_id;
+        $validator = Validator::make($request->all(), [
+            'organization_id' => 'required|exists:organizations,id',
+            'username' => 'nullable|string|max:255',
+        ]);
 
-        $customers = Customer::with(['organization', 'addresses'])
-            ->where('organization_id', $organizationId)
-            ->get();
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $query = Customer::with('organization')
+            ->where('organization_id', $request->organization_id);
+
+        if ($request->filled('username')) {
+            $query->where('username', $request->username);
+        }
+
+        $customers = $query->get();
 
         return response()->json([
             'success' => true,
+            'message' => 'Customers retrieved successfully',
             'data' => $customers
         ], 200);
     }
@@ -32,51 +48,39 @@ class CustomerController extends Controller
      */
     public function store(Request $request)
     {
-        // Get organization_id from authenticated user
-        $organizationId = $request->user()->organization_id;
-        
         $validator = Validator::make($request->all(), [
-            'external_ref' => 'nullable|string|max:255',
+            'organization_id' => 'required|exists:organizations,id',
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255',
-            'phone' => 'required|string|max:255',
+            'username' => 'nullable|string|max:255|unique:customers,username,NULL,id,organization_id,' . $request->organization_id,
+            'email' => 'nullable|string|email|max:255|unique:customers,email,NULL,id,organization_id,' . $request->organization_id,
+            'phone' => 'nullable|string|max:255|unique:customers,phone,NULL,id,organization_id,' . $request->organization_id,
             'status' => 'required|in:active,suspended',
-            'addresses' => 'required|array|min:1',
-            'addresses.*.type' => 'required|in:billing,shipping',
-            'addresses.*.country' => 'required|string|max:255',
-            'addresses.*.city' => 'required|string|max:255',
-            'addresses.*.address_line' => 'required|string',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $validatedData = $validator->validated();
-        
-        // Add organization_id from authenticated user
-        $validatedData['organization_id'] = $organizationId;
-        
-        $addresses = $validatedData['addresses'];
-        unset($validatedData['addresses']);
+        try {
+            $customer = Customer::create($validator->validated());
+            $customer->load('organization');
 
-        $customer = Customer::create($validatedData);
-
-        // Create addresses
-        foreach ($addresses as $address) {
-            $customer->addresses()->create($address);
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer created successfully',
+                'data' => $customer
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create customer',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $customer->load(['organization', 'addresses']);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer created successfully',
-            'data' => $customer
-        ], 201);
     }
 
     /**
@@ -84,7 +88,7 @@ class CustomerController extends Controller
      */
     public function show(string $id)
     {
-        $customer = Customer::with(['organization', 'addresses'])->find($id);
+        $customer = Customer::with('organization')->find($id);
 
         if (!$customer) {
             return response()->json([
@@ -95,6 +99,7 @@ class CustomerController extends Controller
 
         return response()->json([
             'success' => true,
+            'message' => 'Customer retrieved successfully',
             'data' => $customer
         ], 200);
     }
@@ -114,28 +119,38 @@ class CustomerController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'external_ref' => 'nullable|string|max:255',
+            'organization_id' => 'sometimes|required|exists:organizations,id',
             'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|string|email|max:255',
-            'phone' => 'sometimes|required|string|max:255',
+            'username' => 'nullable|string|max:255|unique:customers,username,' . $id . ',id,organization_id,' . $customer->organization_id,
+            'email' => 'nullable|string|email|max:255|unique:customers,email,' . $id . ',id,organization_id,' . $customer->organization_id,
+            'phone' => 'nullable|string|max:255|unique:customers,phone,' . $id . ',id,organization_id,' . $customer->organization_id,
             'status' => 'sometimes|required|in:active,suspended',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $customer->update($validator->validated());
-        $customer->load(['organization', 'addresses']);
+        try {
+            $customer->update($validator->validated());
+            $customer->load('organization');
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer updated successfully',
-            'data' => $customer
-        ], 200);
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer updated successfully',
+                'data' => $customer
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update customer',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -152,113 +167,44 @@ class CustomerController extends Controller
             ], 404);
         }
 
-        $customer->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer deleted successfully'
-        ], 200);
-    }
-
-    /**
-     * Lookup customer by phone with full status
-     * GET /api/customers/by-phone/{phone}/status
-     */
-    public function lookupByPhoneWithStatus(string $phone)
-    {
         try {
-            $customer = Customer::with([
-                'organization',
-                'addresses', 
-                'subscriptions.pricePlan',
-                'invoices' => function($query) {
-                    $query->whereIn('status', ['issued', 'overdue']);
-                },
-                'walletTransactions' => function($query) {
-                    $query->where('status', 'completed')
-                          ->selectRaw('customer_id, wallet_type, SUM(units) as balance')
-                          ->groupBy('customer_id', 'wallet_type');
-                }
-            ])
-            ->where('phone', $phone)
-            ->first();
-
-            if (!$customer) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Customer not found with this phone number'
-                ], 404);
-            }
-
-            // Calculate wallet balances
-            $walletBalances = [];
-            if ($customer->walletTransactions) {
-                foreach ($customer->walletTransactions as $transaction) {
-                    $walletBalances[$transaction->wallet_type] = (float) $transaction->balance;
-                }
-            }
-
-            // Calculate outstanding balance
-            $outstandingBalance = $customer->invoices->sum('total');
-
-            // Count active subscriptions
-            $activeSubscriptions = $customer->subscriptions->where('status', 'active')->count();
-
-            $customerData = [
-                'id' => $customer->id,
-                'organization_id' => $customer->organization_id,
-                'external_ref' => $customer->external_ref,
-                'name' => $customer->name,
-                'email' => $customer->email,
-                'phone' => $customer->phone,
-                'customer_type' => $customer->customer_type,
-                'status' => $customer->status,
-                'wallet_balances' => $walletBalances,
-                'active_subscriptions' => $activeSubscriptions,
-                'total_invoices' => $customer->invoices()->count(),
-                'outstanding_balance' => $outstandingBalance,
-                'organization' => $customer->organization,
-                'addresses' => $customer->addresses,
-                'created_at' => $customer->created_at,
-                'updated_at' => $customer->updated_at
-            ];
+            $customer->delete();
 
             return response()->json([
                 'success' => true,
-                'customer' => $customerData
+                'message' => 'Customer deleted successfully'
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to lookup customer',
+                'message' => 'Failed to delete customer',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
-    /**
-     * Lookup customer by email with full status  
-     * GET /api/customers/by-email/{email}/status
-     */
+    public function lookupByPhoneWithStatus(string $phone)
+    {
+        return $this->getCustomerData('phone', $phone);
+    }
+
     public function lookupByEmailWithStatus(string $email)
+    {
+        return $this->getCustomerData('email', $email);
+    }
+    public function getCustomerData($column, $value)
     {
         try {
             $customer = Customer::with([
                 'organization',
-                'addresses',
-                'subscriptions.pricePlan', 
-                'invoices' => function($query) {
-                    $query->whereIn('status', ['issued', 'overdue']);
-                },
-                'walletTransactions' => function($query) {
-                    $query->where('status', 'completed')
-                          ->selectRaw('customer_id, wallet_type, SUM(units) as balance')
-                          ->groupBy('customer_id', 'wallet_type');
+                'subscriptions.pricePlan',
+                'invoices' => function ($query) {
+                    $query->where('status', '!=', 'cancelled')
+                        ->with('payments');
                 }
             ])
-            ->where('email', $email)
-            ->first();
+                ->where($column, $value)
+                ->first();
 
             if (!$customer) {
                 return response()->json([
@@ -267,16 +213,12 @@ class CustomerController extends Controller
                 ], 404);
             }
 
-            // Calculate wallet balances
-            $walletBalances = [];
-            if ($customer->walletTransactions) {
-                foreach ($customer->walletTransactions as $transaction) {
-                    $walletBalances[$transaction->wallet_type] = (float) $transaction->balance;
-                }
-            }
-
-            // Calculate outstanding balance
-            $outstandingBalance = $customer->invoices->sum('total');
+            $totalInvoicedAmount = (float) $customer->invoices->sum('total');
+            $totalPaidAmount = (float) $customer->invoices->sum(function ($invoice) {
+                return $invoice->payments->sum('pivot.amount');
+            });
+            $totalBalanceAmount = $totalInvoicedAmount - $totalPaidAmount;
+            $outstandingBalance = $totalBalanceAmount;
 
             // Count active subscriptions
             $activeSubscriptions = $customer->subscriptions->where('status', 'active')->count();
@@ -284,18 +226,18 @@ class CustomerController extends Controller
             $customerData = [
                 'id' => $customer->id,
                 'organization_id' => $customer->organization_id,
-                'external_ref' => $customer->external_ref,
                 'name' => $customer->name,
                 'email' => $customer->email,
                 'phone' => $customer->phone,
-                'customer_type' => $customer->customer_type,
                 'status' => $customer->status,
-                'wallet_balances' => $walletBalances,
+                'wallet_balances' => [],
                 'active_subscriptions' => $activeSubscriptions,
                 'total_invoices' => $customer->invoices()->count(),
+                'total_invoiced_amount' => $totalInvoicedAmount,
+                'total_paid_amount' => $totalPaidAmount,
+                'total_balance_amount' => $totalBalanceAmount,
                 'outstanding_balance' => $outstandingBalance,
                 'organization' => $customer->organization,
-                'addresses' => $customer->addresses,
                 'created_at' => $customer->created_at,
                 'updated_at' => $customer->updated_at
             ];
@@ -304,7 +246,6 @@ class CustomerController extends Controller
                 'success' => true,
                 'customer' => $customerData
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

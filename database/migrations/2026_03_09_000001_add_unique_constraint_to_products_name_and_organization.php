@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // This table is deprecated and not part of the current schema.
-        // No action needed.
+        Schema::table('products', function (Blueprint $table) {
+            $table->unique(['name', 'organization_id'], 'products_name_organization_id_unique');
+        });
     }
 
     /**
@@ -20,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('customer_addresses');
+        Schema::table('products', function (Blueprint $table) {
+            $table->dropUnique('products_name_organization_id_unique');
+        });
     }
 };
