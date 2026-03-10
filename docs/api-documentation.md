@@ -2756,7 +2756,7 @@
 
 ## Products
 
-### List Products
+### List All Products
 **Method:** `GET`
 **URL:** `/api/products`
 
@@ -2959,7 +2959,7 @@
 }
 ```
 
-### Get Products
+### Get Single Product
 **Method:** `GET`
 **URL:** `/api/products/{product}`
 
@@ -3007,7 +3007,7 @@
 }
 ```
 
-### Update Products
+### Update Product
 **Method:** `PUT`
 **URL:** `/api/products/{product}`
 
@@ -3077,7 +3077,7 @@
 }
 ```
 
-### List Products
+### List Product Price-Plans
 **Method:** `GET`
 **URL:** `/api/products/{product}/price-plans`
 
@@ -3117,7 +3117,7 @@
 }
 ```
 
-### Create Products
+### Create Product Price-Plans
 **Method:** `POST`
 **URL:** `/api/products/{product}/price-plans`
 
@@ -3187,7 +3187,7 @@
 }
 ```
 
-### Delete Products
+### Delete Product Price-Plans
 **Method:** `DELETE`
 **URL:** `/api/products/{product}/price-plans/{pricePlan}`
 
@@ -3235,7 +3235,7 @@
 }
 ```
 
-### Get Products
+### Get Product Price-Plans
 **Method:** `GET`
 **URL:** `/api/products/{product}/price-plans/{pricePlan}`
 
@@ -3283,7 +3283,7 @@
 }
 ```
 
-### Update Products
+### Update Product Price-Plans
 **Method:** `PUT`
 **URL:** `/api/products/{product}/price-plans/{pricePlan}`
 
@@ -3385,67 +3385,6 @@
 {
   "message": "Unauthenticated",
   "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Create Subscriptions
-**Method:** `POST`
-**URL:** `/api/subscriptions`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "customer_id": "sample",
-  "plan_ids": "sample"
-}
-```
-
-**Success Response:** `201 Created`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "customer_id": [
-      "The customer id field is invalid."
-    ],
-    "plan_ids": [
-      "The plan ids field is invalid."
-    ],
-    "plan_ids.*": [
-      "The plan ids 0 field is invalid."
-    ]
-  }
 }
 ```
 
@@ -3755,305 +3694,6 @@
     ],
     "active": [
       "The active field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-## Users
-
-### List Users
-**Method:** `GET`
-**URL:** `/api/users`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "organization_id": "sample"
-}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "organization_id": [
-      "The organization id field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Create Users
-**Method:** `POST`
-**URL:** `/api/users`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "organization_id": "sample",
-  "name": "sample",
-  "email": "sample",
-  "password": "sample",
-  "role": "sample",
-  "sex": "sample"
-}
-```
-
-**Success Response:** `201 Created`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "organization_id": [
-      "The organization id field is invalid."
-    ],
-    "name": [
-      "The name field is invalid."
-    ],
-    "email": [
-      "The email field is invalid."
-    ],
-    "password": [
-      "The password field is invalid."
-    ],
-    "role": [
-      "The role field is invalid."
-    ],
-    "sex": [
-      "The sex field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Delete Users
-**Method:** `DELETE`
-**URL:** `/api/users/{user}`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`404 Not Found`
-```json
-{
-  "success": false,
-  "message": "Resource not found"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Get Users
-**Method:** `GET`
-**URL:** `/api/users/{user}`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`404 Not Found`
-```json
-{
-  "success": false,
-  "message": "Resource not found"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Update Users
-**Method:** `PUT`
-**URL:** `/api/users/{user}`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "organization_id": "sample",
-  "name": "sample",
-  "email": "sample",
-  "password": "sample",
-  "role": "sample",
-  "sex": "sample"
-}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "organization_id": [
-      "The organization id field is invalid."
-    ],
-    "name": [
-      "The name field is invalid."
-    ],
-    "email": [
-      "The email field is invalid."
-    ],
-    "password": [
-      "The password field is invalid."
-    ],
-    "role": [
-      "The role field is invalid."
-    ],
-    "sex": [
-      "The sex field is invalid."
     ]
   }
 }

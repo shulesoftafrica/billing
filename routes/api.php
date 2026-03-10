@@ -16,7 +16,6 @@ use App\Http\Controllers\Api\BankAccountController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\TaxRateController;
-use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Auth\AuthController;
@@ -39,9 +38,9 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     // Route::get('auth/me', [AuthController::class, 'me']);
 
     // User endpoint
-    Route::get('/user', function (Request $request) {
-        return $request->user();
-    });
+    // Route::get('/user', function (Request $request) {
+    //     return $request->user();
+    // });
 
     // Protected API routes
     Route::apiResource('currencies', CurrencyController::class);
@@ -86,18 +85,6 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::get('product-usages/{customer_id}/{product_id}/history', [ProductUsageController::class, 'getHistory']);
 });
 
-
-
-// Wallet Management Routes (Phase 1 Implementation) - Protected
-Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('wallets')->group(function () {
-    Route::get('balance', [WalletController::class, 'getBalance']);
-    Route::post('credit', [WalletController::class, 'addCredits']);
-    Route::post('deduct', [WalletController::class, 'deductCredits']);
-    Route::post('transfer', [WalletController::class, 'transferCredits']);
-    Route::get('check-balance', [WalletController::class, 'checkBalance']);
-    Route::get('{customer_id}/transactions', [WalletController::class, 'getTransactionHistory']);
-});
-
 // Phase 2: Advanced Invoice Types - Protected
 // Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('invoices')->group(function () {
 //     Route::post('wallet-topup', [App\Http\Controllers\Api\InvoiceController::class, 'createWalletTopupInvoice']);
@@ -125,5 +112,4 @@ Route::middleware('throttle:30,1')->group(function () {
 Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
-    Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);
 });
