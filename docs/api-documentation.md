@@ -1095,62 +1095,7 @@
 
 ## Webhooks
 
-### Generateflutterwavepayloadhash Flutterwave
-**Method:** `POST`
-**URL:** `/api/flutterwave/hash`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "payload": "sample"
-}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "hash": "base64hash==",
-  "algorithm": "HMAC-SHA256-BASE64"
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "payload": [
-      "The payload field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Handleucnpayment Webhooks
+### Handle UCN payment Webhooks
 **Method:** `POST`
 **URL:** `/api/webhooks/ecobank/notification`
 
@@ -1181,7 +1126,7 @@
 }
 ```
 
-### Handleflutterwavewebhook Webhooks
+### Handle Flutterwave Webhooks
 **Method:** `POST`
 **URL:** `/api/webhooks/flutterwave`
 
@@ -1222,7 +1167,7 @@
 }
 ```
 
-### Handle Webhooks
+### Handle Stripe PaymantIntent Webhooks
 **Method:** `POST`
 **URL:** `/api/webhooks/stripe`
 
@@ -1479,141 +1424,6 @@
 ```json
 {
   "message": "Too Many Attempts."
-}
-```
-
-### Createplandowngradeinvoice Invoices
-**Method:** `POST`
-**URL:** `/api/invoices/plan-downgrade`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `None OK`
-```json
-{}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-`500 Internal Server Error`
-```json
-{
-  "message": "Method App\\Http\\Controllers\\Api\\InvoiceController::createPlanDowngradeInvoice does not exist."
-}
-```
-
-### Createplanupgradeinvoice Invoices
-**Method:** `POST`
-**URL:** `/api/invoices/plan-upgrade`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `None OK`
-```json
-{}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-`500 Internal Server Error`
-```json
-{
-  "message": "Method App\\Http\\Controllers\\Api\\InvoiceController::createPlanUpgradeInvoice does not exist."
-}
-```
-
-### Createwallettopupinvoice Invoices
-**Method:** `POST`
-**URL:** `/api/invoices/wallet-topup`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `None OK`
-```json
-{}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-`500 Internal Server Error`
-```json
-{
-  "message": "Method App\\Http\\Controllers\\Api\\InvoiceController::createWalletTopupInvoice does not exist."
 }
 ```
 

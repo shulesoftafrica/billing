@@ -97,11 +97,11 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('wallets')->gro
 });
 
 // Phase 2: Advanced Invoice Types - Protected
-Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('invoices')->group(function () {
-    Route::post('wallet-topup', [App\Http\Controllers\Api\InvoiceController::class, 'createWalletTopupInvoice']);
-    Route::post('plan-upgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanUpgradeInvoice']);
-    Route::post('plan-downgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanDowngradeInvoice']);
-});
+// Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('invoices')->group(function () {
+//     Route::post('wallet-topup', [App\Http\Controllers\Api\InvoiceController::class, 'createWalletTopupInvoice']);
+//     Route::post('plan-upgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanUpgradeInvoice']);
+//     Route::post('plan-downgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanDowngradeInvoice']);
+// });
 
 // Phase 2: Enhanced Customer Management - Protected
 Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('customers')->group(function () {
@@ -115,8 +115,6 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('payment-gatewa
     Route::get('test-all-connections', [PaymentGatewayTestController::class, 'testAllConnections']);
 });
 
-
-Route::middleware(['app.access.token', 'throttle:30,1'])->post('flutterwave/hash', [WebhookController::class, 'generateFlutterWavePayloadHash']); // gen hash for flutterwave payloads, useful for testing and verification
 
 // Public webhook routes (no authentication needed)
 Route::middleware('throttle:30,1')->group(function () {
