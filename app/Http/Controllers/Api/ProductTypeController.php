@@ -27,7 +27,7 @@ class ProductTypeController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:product_types,name',
+            'name' => 'required|string|max:255|in:subscription,one-time,usage|unique:product_types,name',
         ]);
 
         if ($validator->fails()) {
@@ -81,7 +81,7 @@ class ProductTypeController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:product_types,name,' . $id,
+            'name' => 'sometimes|required|string|max:255|in:subscription,one-time,usage|unique:product_types,name,' . $id,
         ]);
 
         if ($validator->fails()) {
