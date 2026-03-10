@@ -126,7 +126,8 @@ Content-Type: application/json</code></pre>
                     </div>
 
                     <p class="text-muted">
-                        You can generate API keys from your <a href="{{ route('dashboard') }}">dashboard</a> after creating an account.
+                        Register a user account and login via <code>POST /api/auth/login</code> to receive your personal access token. 
+                        <span class="badge bg-success text-white">New: Token-based authentication available!</span>
                     </p>
                 </section>
 

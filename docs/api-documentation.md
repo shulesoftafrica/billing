@@ -1,3 +1,502 @@
+## Authentication
+
+### Overview
+**Method:** `Dual Authentication Support`
+**URL:** `All API endpoints require authentication`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{
+  "authentication_options": [
+    "Option 1: User Personal Access Token (Recommended) - Login via /api/auth/login",
+    "Option 2: APP_ACCESS_TOKEN (Legacy) - Shared token from system administrator"
+  ],
+  "recommended_flow": "Use Option 1 for better security and user-level access control",
+  "how_it_works": {
+    "user_tokens": [
+      "1. Register a user account via POST /api/auth/register",
+      "2. Login with email/password via POST /api/auth/login",
+      "3. Receive personal access token in response",
+      "4. Use token in Authorization header for all requests",
+      "5. Tokens are user-specific and can be revoked independently"
+    ],
+    "app_access_token": [
+      "1. System administrator configures APP_ACCESS_TOKEN in .env",
+      "2. Shared with authorized systems",
+      "3. Same token for all API consumers (less secure)",
+      "4. For backward compatibility only"
+    ]
+  }
+}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "Request authenticated successfully"
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token",
+  "hint": "Provide either a valid user token (from /auth/login) or APP_ACCESS_TOKEN"
+}
+```
+
+### Register New User
+**Method:** `POST`
+**URL:** `/api/auth/register`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Accept | application/json |
+| Content-Type | application/json |
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "SecurePassword123!",
+  "password_confirmation": "SecurePassword123!",
+  "role": "user",
+  "sex": "male"
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "message": "User registered successfully",
+  "access_token": "1|xK9mP2vL8nQ4wR7tY3uI6oP1aS5dF0gH2jK4mN7bV9cX1zL3qW5eR8tY0uI2oP4",
+  "token_type": "Bearer",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "user",
+    "sex": "male",
+    "created_at": "2026-03-11T10:30:00.000000Z",
+    "updated_at": "2026-03-11T10:30:00.000000Z"
+  }
+}
+```
+
+**Error Responses:**
+
+`422 Unprocessable Entity`
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "email": ["The email has already been taken."],
+    "password": ["The password confirmation does not match."]
+  }
+}
+```
+
+### Login (Get Access Token)
+**Method:** `POST`
+**URL:** `/api/auth/login`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Accept | application/json |
+| Content-Type | application/json |
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "Login successful",
+  "access_token": "2|AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGhIjKlMnOpQrStUvWx",
+  "token_type": "Bearer",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "user",
+    "sex": "male",
+    "email_verified_at": null,
+    "created_at": "2026-03-11T10:30:00.000000Z",
+    "updated_at": "2026-03-11T10:30:00.000000Z"
+  }
+}
+```
+
+**Error Responses:**
+
+`422 Unprocessable Entity`
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "email": ["The provided credentials are incorrect."]
+  }
+}
+```
+
+### Get Current User
+**Method:** `GET`
+**URL:** `/api/auth/me`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "user",
+    "sex": "male",
+    "email_verified_at": null,
+    "created_at": "2026-03-11T10:30:00.000000Z",
+    "updated_at": "2026-03-11T10:30:00.000000Z"
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+### Logout (Revoke Current Token)
+**Method:** `POST`
+**URL:** `/api/auth/logout`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Not authenticated."
+}
+```
+
+### Logout All Devices (Revoke All Tokens)
+**Method:** `POST`
+**URL:** `/api/auth/logout-all`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "Logged out from all devices successfully"
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "No authenticated user found for logout-all."
+}
+```
+
+### Usage Examples with User Token
+**Method:** `EXAMPLES`
+**URL:** `Complete Authentication Flow`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Language | Select your preferred language below |
+
+**Request Body:**
+```bash
+# === cURL ===
+# Step 1: Login to get token
+curl -X POST https://your-domain.com/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d '{
+    "email": "john@example.com",
+    "password": "SecurePassword123!"
+  }'
+
+# Response: { "access_token": "2|YOUR_TOKEN_HERE", ... }
+
+# Step 2: Use token in API requests
+curl -X GET https://your-domain.com/api/customers \
+  -H 'Authorization: Bearer 2|YOUR_TOKEN_HERE' \
+  -H 'Accept: application/json'
+```
+
+**Success Response:** `200 OK`
+```javascript
+// === JavaScript (Fetch) ===
+// Step 1: Login to get token
+const loginResponse = await fetch('https://your-domain.com/api/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  body: JSON.stringify({
+    email: 'john@example.com',
+    password: 'SecurePassword123!'
+  })
+});
+
+const { access_token } = await loginResponse.json();
+
+// Step 2: Use token in API requests
+const response = await fetch('https://your-domain.com/api/customers', {
+  headers: {
+    'Authorization': `Bearer ${access_token}`,
+    'Accept': 'application/json'
+  }
+});
+
+const data = await response.json();
+```
+
+**Error Responses:**
+
+`200 OK`
+```python
+# === Python (Requests) ===
+import requests
+
+# Step 1: Login to get token
+login_response = requests.post(
+    'https://your-domain.com/api/auth/login',
+    json={
+        'email': 'john@example.com',
+        'password': 'SecurePassword123!'
+    },
+    headers={'Accept': 'application/json'}
+)
+
+access_token = login_response.json()['access_token']
+
+# Step 2: Use token in API requests
+response = requests.get(
+    'https://your-domain.com/api/customers',
+    headers={
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/json'
+    }
+)
+
+data = response.json()
+```
+
+`200 OK`
+```php
+// === PHP (Guzzle) ===
+<?php
+use GuzzleHttp\Client;
+
+$client = new Client();
+
+// Step 1: Login to get token
+$loginResponse = $client->post('https://your-domain.com/api/auth/login', [
+    'headers' => ['Accept' => 'application/json'],
+    'json' => [
+        'email' => 'john@example.com',
+        'password' => 'SecurePassword123!'
+    ]
+]);
+
+$loginData = json_decode($loginResponse->getBody(), true);
+$accessToken = $loginData['access_token'];
+
+// Step 2: Use token in API requests
+$response = $client->get('https://your-domain.com/api/customers', [
+    'headers' => [
+        'Authorization' => 'Bearer ' . $accessToken,
+        'Accept' => 'application/json'
+    ]
+]);
+
+$data = json_decode($response->getBody(), true);
+```
+
+`200 OK`
+```php
+// === PHP (cURL) ===
+<?php
+
+// Step 1: Login to get token
+$ch = curl_init('https://your-domain.com/api/auth/login');
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Content-Type: application/json',
+    'Accept: application/json'
+]);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+    'email' => 'john@example.com',
+    'password' => 'SecurePassword123!'
+]));
+
+$loginResponse = curl_exec($ch);
+curl_close($ch);
+
+$loginData = json_decode($loginResponse, true);
+$accessToken = $loginData['access_token'];
+
+// Step 2: Use token in API requests
+$ch = curl_init('https://your-domain.com/api/customers');
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Authorization: Bearer ' . $accessToken,
+    'Accept: application/json'
+]);
+
+$response = curl_exec($ch);
+curl_close($ch);
+
+$data = json_decode($response, true);
+```
+
+`200 OK`
+```go
+// === Go ===
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+)
+
+func main() {
+    // Step 1: Login to get token
+    loginData := map[string]string{
+        "email":    "john@example.com",
+        "password": "SecurePassword123!",
+    }
+    
+    loginBody, _ := json.Marshal(loginData)
+    loginReq, _ := http.NewRequest("POST", "https://your-domain.com/api/auth/login", bytes.NewBuffer(loginBody))
+    loginReq.Header.Set("Content-Type", "application/json")
+    loginReq.Header.Set("Accept", "application/json")
+    
+    client := &http.Client{}
+    loginResp, _ := client.Do(loginReq)
+    defer loginResp.Body.Close()
+    
+    var loginResult map[string]interface{}
+    json.NewDecoder(loginResp.Body).Decode(&loginResult)
+    accessToken := loginResult["access_token"].(string)
+    
+    // Step 2: Use token in API requests
+    req, _ := http.NewRequest("GET", "https://your-domain.com/api/customers", nil)
+    req.Header.Set("Authorization", "Bearer "+accessToken)
+    req.Header.Set("Accept", "application/json")
+    
+    resp, _ := client.Do(req)
+    defer resp.Body.Close()
+    
+    var result map[string]interface{}
+    json.NewDecoder(resp.Body).Decode(&result)
+    fmt.Println(result)
+}
+```
+
+### Legacy: APP_ACCESS_TOKEN (Backward Compatibility)
+**Method:** `MANUAL - Contact Administrator`
+**URL:** `N/A`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| N/A | Legacy authentication method |
+
+**Request Body:**
+```json
+{
+  "status": "Supported for backward compatibility only",
+  "recommendation": "Use the new login-based authentication instead",
+  "how_to_use": [
+    "1. Contact system administrator for APP_ACCESS_TOKEN",
+    "2. Use token in Authorization: Bearer {APP_ACCESS_TOKEN} header",
+    "3. Same token shared across all API consumers (less secure)"
+  ],
+  "migration_path": [
+    "1. Create user accounts via POST /api/auth/register",
+    "2. Switch to using personal access tokens from /api/auth/login",
+    "3. Enjoy better security with user-level access control"
+  ]
+}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "APP_ACCESS_TOKEN still works but consider migrating to user tokens"
+}
+```
+
 ## Auth
 
 ### Auth Middleware

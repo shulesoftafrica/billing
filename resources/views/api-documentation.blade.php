@@ -515,6 +515,82 @@
             color: var(--text-soft);
         }
 
+        /* Code Tabs */
+        .code-tabs-container {
+            margin-bottom: 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            background: var(--surface);
+        }
+
+        .code-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0;
+            border-bottom: 2px solid var(--border);
+            overflow-x: auto;
+            padding: 0;
+            background: var(--surface-soft);
+            scrollbar-width: thin;
+        }
+
+        .code-tabs::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .code-tabs::-webkit-scrollbar-track {
+            background: var(--surface-soft);
+        }
+
+        .code-tabs::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .code-tab {
+            border: 0;
+            background: transparent;
+            color: var(--text-soft);
+            padding: 12px 20px;
+            cursor: pointer;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.82rem;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+            position: relative;
+            font-weight: 500;
+        }
+
+        .code-tab:hover {
+            color: var(--text);
+            background: rgba(79, 141, 255, 0.08);
+        }
+
+        .code-tab.active {
+            color: var(--accent);
+            background: var(--surface);
+            border-bottom-color: var(--accent);
+            font-weight: 600;
+        }
+
+        .code-tab-content {
+            display: none;
+            padding: 0;
+        }
+
+        .code-tab-content.active {
+            display: block;
+        }
+
+        .code-tab-content pre {
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+        }
+
         .mobile-toggle {
             display: none;
         }
@@ -662,16 +738,108 @@
 
                                     @if (!empty($endpoint['errors']))
                                         <div>
-                                            <h3 class="block-title">Error Responses</h3>
-                                            @foreach ($endpoint['errors'] as $error)
-                                                <div style="margin-bottom: 10px;">
-                                                    <div class="response-head">
-                                                        <span class="response-title">Error</span>
-                                                        <span class="status-badge {{ $statusClass($error['code']) }}">{{ $error['code'] }}</span>
+                                            @php
+                                                // Check if this is a multi-language code example (multiple error blocks with same code)
+                                                $isCodeExample = count($endpoint['errors']) > 1 && 
+                                                    collect($endpoint['errors'])->unique('code')->count() <= 2;
+                                                
+                                                // Extract language from code comment
+                                                $getLanguage = function($code) {
+                                                    if (preg_match('/===\s*(.+?)\s*===/', $code, $matches)) {
+                                                        return trim($matches[1]);
+                                                    }
+                                                    return null;
+                                                };
+                                                
+                                                // Normalize language names for cleaner display
+                                                $normalizeLanguage = function($lang) {
+                                                    $lang = trim($lang);
+                                                    $map = [
+                                                        'cURL' => 'shell',
+                                                        'curl' => 'shell',
+                                                        'bash' => 'shell',
+                                                        'JavaScript' => 'nodejs',
+                                                        'JavaScript (Fetch)' => 'nodejs',
+                                                        'Javascript' => 'nodejs',
+                                                        'Node.js' => 'nodejs',
+                                                        'NodeJS' => 'nodejs',
+                                                        'Python' => 'python',
+                                                        'Python (Requests)' => 'python',
+                                                        'PHP (Guzzle)' => 'php',
+                                                        'PHP (cURL)' => 'php',
+                                                        'PHP' => 'php',
+                                                        'Go' => 'go',
+                                                        'C#' => 'csharp',
+                                                        'CSharp' => 'csharp',
+                                                        'Java' => 'java',
+                                                    ];
+                                                    
+                                                    return $map[$lang] ?? strtolower($lang);
+                                                };
+                                                
+                                                $languages = [];
+                                                $seenLanguages = []; // Track to avoid duplicates
+                                                
+                                                foreach ($endpoint['errors'] as $error) {
+                                                    $rawLang = $getLanguage($error['body']);
+                                                    if ($rawLang) {
+                                                        $normalizedLang = $normalizeLanguage($rawLang);
+                                                        
+                                                        // Skip if we've already added this language
+                                                        if (isset($seenLanguages[$normalizedLang])) {
+                                                            continue;
+                                                        }
+                                                        
+                                                        $seenLanguages[$normalizedLang] = true;
+                                                        $languages[] = [
+                                                            'name' => $normalizedLang,
+                                                            'display' => $rawLang,
+                                                            'code' => $error['code'],
+                                                            'body' => $error['body']
+                                                        ];
+                                                    }
+                                                }
+                                                
+                                                $showTabs = count($languages) > 1;
+                                            @endphp
+                                            
+                                            @if ($showTabs)
+                                                <h3 class="block-title">Code Examples (Select Language)</h3>
+                                                <div class="code-tabs-container">
+                                                    <div class="code-tabs" role="tablist" aria-label="Code examples in different programming languages">
+                                                        @foreach ($languages as $index => $lang)
+                                                            <button class="code-tab {{ $index === 0 ? 'active' : '' }}"
+                                                                    role="tab"
+                                                                    aria-selected="{{ $index === 0 ? 'true' : 'false' }}"
+                                                                    aria-controls="lang-{{ $endpointId }}-{{ $index }}"
+                                                                    data-tab="lang-{{ $endpointId }}-{{ $index }}"
+                                                                    onclick="switchCodeTab(event, 'lang-{{ $endpointId }}-{{ $index }}')">
+                                                                {{ $lang['name'] }}
+                                                            </button>
+                                                        @endforeach
                                                     </div>
-                                                    <pre class="error-pre">{{ trim((string) $error['body']) }}</pre>
+                                                    
+                                                    @foreach ($languages as $index => $lang)
+                                                        <div class="code-tab-content {{ $index === 0 ? 'active' : '' }}"
+                                                             id="lang-{{ $endpointId }}-{{ $index }}"
+                                                             role="tabpanel"
+                                                             aria-labelledby="tab-{{ $endpointId }}-{{ $index }}">
+                                                            <pre class="success-pre">{{ trim((string) $lang['body']) }}</pre>
+                                                        </div>
+                                                    @endforeach
                                                 </div>
-                                            @endforeach
+                                            @else
+                                                <h3 class="block-title">Error Responses</h3>
+                                                @foreach ($endpoint['errors'] as $error)
+                                                    <div style="margin-bottom: 10px;">
+                                                        <div class="response-head">
+                                                            <span class="response-title">Error</span>
+                                                            <span class="status-badge {{ $statusClass($error['code']) }}">{{ $error['code'] }}</span>
+                                                        </div>
+                                                        <pre class="error-pre">{{ trim((string) $error['body']) }}</pre>
+                                                    </div>
+                                                @endforeach
+                                            @endif
                                         </div>
                                     @endif
                                 </div>
@@ -685,6 +853,21 @@
 </div>
 
 <script>
+    // Tab switching function
+    function switchCodeTab(event, tabId) {
+        event.preventDefault();
+        const button = event.currentTarget;
+        const container = button.closest('.code-tabs-container');
+        
+        // Remove active class from all tabs and contents in this container
+        container.querySelectorAll('.code-tab').forEach(tab => tab.classList.remove('active'));
+        container.querySelectorAll('.code-tab-content').forEach(content => content.classList.remove('active'));
+        
+        // Add active class to clicked tab and corresponding content
+        button.classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }
+
     const navSections = Array.from(document.querySelectorAll('.nav-section'));
     const navToggles = Array.from(document.querySelectorAll('.nav-section-toggle'));
     const navLinks = Array.from(document.querySelectorAll('.nav-link'));

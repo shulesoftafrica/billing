@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
 use App\Http\Middleware\HandleCors;
 use App\Http\Middleware\AppAccessTokenMiddleware;
+use App\Http\Middleware\MultiAuthMiddleware;
 use App\Exceptions\StripePaymentException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'app.access.token' => AppAccessTokenMiddleware::class,
+            'auth.multi' => MultiAuthMiddleware::class,
         ]);
         
         // Register CORS middleware for API routes
