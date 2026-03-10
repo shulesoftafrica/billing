@@ -37,6 +37,19 @@ class ProductUsageController extends Controller
         try {
             $validated = $validator->validated();
 
+            $product = Product::with('productType')->findOrFail($validated['product_id']);
+            $productTypeName = strtolower((string) optional($product->productType)->name);
+
+            if ($productTypeName !== 'usage') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => [
+                        'product_id' => ['Product usage is only allowed for products with type usage.'],
+                    ],
+                ], 422);
+            }
+
             // Create product usage record
             $productUsage = ProductUsage::create([
                 'customer_id' => $validated['customer_id'],
@@ -117,11 +130,12 @@ class ProductUsageController extends Controller
                         'name' => $product->name,
                         'description' => $product->description,
                         'unit' => $product->unit,
-                    ],
-                    'usage' => [
-                        'total_purchased' => $totalPurchased,
-                        'total_used' => $totalUsed,
-                        'balance' => $balance,
+
+                        'usage' => [
+                            'total_purchased' => $totalPurchased,
+                            'total_used' => $totalUsed,
+                            'balance' => $balance,
+                        ]
                     ]
                 ];
             }
