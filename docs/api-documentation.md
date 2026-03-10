@@ -1208,7 +1208,7 @@
 
 ## Invoices
 
-### List Invoices
+### List All Invoices
 **Method:** `GET`
 **URL:** `/api/invoices`
 
@@ -1246,11 +1246,8 @@
 `422 Unprocessable Entity`
 ```json
 {
-  "errors": {
-    "organization_id|product_id": [
-      "The organization id|product id field is invalid."
-    ]
-  }
+  "success": false,
+  "message": "Either organization_id or product_id must be provided"
 }
 ```
 
@@ -1292,10 +1289,11 @@
 }
 ```
 
-**Success Response:** `201 Created`
+**Success Response:** `200 OK`
 ```json
 {
   "success": true,
+  "message": "Invoices retrieved successfully",
   "data": {}
 }
 ```
@@ -1370,7 +1368,7 @@
 }
 ```
 
-### Getbysubscriptions Invoices
+### Get Invoices by Subscriptions
 **Method:** `POST`
 **URL:** `/api/invoices/by-subscriptions`
 
@@ -1427,9 +1425,9 @@
 }
 ```
 
-### Delete Invoices
-**Method:** `DELETE`
-**URL:** `/api/invoices/{invoice}`
+### Cancel Invoices
+**Method:** `POST`
+**URL:** `/api/invoices/{id}/cancel`
 
 **Required Headers:**
 | Key | Value |
@@ -1444,7 +1442,11 @@
 
 **Success Response:** `200 OK`
 ```json
-{}
+{
+  "success": true,
+  "message": "Invoice cancelled successfully",
+  "data": {}
+}
 ```
 
 **Error Responses:**
@@ -1461,7 +1463,15 @@
 ```json
 {
   "success": false,
-  "message": "Resource not found"
+  "message": "Invoice not found"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Invoice is already cancelled"
 }
 ```
 
@@ -1472,14 +1482,7 @@
 }
 ```
 
-`500 Internal Server Error`
-```json
-{
-  "message": "No response returned by controller action"
-}
-```
-
-### Get Invoices
+### Get Invoices by id
 **Method:** `GET`
 **URL:** `/api/invoices/{invoice}`
 
@@ -1516,7 +1519,7 @@
 ```json
 {
   "success": false,
-  "message": "Resource not found"
+  "message": "Invoice not found"
 }
 ```
 
@@ -1527,52 +1530,8 @@
 }
 ```
 
-### Update Invoices
-**Method:** `PUT`
-**URL:** `/api/invoices/{invoice}`
 
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `200 OK`
-```json
-{}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-`500 Internal Server Error`
-```json
-{
-  "message": "No response returned by controller action"
-}
-```
-
-### Getbyproduct Invoices
+### Get Invoices by product_id
 **Method:** `GET`
 **URL:** `/api/invoices/{product_id}/product`
 
@@ -1584,9 +1543,7 @@
 
 **Request Body:**
 ```json
-{
-  "product_id": "sample"
-}
+{}
 ```
 
 **Success Response:** `200 OK`
@@ -1610,9 +1567,10 @@
 `422 Unprocessable Entity`
 ```json
 {
+  "success": false,
   "errors": {
     "product_id": [
-      "The product id field is invalid."
+      "The product id field is required."
     ]
   }
 }
@@ -2073,99 +2031,6 @@
     ],
     "active": [
       "The active field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Testallconnections Payment Gateways
-**Method:** `GET`
-**URL:** `/api/payment-gateways/test-all-connections`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Testconnection Payment Gateways
-**Method:** `GET`
-**URL:** `/api/payment-gateways/test-connection`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "gateway_id": "sample"
-}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "gateway_id": [
-      "The gateway id field is invalid."
     ]
   }
 }

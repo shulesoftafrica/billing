@@ -29,6 +29,10 @@ use App\Traits\ValidatePhoneNumber;
 use App\Jobs\Payments\CreateEcobankReferenceJob;
 use App\Jobs\Payments\CreateFlutterwaveReferenceJob;
 use App\Jobs\Payments\CreateStripeReferenceJob;
+use App\Models\AdvancePayment;
+use App\Models\InvoicePayment;
+use App\Models\Payment;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Stripe\Exception\ApiErrorException;
 
 use function Pest\Laravel\json;
@@ -840,7 +844,120 @@ class InvoiceController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        return $this->cancel($id);
+    }
+
+    /**
+     * Cancel an invoice and reverse related pending operations.
+     */
+    public function cancel(string $id)
+    {
+        try {
+            $invoice = $this->cancelInvoice((int) $id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice cancelled successfully',
+                'data' => $invoice,
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice not found',
+            ], 404);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Invoice cancellation failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice cancellation failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function cancelInvoice(int $invoiceId): array
+    {
+        return DB::transaction(function () use ($invoiceId) {
+            $invoice = Invoice::with([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ])->lockForUpdate()->find($invoiceId);
+
+            if (!$invoice) {
+                throw new ModelNotFoundException('Invoice not found');
+            }
+
+            if ($invoice->status === 'cancelled') {
+                throw new \InvalidArgumentException('Invoice is already cancelled');
+            }
+
+            $hasActiveSubscriptions = $invoice->invoiceItems->contains(function ($item) {
+                $subscription = $item->subscription;
+                return $subscription && $subscription->status === 'active';
+            });
+
+            if ($hasActiveSubscriptions) {
+                throw new \InvalidArgumentException('Cannot cancel invoice with active subscriptions');
+            }
+
+            foreach ($invoice->invoiceItems as $item) {
+                $subscription = $item->subscription;
+
+                if ($subscription && in_array($subscription->status, ['pending', 'partial'], true)) {
+                    $subscription->update(['status' => 'cancelled']);
+                }
+            }
+
+            $fallbackProductId = $invoice->invoiceItems->first()?->pricePlan?->product_id;
+
+            $invoicePayments = InvoicePayment::where('invoice_id', $invoice->id)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($invoicePayments as $invoicePayment) {
+                $payment = Payment::lockForUpdate()->find($invoicePayment->payment_id);
+
+                if ($payment) {
+                    $fullPaymentAllocated = ((float) $payment->amount === (float) $invoicePayment->amount);
+
+                    if ($fullPaymentAllocated) {
+                        $payment->update(['status' => 'pending']);
+                    } elseif ($fallbackProductId) {
+                        AdvancePayment::create([
+                            'payment_id' => $payment->id,
+                            'customer_id' => $invoice->customer_id,
+                            'product_id' => $fallbackProductId,
+                            'reminder' => (int) round((float) $invoicePayment->amount),
+                            'amount' => (float) $invoicePayment->amount,
+                        ]);
+                    }
+                }
+
+                $invoicePayment->delete();
+            }
+
+            $invoice->update(['status' => 'cancelled']);
+
+            $invoice->refresh()->load([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ]);
+
+            $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
+
+            return $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+        });
     }
 
     /**
@@ -1066,24 +1183,57 @@ class InvoiceController extends Controller
 
         return is_array($metadata) ? $metadata : [];
     }
-    public function getByProduct(Request $request)
+    public function getByProduct(Request $request, ?int $product_id = null)
     {
-        $request->validate([
+        $resolvedProductId = $product_id ?? $request->input('product_id');
+
+        $validator = Validator::make([
+            'product_id' => $resolvedProductId,
+        ], [
             'product_id' => 'required|integer|exists:products,id',
         ]);
 
-        $invoices = Invoice::whereHas('invoiceItems', function ($query) use ($request) {
-            $query->where('product_id', $request->product_id);
-        })
-            ->where('status', '!=', 'cancelled')
-            ->get();
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
+        try {
+            $invoices = Invoice::with([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ])
+                ->whereHas('invoiceItems.pricePlan', function ($query) use ($resolvedProductId) {
+                    $query->where('product_id', $resolvedProductId);
+                })
+                ->where('status', '!=', 'cancelled')
+                ->orderBy('created_at', 'desc')
+                ->get();
 
+            $controlNumbersMap = $this->buildControlNumbersMap($invoices);
 
-        return response()->json([
-            'success' => true,
-            'data' => $invoices
-        ]);
+            $data = $invoices->map(function ($invoice) use ($controlNumbersMap) {
+                return $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoices retrieved successfully',
+                'data' => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Get invoices by product failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve invoices',
+            ], 500);
+        }
     }
 
     /**

@@ -20,7 +20,6 @@ use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\Api\PaymentGatewayTestController;
 use App\Http\Controllers\StripeWebhookController;
 
 // Authentication routes - Public (no authentication, with strict rate limiting to prevent brute force)
@@ -54,7 +53,8 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::apiResource('product-types', ProductTypeController::class);
     Route::apiResource('payment-gateways', PaymentGatewayController::class);
     Route::apiResource('bank-accounts', BankAccountController::class);
-    Route::apiResource('invoices', InvoiceController::class);
+    Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
+    Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
     Route::apiResource('tax-rates', TaxRateController::class);
 
     // Organization payment gateway integration
@@ -107,12 +107,6 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('wallets')->gro
 Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('customers')->group(function () {
     Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); //okay
     Route::get('by-email/{email}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']); //okay
-});
-
-// Phase 2: Payment Gateway Testing - Protected
-Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('payment-gateways')->group(function () {
-    Route::get('test-connection', [PaymentGatewayTestController::class, 'testConnection']);
-    Route::get('test-all-connections', [PaymentGatewayTestController::class, 'testAllConnections']);
 });
 
 
