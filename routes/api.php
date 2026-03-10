@@ -7,7 +7,6 @@ use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CustomerController;
-use App\Http\Controllers\Api\CustomerAddressController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductTypeController;
 use App\Http\Controllers\Api\ProductUsageController;
@@ -61,15 +60,6 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     // Organization payment gateway integration
     Route::post('organizations/integrate-payment-gateway', [OrganizationController::class, 'integratePaymentGateway']);
 
-    // Customer addresses nested routes
-    Route::prefix('customers/{customer}')->group(function () {
-        Route::get('addresses', [CustomerAddressController::class, 'index']);
-        Route::post('addresses', [CustomerAddressController::class, 'store']);
-        Route::get('addresses/{address}', [CustomerAddressController::class, 'show']);
-        Route::put('addresses/{address}', [CustomerAddressController::class, 'update']);
-        Route::delete('addresses/{address}', [CustomerAddressController::class, 'destroy']);
-    });
-
     // Product price plans nested routes
     Route::prefix('products/{product}')->group(function () {
         Route::get('price-plans', [PricePlanController::class, 'index']);
@@ -115,8 +105,8 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('invoices')->gr
 
 // Phase 2: Enhanced Customer Management - Protected
 Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('customers')->group(function () {
-    Route::get('by-phone/{phone}/status', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); //okay
-    Route::get('by-email/{email}/status', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']); //okay
+    Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); //okay
+    Route::get('by-email/{email}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']); //okay
 });
 
 // Phase 2: Payment Gateway Testing - Protected
@@ -142,7 +132,6 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
     Route::post('payments/intent', [PaymentController::class, 'createIntent']);
-    Route::get('invoices/{invoice_id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
     Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);

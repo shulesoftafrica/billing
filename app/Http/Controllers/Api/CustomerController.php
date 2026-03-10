@@ -21,9 +21,9 @@ class CustomerController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-            'success' => false,
-            'message' => 'Validation failed',
-            'errors' => $validator->errors()
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
             ], 422);
         }
 
@@ -185,88 +185,25 @@ class CustomerController extends Controller
 
     public function lookupByPhoneWithStatus(string $phone)
     {
-        try {
-            $customer = Customer::with([
-                'organization',
-                'subscriptions.pricePlan',
-                'invoices' => function ($query) {
-                    $query->whereIn('status', ['issued', 'overdue']);
-                },
-                'walletTransactions' => function ($query) {
-                    $query->where('status', 'completed')
-                        ->selectRaw('customer_id, wallet_type, SUM(units) as balance')
-                        ->groupBy('customer_id', 'wallet_type');
-                }
-            ])
-                ->where('phone', $phone)
-                ->first();
-
-            if (!$customer) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Customer not found with this phone number'
-                ], 404);
-            }
-
-            // Calculate wallet balances
-            $walletBalances = [];
-            if ($customer->walletTransactions) {
-                foreach ($customer->walletTransactions as $transaction) {
-                    $walletBalances[$transaction->wallet_type] = (float) $transaction->balance;
-                }
-            }
-
-            // Calculate outstanding balance
-            $outstandingBalance = $customer->invoices->sum('total');
-
-            // Count active subscriptions
-            $activeSubscriptions = $customer->subscriptions->where('status', 'active')->count();
-
-            $customerData = [
-                'id' => $customer->id,
-                'organization_id' => $customer->organization_id,
-                'name' => $customer->name,
-                'email' => $customer->email,
-                'phone' => $customer->phone,
-                'status' => $customer->status,
-                'wallet_balances' => $walletBalances,
-                'active_subscriptions' => $activeSubscriptions,
-                'total_invoices' => $customer->invoices()->count(),
-                'outstanding_balance' => $outstandingBalance,
-                'organization' => $customer->organization,
-                'created_at' => $customer->created_at,
-                'updated_at' => $customer->updated_at
-            ];
-
-            return response()->json([
-                'success' => true,
-                'customer' => $customerData
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to lookup customer',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        return $this->getCustomerData('phone', $phone);
     }
 
     public function lookupByEmailWithStatus(string $email)
+    {
+        return $this->getCustomerData('email', $email);
+    }
+    public function getCustomerData($column, $value)
     {
         try {
             $customer = Customer::with([
                 'organization',
                 'subscriptions.pricePlan',
                 'invoices' => function ($query) {
-                    $query->whereIn('status', ['issued', 'overdue']);
-                },
-                'walletTransactions' => function ($query) {
-                    $query->where('status', 'completed')
-                        ->selectRaw('customer_id, wallet_type, SUM(units) as balance')
-                        ->groupBy('customer_id', 'wallet_type');
+                    $query->where('status', '!=', 'cancelled')
+                        ->with('payments');
                 }
             ])
-                ->where('email', $email)
+                ->where($column, $value)
                 ->first();
 
             if (!$customer) {
@@ -276,16 +213,12 @@ class CustomerController extends Controller
                 ], 404);
             }
 
-            // Calculate wallet balances
-            $walletBalances = [];
-            if ($customer->walletTransactions) {
-                foreach ($customer->walletTransactions as $transaction) {
-                    $walletBalances[$transaction->wallet_type] = (float) $transaction->balance;
-                }
-            }
-
-            // Calculate outstanding balance
-            $outstandingBalance = $customer->invoices->sum('total');
+            $totalInvoicedAmount = (float) $customer->invoices->sum('total');
+            $totalPaidAmount = (float) $customer->invoices->sum(function ($invoice) {
+                return $invoice->payments->sum('pivot.amount');
+            });
+            $totalBalanceAmount = $totalInvoicedAmount - $totalPaidAmount;
+            $outstandingBalance = $totalBalanceAmount;
 
             // Count active subscriptions
             $activeSubscriptions = $customer->subscriptions->where('status', 'active')->count();
@@ -297,9 +230,12 @@ class CustomerController extends Controller
                 'email' => $customer->email,
                 'phone' => $customer->phone,
                 'status' => $customer->status,
-                'wallet_balances' => $walletBalances,
+                'wallet_balances' => [],
                 'active_subscriptions' => $activeSubscriptions,
                 'total_invoices' => $customer->invoices()->count(),
+                'total_invoiced_amount' => $totalInvoicedAmount,
+                'total_paid_amount' => $totalPaidAmount,
+                'total_balance_amount' => $totalBalanceAmount,
                 'outstanding_balance' => $outstandingBalance,
                 'organization' => $customer->organization,
                 'created_at' => $customer->created_at,
