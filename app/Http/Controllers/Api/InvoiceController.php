@@ -26,6 +26,9 @@ use App\Services\Flutterwave\Models\CreateOrderRequest;
 use App\Services\Flutterwave\Models\CreatePaymentMethodRequest;
 use App\Services\Stripe\StripeAmountHelper;
 use App\Traits\ValidatePhoneNumber;
+use App\Jobs\Payments\CreateEcobankReferenceJob;
+use App\Jobs\Payments\CreateFlutterwaveReferenceJob;
+use App\Jobs\Payments\CreateStripeReferenceJob;
 use Stripe\Exception\ApiErrorException;
 
 use function Pest\Laravel\json;
@@ -376,8 +379,6 @@ class InvoiceController extends Controller
                 ->where('organization_id', $organizationId)
                 ->get();
 
-            $paymentGateways = [];
-
             // Get all products associated with the price plans
             $pricePlanIds = collect($productsData)->pluck('price_plan_id')->unique();
             $products = Product::whereIn(
@@ -389,51 +390,68 @@ class InvoiceController extends Controller
                 throw new \Exception('No products found for the provided price plans');
             }
 
-            // Loop through products to all gateways
+            $gatewayJobs = [];
+
             foreach ($products as $product) {
                 foreach ($organizationGateways as $orgGateway) {
-                    $gatewayData = [
-                        'id' => $orgGateway->id,
-                        'payment_gateway_id' => $orgGateway->payment_gateway_id,
-                        'gateway_name' => $orgGateway->paymentGateway->name,
-                        'status' => $orgGateway->status,
-                    ];
+                    $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
 
-                    // Check if gateway is Universal Control Number
-                    if (strtolower($orgGateway->paymentGateway->name) === 'universal control number') {
-                        // Fetch merchant record
-                        $merchant = $orgGateway->merchants()->first();
-
-                        if (!$merchant) {
-                            throw new \Exception('Merchant not found for Universal Control Number gateway');
-                        }
-                        // Create control number for each product
-                        $gatewayData['references'] = [];
-
-                        $controlNumberData = $this->createControlNumber($merchant, $product, $customer, $orgGateway);
-
-                        if (!$controlNumberData['success']) {
-                            throw new \Exception('Control number creation failed: ' . $controlNumberData['message']);
-                        }
-                        $gatewayData['references'] = $controlNumberData['control_number']['reference'];
-                    } elseif (strtolower($orgGateway->paymentGateway->name) === 'flutterwave') {
-                        $flutterwaveData = $this->createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway);
-                        $gatewayData['references'] = $flutterwaveData['success']
-                            ? $flutterwaveData['control_number']['reference']
-                            : [];
-                    } elseif (strtolower($orgGateway->paymentGateway->name) === 'stripe') {
-                        $stripeData = $this->createStripeReference($invoice, $product, $customer, $request, $orgGateway);
-                        $gatewayData['references'] = $stripeData['success']
-                            ? $stripeData['control_number']['reference']
-                            : [];
-                    } else {
-                        $gatewayData['references'] = [];
+                    if (
+                        $gatewayName === 'universal control number'
+                        || $gatewayName === 'flutterwave'
+                        || $gatewayName === 'stripe'
+                    ) {
+                        $gatewayJobs[] = [
+                            'product_id' => $product->id,
+                            'organization_gateway_id' => $orgGateway->id,
+                            'gateway_name' => $gatewayName,
+                        ];
                     }
-                    $paymentGateways[$product->id][] = $gatewayData;
                 }
             }
 
+            $totalGatewayJobs = count($gatewayJobs);
+
             DB::commit();
+
+            if ($totalGatewayJobs > 0) {
+                foreach ($gatewayJobs as $jobData) {
+                    $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
+
+                    if ($jobData['gateway_name'] === 'universal control number') {
+                        CreateEcobankReferenceJob::dispatch(
+                            $invoice->id,
+                            $jobData['product_id'],
+                            $customer->id,
+                            $jobData['organization_gateway_id'],
+                            $successUrl
+                        );
+                        continue;
+                    }
+
+                    if ($jobData['gateway_name'] === 'flutterwave') {
+                        CreateFlutterwaveReferenceJob::dispatch(
+                            $invoice->id,
+                            $jobData['product_id'],
+                            $customer->id,
+                            $jobData['organization_gateway_id'],
+                            $successUrl
+                        );
+                        continue;
+                    }
+
+                    if ($jobData['gateway_name'] === 'stripe') {
+                        CreateStripeReferenceJob::dispatch(
+                            $invoice->id,
+                            $jobData['product_id'],
+                            $customer->id,
+                            $jobData['organization_gateway_id'],
+                            $successUrl
+                        );
+                    }
+                }
+            }
+
             $invoice->load([
                 'customer',
                 'payments',
@@ -464,7 +482,7 @@ class InvoiceController extends Controller
     /**
      * Create control number via EcoBank API
      */
-    private function createControlNumber($merchant, $product, $customer, $orgGateway)
+    public function createControlNumber($merchant, $product, $customer, $orgGateway)
     {
         try {
 
@@ -1136,26 +1154,75 @@ class InvoiceController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Return payment gateways/references for a specific invoice grouped by price plan/product.
+     */
+    public function getPaymentGatewaysByInvoice(string $invoiceId)
+    {
+        try {
+            $invoice = Invoice::with([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ])
+                ->where('id', $invoiceId)
+                ->where('status', '!=', 'cancelled')
+                ->first();
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found'
+                ], 404);
+            }
+
+            $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
+            $formattedInvoice = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice payment gateways retrieved successfully',
+                'data' => [
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'price_plans' => $formattedInvoice['price_plans'],
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Invoice payment gateways retrieval failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve invoice payment gateways: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function createFlutterWaveReference($invoice, $product, $customer, $request, $orgGateway)
     {
         try {
-            // $existingControlNumber = ControlNumber::where('product_id', $product->id)
-            //     ->where('customer_id', $customer->id)
-            //     ->where('organization_payment_gateway_integration_id', $orgGateway->id)
-            //     ->first();
+            $existingControlNumber = $this->findExistingControlNumberForInvoiceGateway(
+                $invoice->id,
+                $product->id,
+                $customer->id,
+                $orgGateway->id
+            );
 
-            // if ($existingControlNumber) {
-            //     return [
-            //         'success' => true,
-            //         'control_number' => [
-            //             'id' => $existingControlNumber->id,
-            //             'reference' => $existingControlNumber->reference,
-            //             'metadata' => $existingControlNumber->metadata,
-            //             'created_at' => $existingControlNumber->created_at,
-            //         ],
-            //         'message' => 'Existing flutterwave reference returned',
-            //     ];
-            // }
+            if ($existingControlNumber) {
+                return [
+                    'success' => true,
+                    'control_number' => [
+                        'id' => $existingControlNumber->id,
+                        'reference' => $existingControlNumber->reference,
+                        'metadata' => $existingControlNumber->metadata,
+                        'created_at' => $existingControlNumber->created_at,
+                    ],
+                    'message' => 'Existing flutterwave reference returned',
+                ];
+            }
 
             $flutterwaveService = new FlutterwaveService();
         // dd($this->resolveBearerToken());
@@ -1334,6 +1401,26 @@ class InvoiceController extends Controller
     public function createStripeReference($invoice, $product, $customer, $request, $orgGateway)
     {
         try {
+            $existingControlNumber = $this->findExistingControlNumberForInvoiceGateway(
+                $invoice->id,
+                $product->id,
+                $customer->id,
+                $orgGateway->id
+            );
+
+            if ($existingControlNumber) {
+                return [
+                    'success' => true,
+                    'control_number' => [
+                        'id' => $existingControlNumber->id,
+                        'reference' => $existingControlNumber->reference,
+                        'metadata' => $existingControlNumber->metadata,
+                        'created_at' => $existingControlNumber->created_at,
+                    ],
+                    'message' => 'Existing Stripe reference returned',
+                ];
+            }
+
             $paymentIntentService = app(PaymentIntentService::class);
             
 
@@ -1441,6 +1528,21 @@ class InvoiceController extends Controller
                 'enabled' => false,
             ],
         ];
+    }
+
+    private function findExistingControlNumberForInvoiceGateway(
+        int $invoiceId,
+        int $productId,
+        int $customerId,
+        int $organizationGatewayId
+    ): ?ControlNumber {
+        return ControlNumber::where('product_id', $productId)
+            ->where('customer_id', $customerId)
+            ->where('organization_payment_gateway_integration_id', $organizationGatewayId)
+            ->get()
+            ->first(function ($controlNumber) use ($invoiceId) {
+                return $this->extractInvoiceIdFromControlNumberMetadata($controlNumber->metadata) === $invoiceId;
+            });
     }
 
 }

@@ -142,6 +142,7 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
     Route::post('payments/intent', [PaymentController::class, 'createIntent']);
+    Route::get('invoices/{invoice_id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
     Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);
