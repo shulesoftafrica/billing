@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PaymentGateway;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class PaymentGatewayController extends Controller
 {
@@ -28,7 +29,13 @@ class PaymentGatewayController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                'in:universal control number,flutterwave,stripe',
+                'unique:payment_gateways,name',
+            ],
             'type' => 'required|in:card,bank,mobile_money,control_number',
             'webhook_secret' => 'required|string|max:255',
             'config' => 'nullable|array',
@@ -86,7 +93,14 @@ class PaymentGatewayController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255',
+            'name' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                'in:universal control number,flutterwave,stripe',
+                Rule::unique('payment_gateways', 'name')->ignore($gateway->id),
+            ],
             'type' => 'sometimes|required|in:card,bank,mobile_money',
             'webhook_secret' => 'sometimes|required|string|max:255',
             'config' => 'nullable|array',

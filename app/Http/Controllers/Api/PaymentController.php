@@ -21,10 +21,22 @@ class PaymentController extends Controller
      */
     public function getByInvoice($invoice_id)
     {
-        $payments = Payment::where('invoice_id', $invoice_id)->get();
+        $payments = Payment::with([
+            'customer',
+            'paymentGateway',
+            'invoices' => function ($query) use ($invoice_id) {
+                $query->where('invoices.id', $invoice_id);
+            },
+        ])
+            ->whereHas('invoices', function ($query) use ($invoice_id) {
+                $query->where('invoices.id', $invoice_id);
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+
         return response()->json([
             'success' => true,
-            'data' => $payments
+            'data' => $this->formatPaymentsResponse($payments)
         ]);
     }
 
@@ -40,53 +52,37 @@ class PaymentController extends Controller
         ]);
         $customer =  request('customer_id') ?? null;
 
-        $payments = Payment::whereDate('created_at', '>=', $request->date_from)
+        $payments = Payment::with(['customer', 'paymentGateway'])->whereDate('created_at', '>=', $request->date_from)
             ->whereDate('created_at', '<=', $request->date_to);
         if ($customer) {
             $payments->where('customer_id', $customer);
         }
-        $payments = $payments->get();
+        $payments = $payments->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'success' => true,
-            'data' => $payments
+            'data' => $this->formatPaymentsResponse($payments)
         ]);
     }
 
-    /**
-     * Create a Stripe PaymentIntent.
-     * POST /api/payments/intent
-     */
-    public function createIntent(Request $request)
+    private function formatPaymentsResponse($payments)
     {
-        $validated = $request->validate([
-            'amount' => 'required|integer|min:1',
-            'currency' => 'required|string|size:3',
-            'customer' => 'nullable|string',
-            'description' => 'nullable|string',
-            'metadata' => 'nullable|array',
-            'receipt_email' => 'nullable|email',
-            'capture_method' => 'nullable|string|in:automatic,automatic_async,manual',
-            'statement_descriptor' => 'nullable|string|max:22',
-        ]);
+        return $payments->map(function ($payment) {
+            return [
+                'id' => $payment->id,
+                'gateway_id' => $payment->gateway_id,
+                'gateway_name' => $payment->paymentGateway?->name,
+                'customer_id' => $payment->customer_id,
+                'amount' => $payment->amount,
+                'transaction_reference' => $payment->gateway_reference,
+                'payment_reference' => $payment->payment_reference,
+                'status' => $payment->status,
+                'paid_at' => $payment->paid_at,
+                'created_at' => $payment->created_at,
+                'updated_at' => $payment->updated_at,
+                                'customer' => $payment->customer,
 
-        try {
-            $intent = $this->paymentIntentService->create($validated);
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'payment_intent_id' => $intent->id,
-                    'client_secret' => $intent->client_secret,
-                    'amount' => $intent->amount,
-                    'currency' => $intent->currency,
-                    'status' => $intent->status,
-                ],
-            ], 200);
-        } catch (\InvalidArgumentException $e) {
-            throw ValidationException::withMessages([
-                'payment' => [$e->getMessage()],
-            ]);
-        }
+            ];
+        })->values();
     }
 }

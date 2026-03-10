@@ -54,6 +54,8 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::apiResource('payment-gateways', PaymentGatewayController::class);
     Route::apiResource('bank-accounts', BankAccountController::class);
     Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
+    Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
+    Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
     Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
     Route::apiResource('tax-rates', TaxRateController::class);
 
@@ -123,8 +125,5 @@ Route::middleware('throttle:30,1')->group(function () {
 Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
-    Route::post('payments/intent', [PaymentController::class, 'createIntent']);
-    Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
-    Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
     Route::get('wallets/transactions', [WalletController::class, 'getTransactionsByWallet']);
 });

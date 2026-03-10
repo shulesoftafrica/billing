@@ -2211,7 +2211,7 @@
 
 ## Payments
 
-### Getbydaterange Payments
+### Get Payments by Date Range 
 **Method:** `GET`
 **URL:** `/api/payments`
 
@@ -2268,7 +2268,7 @@
 }
 ```
 
-### Getbyinvoice Payments
+### Get Payments by invoice 
 **Method:** `GET`
 **URL:** `/api/payments/by-invoice/{invoice_id}`
 
@@ -2307,93 +2307,6 @@
   "message": "Too Many Attempts."
 }
 ```
-
-### Createintent Payments
-**Method:** `POST`
-**URL:** `/api/payments/intent`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "amount": "sample",
-  "currency": "sample",
-  "customer": "sample",
-  "description": "sample",
-  "metadata": "sample",
-  "receipt_email": "sample",
-  "capture_method": "sample",
-  "statement_descriptor": "sample",
-  "payment": "sample"
-}
-```
-
-**Success Response:** `201 Created`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "amount": [
-      "The amount field is invalid."
-    ],
-    "currency": [
-      "The currency field is invalid."
-    ],
-    "customer": [
-      "The customer field is invalid."
-    ],
-    "description": [
-      "The description field is invalid."
-    ],
-    "metadata": [
-      "The metadata field is invalid."
-    ],
-    "receipt_email": [
-      "The receipt email field is invalid."
-    ],
-    "capture_method": [
-      "The capture method field is invalid."
-    ],
-    "statement_descriptor": [
-      "The statement descriptor field is invalid."
-    ],
-    "payment": [
-      "The payment field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
 ## Product Types
 
 ### List Product Types
