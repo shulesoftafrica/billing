@@ -21,6 +21,10 @@ class ProductTypeSeeder extends Seeder
                 'id' => 2, 
                 'name' => 'Subscription Product'
             ],
+            [
+                'id' => 3,
+                'name' => 'Usage Product'
+            ],
         ];
 
         foreach ($productTypes as $type) {

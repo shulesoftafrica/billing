@@ -380,6 +380,62 @@
             display: none !important;
         }
 
+        /* Hide Bank Accounts, Countries, Organizations, Payment Gateways, Customers, and Product Types sections */
+        .nav-section[data-section^="bank-accounts"],
+        .nav-section[data-section^="countries"],
+        .nav-section[data-section^="organizations"],
+        .nav-section[data-section^="payment-gateways"],
+        .nav-section[data-section^="customers"],
+        .nav-section[data-section^="product-types"],
+        .api-section[data-section="bank accounts"],
+        .api-section[data-section="countries"],
+        .api-section[data-section="organizations"],
+        .api-section[data-section="payment gateways"],
+        .api-section[data-section="customers"],
+        .api-section[data-section="product types"] {
+            display: none !important;
+        }
+
+        /* Hide specific non-essential Product endpoints */
+        .nav-link[data-search*="delete products delete"],
+        .nav-link[data-search*="update product put"],
+        .nav-link[data-search*="delete product price-plans delete"],
+        .nav-link[data-search*="get product price-plans get"][data-search*="/api/product-price-plan/{id}"],
+        .nav-link[data-search*="update product price-plans put"],
+        .endpoint-card[data-search*="delete products delete"],
+        .endpoint-card[data-search*="update product put"],
+        .endpoint-card[data-search*="delete product price-plans delete"],
+        .endpoint-card[data-search*="get product price-plans get"][data-search*="/api/product-price-plan/{id}"],
+        .endpoint-card[data-search*="update product price-plans put"] {
+            display: none !important;
+        }
+
+        /* Hide specific non-essential Invoice endpoints */
+        .nav-link[data-search*="get invoices by subscriptions"],
+        .nav-link[data-search*="get invoices by product_id"],
+        .nav-link[data-search*="get invoice payment gateways"],
+        .endpoint-card[data-search*="get invoices by subscriptions"],
+        .endpoint-card[data-search*="get invoices by product_id"],
+        .endpoint-card[data-search*="get invoice payment gateways"] {
+            display: none !important;
+        }
+
+        /* Hide specific non-essential Tax Rate endpoints */
+        .nav-link[data-search*="delete tax rates delete"],
+        .nav-link[data-search*="get tax rates get"][data-search*="/api/tax-rates/{id}"],
+        .nav-link[data-search*="update tax rates put"],
+        .endpoint-card[data-search*="delete tax rates delete"],
+        .endpoint-card[data-search*="get tax rates get"][data-search*="/api/tax-rates/{id}"],
+        .endpoint-card[data-search*="update tax rates put"] {
+            display: none !important;
+        }
+
+        /* Hide specific non-essential Payment endpoints */
+        .nav-link[data-search*="get payments by invoice"],
+        .endpoint-card[data-search*="get payments by invoice"] {
+            display: none !important;
+        }
+
         .api-section h2 {
             margin: 0 0 14px;
             font-size: 1.25rem;

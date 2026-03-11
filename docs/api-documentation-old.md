@@ -1,69 +1,423 @@
+# API Documentation
+
+**Base URL:** `https://api.example.com`
+
+---
+
 ## Authentication
+
+### 1. Obtain API Credentials
+
+Contact your system administrator to:
+- Get your **organization_id**
+- Create your user account with email and password
+
+### 2. Get Access Token
+
+**POST** `/api/auth/login`
+
+```bash
+curl -X POST https://api.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "your@email.com",
+    "password": "your-password"
+  }'
+```
+
+**Response:**
+```json
+{
+  "access_token": "shulesoft_1|abcdefg1234567890",
+  "token_type": "Bearer",
+  "expires_in": 43200
+}
+```
+
+### 3. Use Token in Requests
+
+Include the token in all API requests:
+
+```bash
+curl -X GET https://api.example.com/api/v1/products \
+  -H "Authorization: Bearer shulesoft_1|abcdefg1234567890"
+```
+
+---
+
+## API Endpoints
+
+### Register
+
+**POST** `/api/auth/register`
+
+```bash
+curl -X POST https://api.example.com/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "Password123!",
+    "password_confirmation": "Password123!"
+  }'
+```
+
+**Response:**
+```json
+{
+  "access_token": "shulesoft_1|abcdefg1234567890",
+  "token_type": "Bearer",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}
+```
+
+---
 
 ### Login
 
-**Method:** `POST`  
-**URL:** `/api/login`
+**POST** `/api/auth/login`
 
-**Request Body:**
+```bash
+curl -X POST https://api.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john@example.com",
+    "password": "Password123!"
+  }'
+```
+
+**Response:**
 ```json
 {
-  "email": "user@example.com",
-  "password": "your_password"
+  "access_token": "shulesoft_1|abcdefg1234567890",
+  "token_type": "Bearer",
+  "user": {
+    "id": 1,
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
 }
 ```
 
-**Success Response:** `200 OK`
+---
+
+### Logout
+
+**POST** `/api/auth/logout`
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
 ```json
 {
-  "success": true,
-  "api_key": "org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G"
+  "message": "Logged out successfully"
 }
 ```
 
-`401 Unauthorized`
+---
+
+### Get Current User
+
+**GET** `/api/auth/me`
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
 ```json
 {
-  "success": false,
-  "message": "Invalid credentials"
+  "user": {
+    "id": 1,
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "user"
+  }
 }
-```
-
-**Using Your API Key:**
-
-Include the API key in all requests:
-
-```
-Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 ```
 
 ---
 
 ## Products
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "SecurePassword123!",
+    "password_confirmation": "SecurePassword123!"
+  }'
+```
 
-### List All Products
-**Method:** `GET`
-**URL:** `/api/products`
+```javascript
+// JavaScript (Fetch API)
+const response = await fetch('https://api.example.com/api/auth/register', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  body: JSON.stringify({
+    organization_id: 1,
+    name: 'John Doe',
+    email: 'john@example.com',
+    password: 'SecurePassword123!',
+    password_confirmation: 'SecurePassword123!'
+  })
+});
+
+const data = await response.json();
+const token = data.access_token;
+
+// Store token for subsequent requests
+localStorage.setItem('api_token', token);
+```
+
+```php
+// PHP (with Guzzle)
+use GuzzleHttp\Client;
+
+$client = new Client(['base_uri' => 'https://api.example.com']);
+
+$response = $client->post('/api/auth/register', [
+    'json' => [
+        'organization_id' => 1,
+        'name' => 'John Doe',
+        'email' => 'john@example.com',
+        'password' => 'SecurePassword123!',
+        'password_confirmation' => 'SecurePassword123!',
+    ],
+    'headers' => [
+        'Accept' => 'application/json',
+    ]
+]);
+
+$data = json_decode($response->getBody(), true);
+$token = $data['access_token'];
+```
+
+```python
+# Python (with requests)
+import requests
+
+response = requests.post(
+    'https://api.example.com/api/auth/register',
+    json={
+        'organization_id': 1,
+        'name': 'John Doe',
+        'email': 'john@example.com',
+        'password': 'SecurePassword123!',
+        'password_confirmation': 'SecurePassword123!'
+    },
+    headers={'Accept': 'application/json'}
+)
+
+data = response.json()
+token = data['access_token']
+```
+
+---
+
+### Login
+
+Authenticate with email and password to receive an access token.
+
+**Method:** `POST`  
+**URL:** `/api/auth/login`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Content-Type | application/json |
 | Accept | application/json |
 
 **Request Body:**
 ```json
 {
-  "organization_id": "sample",
-  "product_type": "sample"
+  "email": "john@example.com",
+  "password": "SecurePassword123!"
 }
 ```
 
 **Success Response:** `200 OK`
 ```json
 {
-  "success": true,
-  "data": {}
+  "message": "Login successful",
+  "access_token": "shulesoft_2|xyz789abc456def123ghi890jkl567mno234pqr",
+  "token_type": "Bearer",
+  "expires_in": 43200,
+  "user": {
+    "id": 15,
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "role": "user"
+  }
+}
+```
+
+**Important Notes:**
+- ✅ **Token Rotation Enabled**: All previous tokens for this user are automatically revoked upon successful login
+- ✅ **30-Day Expiration**: Token expires after 43,200 minutes (30 days)
+- ✅ **Audit Logging**: Login IP address and user agent are recorded with the token
+- ✅ **Single Active Session**: Only the most recent login token remains valid
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "The provided credentials are incorrect.",
+  "errors": {
+    "email": [
+      "The provided credentials are incorrect."
+    ]
+  }
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "message": "The email field is required. (and 1 more error)",
+  "errors": {
+    "email": [
+      "The email field is required."
+    ],
+    "password": [
+      "The password field is required."
+    ]
+  }
+}
+```
+
+**Code Examples:**
+
+```bash
+# cURL
+curl -X POST https://api.example.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "email": "john@example.com",
+    "password": "SecurePassword123!"
+  }'
+```
+
+```javascript
+// JavaScript (Fetch API)
+async function login(email, password) {
+  const response = await fetch('https://api.example.com/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({ email, password })
+  });
+
+  if (!response.ok) {
+    throw new Error('Login failed');
+  }
+
+  const data = await response.json();
+  
+  // Store token securely
+  localStorage.setItem('api_token', data.access_token);
+  localStorage.setItem('user', JSON.stringify(data.user));
+  
+  return data;
+}
+
+// Usage
+login('john@example.com', 'SecurePassword123!')
+  .then(data => console.log('Logged in:', data.user))
+  .catch(error => console.error('Login error:', error));
+```
+
+```php
+// PHP (with Guzzle)
+use GuzzleHttp\Client;
+
+$client = new Client(['base_uri' => 'https://api.example.com']);
+
+try {
+    $response = $client->post('/api/auth/login', [
+        'json' => [
+            'email' => 'john@example.com',
+            'password' => 'SecurePassword123!',
+        ],
+        'headers' => ['Accept' => 'application/json']
+    ]);
+
+    $data = json_decode($response->getBody(), true);
+    $token = $data['access_token'];
+    
+    // Store token in session or database
+    $_SESSION['api_token'] = $token;
+    $_SESSION['user'] = $data['user'];
+    
+} catch (\GuzzleHttp\Exception\ClientException $e) {
+    // Handle 401 or 422 errors
+    $error = json_decode($e->getResponse()->getBody(), true);
+    echo $error['message'];
+}
+```
+
+```python
+# Python (with requests)
+import requests
+
+def login(email, password):
+    response = requests.post(
+        'https://api.example.com/api/auth/login',
+        json={'email': email, 'password': password},
+        headers={'Accept': 'application/json'}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        return data['access_token'], data['user']
+    else:
+        error = response.json()
+        raise Exception(error['message'])
+
+# Usage
+try:
+    token, user = login('john@example.com', 'SecurePassword123!')
+    print(f"Logged in as: {user['name']}")
+    print(f"Token: {token}")
+except Exception as e:
+    print(f"Login failed: {e}")
+```
+
+---
+
+### Logout (Current Device)
+
+Revoke the current access token (logout from current device only).
+
+**Method:** `POST`  
+**URL:** `/api/auth/logout`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {access_token} |
+| Accept | application/json |
+
+**Request Body:** None required
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "Logged out successfully"
 }
 ```
 
@@ -73,21 +427,613 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 ```json
 {
   "message": "Unauthenticated",
-  "error": "invalid_access_token"
+  "error": "authentication_required"
 }
 ```
 
-`422 Unprocessable Entity`
+**Code Examples:**
+
+```bash
+# cURL
+curl -X POST https://api.example.com/api/auth/logout \
+  -H "Authorization: Bearer shulesoft_1|your-token-here" \
+  -H "Accept: application/json"
+```
+
+```javascript
+// JavaScript
+async function logout() {
+  const token = localStorage.getItem('api_token');
+  
+  const response = await fetch('https://api.example.com/api/auth/logout', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (response.ok) {
+    // Clear stored token
+    localStorage.removeItem('api_token');
+    localStorage.removeItem('user');
+    console.log('Logged out successfully');
+  }
+}
+```
+
+```php
+// PHP
+$response = $client->post('/api/auth/logout', [
+    'headers' => [
+        'Authorization' => 'Bearer ' . $token,
+        'Accept' => 'application/json'
+    ]
+]);
+
+// Clear session
+unset($_SESSION['api_token']);
+unset($_SESSION['user']);
+```
+
+```python
+# Python
+headers = {
+    'Authorization': f'Bearer {token}',
+    'Accept': 'application/json'
+}
+
+response = requests.post(
+    'https://api.example.com/api/auth/logout',
+    headers=headers
+)
+
+if response.status_code == 200:
+    print("Logged out successfully")
+```
+
+---
+
+### Logout from All Devices
+
+Revoke all access tokens for the authenticated user (logout from all devices).
+
+**Method:** `POST`  
+**URL:** `/api/auth/logout-all`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {access_token} |
+| Accept | application/json |
+
+**Request Body:** None required
+
+**Success Response:** `200 OK`
 ```json
 {
-  "errors": {
-    "organization_id": [
-      "The organization id field is invalid."
-    ],
-    "product_type": [
-      "The product type field is invalid."
-    ]
+  "message": "Logged out from all devices successfully"
+}
+```
+
+**Use Cases:**
+- Security breach detected
+- Password changed
+- User requested to revoke all sessions
+- Admin action to force re-authentication
+
+**Code Examples:**
+
+```bash
+# cURL
+curl -X POST https://api.example.com/api/auth/logout-all \
+  -H "Authorization: Bearer shulesoft_1|your-token-here" \
+  -H "Accept: application/json"
+```
+
+```javascript
+// JavaScript
+async function logoutAllDevices() {
+  const token = localStorage.getItem('api_token');
+  
+  const response = await fetch('https://api.example.com/api/auth/logout-all', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  if (response.ok) {
+    localStorage.removeItem('api_token');
+    localStorage.removeItem('user');
+    alert('Logged out from all devices');
   }
+}
+```
+
+---
+
+### Get Current User
+
+Retrieve the authenticated user's profile information.
+
+**Method:** `GET`  
+**URL:** `/api/auth/me`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {access_token} |
+| Accept | application/json |
+
+**Success Response:** `200 OK`
+```json
+{
+  "user": {
+    "id": 15,
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "+255712345678",
+    "role": "user",
+    "sex": "M",
+    "email_verified_at": null,
+    "created_at": "2026-03-11T10:30:00.000000Z",
+    "updated_at": "2026-03-11T10:30:00.000000Z"
+  }
+}
+```
+
+**Code Examples:**
+
+```bash
+# cURL
+curl -X GET https://api.example.com/api/auth/me \
+  -H "Authorization: Bearer shulesoft_1|your-token-here" \
+  -H "Accept: application/json"
+```
+
+```javascript
+// JavaScript
+async function getCurrentUser() {
+  const token = localStorage.getItem('api_token');
+  
+  const response = await fetch('https://api.example.com/api/auth/me', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  const data = await response.json();
+  return data.user;
+}
+```
+
+---
+
+### Using Your Access Token
+
+**All API v1 endpoints require authentication.** Include your access token in the `Authorization` header:
+
+```
+Authorization: Bearer shulesoft_1|abcdefghijklmnopqrstuvwxyz1234567890
+```
+
+**Token Format:**
+- Prefix: `shulesoft_` (for GitHub secret scanning)
+- Token ID: Numeric identifier (e.g., `1`)
+- Separator: `|`
+- Random string: 40-character secure random token
+
+**Example Request:**
+
+```bash
+curl -X GET https://api.example.com/api/v1/products \
+  -H "Authorization: Bearer shulesoft_1|your-token-here" \
+  -H "Accept: application/json"
+```
+
+---
+
+### Token Abilities (Permissions)
+
+Tokens can have specific abilities (permissions) to limit what actions they can perform. This is useful for creating read-only tokens, or tokens with restricted access.
+
+**Default Ability:**
+- `*` (wildcard): Full access to all resources
+
+**Recommended Abilities:**
+
+| Ability | Description |
+|---------|-------------|
+| `payments:read` | View payment records |
+| `payments:write` | Create/update payments |
+| `invoices:read` | View invoices |
+| `invoices:write` | Create invoices |
+| `invoices:cancel` | Cancel invoices |
+| `customers:read` | View customers |
+| `customers:write` | Create/update customers |
+| `products:read` | View products |
+| `products:write` | Create/update products |
+| `subscriptions:read` | View subscriptions |
+| `subscriptions:write` | Create subscriptions |
+| `subscriptions:cancel` | Cancel subscriptions |
+
+**How It Works:**
+
+When you make a request to an endpoint that requires a specific ability:
+
+1. The API checks if your token has the required ability
+2. If the token has `*` (wildcard), access is granted
+3. If the token has the specific ability (e.g., `payments:read`), access is granted
+4. Otherwise, you receive a `403 Forbidden` response
+
+**Example:**
+
+```json
+// Request to GET /api/v1/payments
+// Requires: payments:read ability
+
+// Response if token lacks permission:
+{
+  "error": "Forbidden",
+  "message": "You do not have permission to view payment records"
+}
+```
+
+**Creating Tokens with Specific Abilities:**
+
+Currently, all tokens created via `/api/auth/login` and `/api/auth/register` have full access (`*`). Custom ability tokens can be created programmatically by your organization's administrators.
+
+---
+
+### Organization-Scoped Access
+
+**All API requests are automatically scoped to your organization.** This means:
+
+✅ **Automatic Filtering**: You only see data belonging to your organization  
+✅ **Data Isolation**: You cannot access other organizations' data  
+✅ **Automatic Injection**: When creating resources, `organization_id` is automatically set to your organization  
+✅ **Validation**: Any attempt to access another organization's data returns `403 Forbidden`
+
+**Example Scenarios:**
+
+**Scenario 1: Automatic Organization Filtering**
+
+```bash
+# Request
+GET /api/v1/products
+Authorization: Bearer {token_for_org_1}
+
+# Response: Only products from Organization 1
+{
+  "success": true,
+  "data": [
+    {"id": 1, "organization_id": 1, "name": "Product A"},
+    {"id": 2, "organization_id": 1, "name": "Product B"}
+  ]
+}
+```
+
+**Scenario 2: Blocked Cross-Organization Access**
+
+```bash
+# Request: User from Org 1 trying to create product for Org 2
+POST /api/v1/products
+Authorization: Bearer {token_for_org_1}
+{
+  "organization_id": 2,
+  "name": "Product X"
+}
+
+# Response: 403 Forbidden
+{
+  "error": "Forbidden",
+  "message": "You cannot create or modify resources for other organizations"
+}
+```
+
+**Scenario 3: Automatic Organization Injection**
+
+```bash
+# Request: organization_id not provided
+POST /api/v1/products
+Authorization: Bearer {token_for_org_1}
+{
+  "name": "Product Y",
+  "product_type_id": 1
+}
+
+# Response: organization_id automatically set to 1
+{
+  "success": true,
+  "data": {
+    "id": 50,
+    "organization_id": 1,  // ← Automatically injected
+    "name": "Product Y",
+    "product_type_id": 1
+  }
+}
+```
+
+---
+
+### Token Security Best Practices
+
+1. **Store Securely**
+   - Never commit tokens to version control
+   - Use environment variables for server-side applications
+   - Use secure storage (e.g., `httpOnly` cookies, encrypted storage) for client-side apps
+
+2. **Rotate Regularly**
+   - Tokens auto-rotate on re-login (old tokens are revoked)
+   - For long-running integrations, plan for token refresh
+
+3. **Monitor Usage**
+   - All tokens log IP address and user agent on creation
+   - Track unusual access patterns
+   - Use `/api/auth/logout-all` if breach suspected
+
+4. **Limit Scope**
+   - Request tokens with minimal required abilities
+   - Use read-only tokens for reporting tools
+   - Use write tokens only when necessary
+
+5. **Handle Expiration**
+   - Tokens expire after 30 days
+   - Implement automatic re-authentication when receiving `401 Unauthenticated`
+   - Plan for graceful token refresh
+
+**Example: Handling Token Expiration**
+
+```javascript
+async function apiRequest(url, options = {}) {
+  let token = localStorage.getItem('api_token');
+  
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json',
+      ...options.headers
+    }
+  });
+
+  // Token expired - re-authenticate
+  if (response.status === 401) {
+    const email = localStorage.getItem('email');
+    const password = await promptForPassword(); // Implement securely
+    
+    const loginData = await login(email, password);
+    token = loginData.access_token;
+    
+    // Retry original request with new token
+    return fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        ...options.headers
+      }
+    });
+  }
+
+  return response;
+}
+```
+
+---
+
+### Migration from Legacy Authentication
+
+**Legacy Endpoints (Deprecated):**
+- `/api/login` → Use `/api/auth/login`
+- All `/api/*` routes → Use `/api/v1/*` routes
+- `APP_ACCESS_TOKEN` → Use Sanctum personal access tokens
+
+**Migration Timeline:**
+1. **Now**: Both legacy and v1 endpoints are available
+2. **All new integrations**: Should use v1 endpoints
+3. **Existing integrations**: Migrate to v1 within 6 months
+4. **Future**: Legacy endpoints will be removed (date TBD)
+
+**Key Differences:**
+
+| Feature | Legacy | New (Sanctum) |
+|---------|--------|---------------|
+| **Authentication endpoint** | `/api/login` | `/api/auth/login` |
+| **API endpoints** | `/api/products` | `/api/v1/products` |
+| **Token format** | `org_live_*` | `shulesoft_{id}\|{token}` |
+| **Token expiration** | Never | 30 days |
+| **Token rotation** | No | Yes (on login) |
+| **Organization scoping** | Manual | Automatic |
+| **Audit logging** | No | Yes (IP + User Agent) |
+| **Rate limiting** | 30 req/min | 60 req/min |
+
+---
+
+## API Endpoints Migration Guide
+
+### Endpoint URL Patterns
+
+**All API endpoints follow this migration pattern:**
+
+| Resource | Legacy (Deprecated) | New (v1) |
+|----------|-------------------|----------|
+| Products | `/api/products` | `/api/v1/products` |
+| Invoices | `/api/invoices` | `/api/v1/invoices` |
+| Subscriptions | `/api/subscriptions` | `/api/v1/subscriptions` |
+| Payments | `/api/payments` | `/api/v1/payments` |
+| Customers | `/api/customers` | `/api/v1/customers` |
+| Product Usage | `/api/product-usage` | `/api/v1/product-usage` |
+
+**Simple Migration Rule:**
+```
+Old: https://api.example.com/api/{resource}
+New: https://api.example.com/api/v1/{resource}
+```
+
+### Header Changes
+
+**Old (Legacy):**
+```http
+Authorization: Bearer {YOUR_API_KEY}
+```
+
+**New (Sanctum):**
+```http
+Authorization: Bearer {YOUR_SANCTUM_TOKEN}
+```
+
+### Request Body Changes
+
+**Old:** Most requests required `organization_id` in the body  
+**New:** `organization_id` is automatically determined from your token
+
+**Example - Creating a Product:**
+
+```json
+// OLD (Legacy)
+{
+  "organization_id": 1,  // ← Required
+  "product_type_id": 2,
+  "name": "My Product"
+}
+
+// NEW (v1)
+{
+  // organization_id automatically set from token
+  "product_type_id": 2,
+  "name": "My Product"
+}
+```
+
+### Code Migration Examples
+
+**JavaScript/Fetch:**
+```javascript
+// OLD
+const response = await fetch('https://api.example.com/api/products', {
+  headers: {
+    'Authorization': 'Bearer org_live_abc123',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    organization_id: 1,
+    product_type_id: 2,
+    name: 'Product X'
+  })
+});
+
+// NEW
+const token = localStorage.getItem('api_token'); // From /api/auth/login
+const response = await fetch('https://api.example.com/api/v1/products', {
+  headers: {
+    'Authorization': `Bearer ${token}`,  // Sanctum token
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    // organization_id removed
+    product_type_id: 2,
+    name: 'Product X'
+  })
+});
+```
+
+**PHP/Guzzle:**
+```php
+// OLD
+$client->post('/api/products', [
+    'headers' => ['Authorization' => 'Bearer org_live_abc123'],
+    'json' => [
+        'organization_id' => 1,
+        'product_type_id' => 2,
+        'name' => 'Product X'
+    ]
+]);
+
+// NEW
+$client->post('/api/v1/products', [
+    'headers' => ['Authorization' => 'Bearer ' . $sanctumToken],
+    'json' => [
+        // organization_id removed
+        'product_type_id' => 2,
+        'name' => 'Product X'
+    ]
+]);
+```
+
+**Python/Requests:**
+```python
+# OLD
+requests.post('https://api.example.com/api/products',
+    headers={'Authorization': 'Bearer org_live_abc123'},
+    json={
+        'organization_id': 1,
+        'product_type_id': 2,
+        'name': 'Product X'
+    })
+
+# NEW
+requests.post('https://api.example.com/api/v1/products',
+    headers={'Authorization': f'Bearer {sanctum_token}'},
+    json={
+        # organization_id removed
+        'product_type_id': 2,
+        'name': 'Product X'
+    })
+```
+
+---
+
+## Products
+
+> **Note:** All product endpoints automatically filter results to your organization. You don't need to provide `organization_id` in requests—it's automatically determined from your access token.
+
+### List All Products
+**Method:** `GET`
+**URL:** `/api/v1/products`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_SANCTUM_TOKEN} |
+| Accept | application/json |
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| product_type | integer | No | Filter by product type ID (1=one-time, 2=subscription, 3=usage) |
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "organization_id": 1,
+      "product_type_id": 2,
+      "name": "Premium Hosting Plan",
+      "description": "Monthly recurring hosting",
+      "unit": "month",
+      "status": "active",
+      "created_at": "2026-03-10T08:00:00.000000Z",
+      "updated_at": "2026-03-10T08:00:00.000000Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "authentication_required"
 }
 ```
 
@@ -98,9 +1044,41 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 }
 ```
 
+**Code Examples:**
+
+```bash
+# cURL
+curl -X GET "https://api.example.com/api/v1/products?product_type=2" \
+  -H "Authorization: Bearer shulesoft_1|your-token-here" \
+  -H "Accept: application/json"
+```
+
+```javascript
+// JavaScript
+async function getProducts(productType = null) {
+  const token = localStorage.getItem('api_token');
+  const url = new URL('https://api.example.com/api/v1/products');
+  
+  if (productType) {
+    url.searchParams.append('product_type', productType);
+  }
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    }
+  });
+
+  return response.json();
+}
+```
+
+---
+
 ### Create Products
 **Method:** `POST`
-**URL:** `/api/products`
+**URL:** `/api/v1/products`
 
 **Description:** Create a new product with pricing plans. Products must be assigned a product type that determines their billing behavior.
 
@@ -112,14 +1090,15 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_SANCTUM_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
 **Request Body:**
+> **Note:** `organization_id` is automatically set from your access token—no need to include it.
+
 ```json
 {
-  "organization_id": 1,
   "product_type_id": 2,
   "name": "Premium Hosting Plan",
   "description": "Monthly recurring hosting with 100GB storage and unlimited bandwidth",
@@ -177,7 +1156,7 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 ```json
 {
   "message": "Unauthenticated",
-  "error": "invalid_access_token"
+  "error": "authentication_required"
 }
 ```
 
@@ -203,26 +1182,90 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 }
 ```
 
+**Code Examples:**
+
+```bash
+# cURL
+curl -X POST https://api.example.com/api/v1/products \
+  -H "Authorization: Bearer shulesoft_1|your-token-here" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "product_type_id": 2,
+    "name": "Premium Hosting Plan",
+    "description": "Monthly recurring hosting with 100GB storage",
+    "unit": "month",
+    "status": "active",
+    "price_plans": [
+      {
+        "name": "Monthly Plan",
+        "subscription_type": "monthly",
+        "amount": 75000,
+        "currency": "TZS",
+        "rate": 30
+      }
+    ]
+  }'
+```
+
+```javascript
+// JavaScript
+async function createProduct(productData) {
+  const token = localStorage.getItem('api_token');
+  
+  const response = await fetch('https://api.example.com/api/v1/products', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(productData)
+  });
+
+  return response.json();
+}
+
+// Usage
+const product = {
+  product_type_id: 2,
+  name: 'Premium Hosting Plan',
+  description: 'Monthly recurring hosting',
+  unit: 'month',
+  status: 'active',
+  price_plans: [
+    {
+      name: 'Monthly Plan',
+      subscription_type: 'monthly',
+      amount: 75000,
+      currency: 'TZS',
+      rate: 30
+    }
+  ]
+};
+
+createProduct(product).then(data => console.log('Product created:', data));
+```
+
+---
+
 ### Delete Products
 **Method:** `DELETE`
-**URL:** `/api/products/{product}`
+**URL:** `/api/v1/products/{product}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_SANCTUM_TOKEN} |
 | Accept | application/json |
 
-**Request Body:**
-```json
-{}
-```
+**Request Body:** None required
 
 **Success Response:** `200 OK`
 ```json
 {
   "success": true,
-  "data": {}
+  "message": "Product deleted successfully"
 }
 ```
 
@@ -232,7 +1275,15 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 ```json
 {
   "message": "Unauthenticated",
-  "error": "invalid_access_token"
+  "error": "authentication_required"
+}
+```
+
+`403 Forbidden`
+```json
+{
+  "error": "Forbidden",
+  "message": "You cannot delete products from other organizations"
 }
 ```
 
@@ -251,14 +1302,16 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 }
 ```
 
+---
+
 ### Get Single Product
 **Method:** `GET`
-**URL:** `/api/products/{product}`
+**URL:** `/api/v1/products/{product}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_SANCTUM_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -301,23 +1354,24 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Update Product
 **Method:** `PUT`
-**URL:** `/api/products/{product}`
+**URL:** `/api/v1/products/{product}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_SANCTUM_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
 **Request Body:**
+> **Note:** `organization_id` cannot be changed and is automatically validated.
+
 ```json
 {
-  "organization_id": "sample",
-  "product_type_id": "sample",
-  "name": "sample",
-  "description": "sample",
-  "status": "sample"
+  "product_type_id": 2,
+  "name": "Updated Product Name",
+  "description": "Updated description",
+  "status": "active"
 }
 ```
 

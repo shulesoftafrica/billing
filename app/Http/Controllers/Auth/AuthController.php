@@ -19,14 +19,27 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
+            'organization_id' => 'required|exists:organizations,id',
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'email' => 'required|string|email|max:255',
             'password' => 'required|string|min:8|confirmed',
             'role' => 'nullable|string|in:admin,user,manager',
             'sex' => 'nullable|string|in:male,female,other,m,f,M,F',
         ]);
 
+        // Check for unique email within organization
+        $existingUser = User::where('organization_id', $validated['organization_id'])
+                            ->where('email', $validated['email'])
+                            ->first();
+
+        if ($existingUser) {
+            throw ValidationException::withMessages([
+                'email' => ['A user with this email already exists in this organization.'],
+            ]);
+        }
+
         $user = User::create([
+            'organization_id' => $validated['organization_id'],
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
@@ -34,13 +47,28 @@ class AuthController extends Controller
             'sex' => $validated['sex'] ?? null,
         ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Create token with 30-day expiration
+        $token = $user->createToken(
+            'auth_token',
+            ['*'],
+            now()->addDays(30)
+        )->plainTextToken;
+
+        // Log IP and User Agent
+        $this->logTokenAudit($user, $request);
 
         return response()->json([
             'message' => 'User registered successfully',
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user,
+            'expires_in' => 43200, // 30 days in minutes
+            'user' => [
+                'id' => $user->id,
+                'organization_id' => $user->organization_id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+            ],
         ], 201);
     }
 
@@ -65,16 +93,31 @@ class AuthController extends Controller
             ]);
         }
 
-        // Revoke all previous tokens (optional - comment out if you want to keep old tokens)
-        // $user->tokens()->delete();
+        // Token Rotation: Revoke all previous tokens for security
+        $user->tokens()->delete();
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Create token with 30-day expiration
+        $token = $user->createToken(
+            'auth_token',
+            ['*'],
+            now()->addDays(30)
+        )->plainTextToken;
+
+        // Log IP and User Agent
+        $this->logTokenAudit($user, $request);
 
         return response()->json([
             'message' => 'Login successful',
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user,
+            'expires_in' => 43200, // 30 days in minutes
+            'user' => [
+                'id' => $user->id,
+                'organization_id' => $user->organization_id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+            ],
         ], 200);
     }
 
@@ -140,5 +183,25 @@ class AuthController extends Controller
         return response()->json([
             'user' => $request->user(),
         ], 200);
+    }
+
+    /**
+     * Log token audit information (IP address and user agent)
+     *
+     * @param User $user
+     * @param Request $request
+     * @return void
+     */
+    protected function logTokenAudit(User $user, Request $request)
+    {
+        // Update the most recent token with IP and User Agent
+        $latestToken = $user->tokens()->latest('id')->first();
+
+        if ($latestToken) {
+            $latestToken->update([
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        }
     }
 }

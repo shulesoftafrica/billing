@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use App\Http\Controllers\BaseApiController;
 use Illuminate\Http\Request;
 use App\Models\Payment;
 use App\Services\Stripe\PaymentIntentService;
 use Illuminate\Validation\ValidationException;
 
-class PaymentController extends Controller
+class PaymentController extends BaseApiController
 {
     public function __construct(
         private readonly PaymentIntentService $paymentIntentService
@@ -17,10 +17,17 @@ class PaymentController extends Controller
 
     /**
      * Get all payments for a given invoice ID
-     * GET /api/payments/by-invoice/{invoice_id}
+     * GET /api/v1/payments/by-invoice/{invoice_id}
+     * 
+     * Requires: payments:read ability
      */
     public function getByInvoice($invoice_id)
     {
+        // Require payments:read ability
+        $this->requireAbility('payments:read', 'You do not have permission to view payment records');
+
+        $organizationId = $this->getOrganizationId();
+
         $payments = Payment::with([
             'customer',
             'paymentGateway',
@@ -28,8 +35,9 @@ class PaymentController extends Controller
                 $query->where('invoices.id', $invoice_id);
             },
         ])
-            ->whereHas('invoices', function ($query) use ($invoice_id) {
-                $query->where('invoices.id', $invoice_id);
+            ->whereHas('invoices', function ($query) use ($invoice_id, $organizationId) {
+                $query->where('invoices.id', $invoice_id)
+                      ->where('invoices.organization_id', $organizationId);
             })
             ->orderBy('created_at', 'desc')
             ->get();
@@ -42,21 +50,36 @@ class PaymentController extends Controller
 
     /**
      * Get all payments within a date range
-     * GET /api/payments?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+     * GET /api/v1/payments?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&customer_id=123
+     * 
+     * Requires: payments:read ability
      */
     public function getByDateRange(Request $request)
     {
+        // Require payments:read ability
+        $this->requireAbility('payments:read', 'You do not have permission to view payment records');
+
         $request->validate([
             'date_from' => 'required|date',
             'date_to' => 'required|date',
+            'customer_id' => 'nullable|exists:customers,id',
         ]);
-        $customer =  request('customer_id') ?? null;
 
-        $payments = Payment::with(['customer', 'paymentGateway'])->whereDate('created_at', '>=', $request->date_from)
+        $organizationId = $this->getOrganizationId();
+        $customerId = $request->input('customer_id');
+
+        $payments = Payment::with(['customer', 'paymentGateway'])
+            ->whereHas('customer', function ($query) use ($organizationId) {
+                $query->where('organization_id', $organizationId);
+            })
+            ->whereDate('created_at', '>=', $request->date_from)
             ->whereDate('created_at', '<=', $request->date_to);
-        if ($customer) {
-            $payments->where('customer_id', $customer);
+
+        if ($customerId) {
+            // Verify customer belongs to the same organization
+            $payments->where('customer_id', $customerId);
         }
+
         $payments = $payments->orderBy('created_at', 'desc')->get();
 
         return response()->json([

@@ -78,4 +78,12 @@ class Organization extends Model
     {
         return $this->hasMany(Configuration::class);
     }
+
+    /**
+     * Get all API keys for this organization.
+     */
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(OrganizationApiKey::class);
+    }
 }

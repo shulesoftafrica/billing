@@ -210,88 +210,21 @@ Content-Type: application/json</code></pre>
                 <!-- Invoices API -->
                 <section id="invoices" class="mb-5">
                     <h2 class="h3 fw-bold mb-3">Invoices</h2>
-                    <p class="text-muted mb-4">Create and manage invoices with support for three different invoice types: one-time, subscription, and usage-based billing.</p>
+                    <p class="text-muted mb-4">Create and manage invoices with support for single or multiple products, tax calculations, and integrated payment gateways.</p>
                     
-                    <!-- Invoice Types Overview -->
+                    <!-- Create Single Product Invoice -->
                     <div class="mb-5">
-                        <h4 class="h5 fw-bold mb-3">Invoice Types Overview</h4>
-                        <div class="table-responsive">
-                            <table class="table table-bordered">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Invoice Type</th>
-                                        <th>Product Type</th>
-                                        <th>Billing Pattern</th>
-                                        <th>Use Case</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><span class="badge bg-primary">One-Time</span></td>
-                                        <td>One-time Product (product_type_id: 1)</td>
-                                        <td>Single charge</td>
-                                        <td>One-off services, consulting, project work</td>
-                                    </tr>
-                                    <tr>
-                                        <td><span class="badge bg-success">Subscription</span></td>
-                                        <td>Subscription Product (product_type_id: 2)</td>
-                                        <td>Recurring charges</td>
-                                        <td>SaaS, memberships, monthly/yearly plans</td>
-                                    </tr>
-                                    <tr>
-                                        <td><span class="badge bg-warning">Usage-Based</span></td>
-                                        <td>Usage Product (product_type: usage)</td>
-                                        <td>Pay-per-use</td>
-                                        <td>API calls, storage, bandwidth, credits</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="alert alert-info mt-3">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>Important:</strong> The invoice type is automatically determined by the product type associated with the price plan. You don't need to explicitly specify the invoice type in your request.
-                        </div>
-                    </div>
-
-                    <!-- One-Time Invoice -->
-                    <div class="mb-5">
-                        <h4 class="h5 fw-bold">1. Create One-Time Invoice</h4>
+                        <h4 class="h5 fw-bold">Create Single Product Invoice</h4>
                         <p><span class="badge bg-success">POST</span> <code>/api/invoices</code></p>
-                        <p class="text-muted">One-time invoices are for products that are charged once without creating a subscription. Perfect for consulting services, one-off projects, or standalone purchases.</p>
-
+                        <p class="text-muted">Create an invoice with a single product using price plan ID.</p>
                         
-                        <h6 class="fw-bold mt-4">Required Parameters</h6>
-                        <ul class="mb-3">
-                            <li><code>organization_id</code> (integer) - ID of your organization</li>
-                            <li><code>customer</code> (object) - Customer information</li>
-                            <li><code>customer.name</code> (string) - Customer's full name</li>
-                            <li><code>customer.email</code> (string) - Customer's email address</li>
-                            <li><code>customer.phone</code> (string) - Customer's phone number</li>
-                            <li><code>products</code> (array) - Array of products (minimum 1)</li>
-                            <li><code>products.*.price_plan_id</code> (integer) - Price plan ID for a one-time product</li>
-                            <li><code>products.*.amount</code> (number) - Invoice amount for this product</li>
-                            <li><code>currency</code> (string) - 3-letter currency code (e.g., "TZS", "USD")</li>
-                        </ul>
-
-                        <h6 class="fw-bold mt-4">Optional Parameters</h6>
-                        <ul class="mb-3">
-                            <li><code>tax_rate_ids</code> (array) - Array of tax rate IDs to apply</li>
-                            <li><code>description</code> (string) - Invoice description</li>
-                            <li><code>status</code> (string) - Invoice status: draft, issued, paid, cancelled (default: "issued")</li>
-                            <li><code>date</code> (string) - Invoice date in Y-m-d format (default: current date)</li>
-                            <li><code>due_date</code> (string) - Payment due date in Y-m-d format</li>
-                            <li><code>payment_gateway</code> (string) - flutterwave, control_number, or both</li>
-                            <li><code>success_url</code> (string) - Redirect URL after successful payment</li>
-                            <li><code>cancel_url</code> (string) - Redirect URL after cancelled payment</li>
-                        </ul>
-
                         <div class="card bg-dark text-white mb-3">
                             <div class="card-header d-flex justify-content-between">
-                                <span>Request Example - One-Time Invoice</span>
-                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-one-time')">Copy</button>
+                                <span>Request Body</span>
+                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-single')">Copy</button>
                             </div>
                             <div class="card-body">
-                                <pre class="mb-0 text-white" id="invoice-one-time"><code>{
+                                <pre class="mb-0 text-white" id="invoice-single"><code>{
   "organization_id": 1,
   "customer": {
     "name": "John Doe",
@@ -304,7 +237,7 @@ Content-Type: application/json</code></pre>
       "amount": 50000
     }
   ],
-  "description": "Website development project",
+  "description": "Monthly hosting subscription",
   "currency": "TZS",
   "status": "issued",
   "date": "2026-02-26",
@@ -313,347 +246,21 @@ Content-Type: application/json</code></pre>
                             </div>
                         </div>
 
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - One-Time Invoice</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Invoice created successfully",
-  "data": {
-    "invoice": {
-      "id": 123,
-      "invoice_number": "INV-2026-00123",
-      "customer_id": 45,
-      "customer_name": "John Doe",
-      "customer_email": "john@example.com",
-      "currency": "TZS",
-      "status": "issued",
-      "description": "Website development project",
-      "subtotal": 50000,
-      "tax_total": 0,
-      "total": 50000,
-      "date": "2026-02-26",
-      "due_date": "2026-03-26",
-      "issued_at": "2026-02-26T10:30:00.000000Z",
-      "items": [
-        {
-          "id": 456,
-          "price_plan_id": 5,
-          "product_name": "Website Development",
-          "quantity": 1,
-          "unit_price": 50000,
-          "total": 50000
-        }
-      ],
-      "taxes": [],
-      "payments": []
-    }
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle me-2"></i>
-                            <strong>Note:</strong> If a customer with the same email or phone already exists in your organization, the existing customer record will be used instead of creating a new one.
-                        </div>
-                    </div>
-
-                    <!-- Subscription Invoice -->
-                    <div class="mb-5">
-                        <h4 class="h5 fw-bold">2. Create Subscription Invoice</h4>
-                        <p><span class="badge bg-success">POST</span> <code>/api/invoices</code></p>
-                        <p class="text-muted">Subscription invoices automatically create a subscription record for recurring billing. The subscription remains in "pending" status until the invoice is paid, then becomes "active".</p>
-                        
-                        <h6 class="fw-bold mt-4">Required Parameters</h6>
-                        <ul class="mb-3">
-                            <li><code>organization_id</code> (integer) - ID of your organization</li>
-                            <li><code>customer</code> (object) - Customer information</li>
-                            <li><code>customer.name</code> (string) - Customer's full name</li>
-                            <li><code>customer.email</code> (string) - Customer's email address</li>
-                            <li><code>customer.phone</code> (string) - Customer's phone number</li>
-                            <li><code>products</code> (array) - Array of products (minimum 1)</li>
-                            <li><code>products.*.price_plan_id</code> (integer) - Price plan ID for a subscription product</li>
-                            <li><code>products.*.amount</code> (number) - Invoice amount for this product</li>
-                            <li><code>currency</code> (string) - 3-letter currency code</li>
-                        </ul>
-
-                        <h6 class="fw-bold mt-4">Optional Parameters</h6>
-                        <ul class="mb-3">
-                            <li><code>tax_rate_ids</code> (array) - Array of tax rate IDs to apply</li>
-                            <li><code>description</code> (string) - Invoice description</li>
-                            <li><code>status</code> (string) - Invoice status (default: "issued")</li>
-                            <li><code>date</code> (string) - Invoice date in Y-m-d format</li>
-                            <li><code>due_date</code> (string) - Payment due date in Y-m-d format</li>
-                            <li><code>payment_gateway</code> (string) - flutterwave, control_number, or both</li>
-                            <li><code>success_url</code> (string) - Redirect URL after successful payment</li>
-                            <li><code>cancel_url</code> (string) - Redirect URL after cancelled payment</li>
-                        </ul>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header d-flex justify-content-between">
-                                <span>Request Example - Subscription Invoice</span>
-                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-subscription')">Copy</button>
-                            </div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white" id="invoice-subscription"><code>{
-  "organization_id": 1,
-  "customer": {
-    "name": "Jane Smith",
-    "email": "jane@company.com",
-    "phone": "+255723456789"
-  },
-  "products": [
-    {
-      "price_plan_id": 8,
-      "amount": 75000
-    }
-  ],
-  "description": "Premium hosting - Monthly subscription",
-  "currency": "TZS",
-  "status": "issued",
-  "payment_gateway": "flutterwave",
-  "success_url": "https://yourapp.com/payment/success",
-  "cancel_url": "https://yourapp.com/payment/cancel"
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Subscription Invoice</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Invoice created successfully",
-  "data": {
-    "invoice": {
-      "id": 124,
-      "invoice_number": "INV-2026-00124",
-      "customer_id": 46,
-      "currency": "TZS",
-      "status": "issued",
-      "description": "Premium hosting - Monthly subscription",
-      "subtotal": 75000,
-      "tax_total": 0,
-      "total": 75000,
-      "due_date": null,
-      "issued_at": "2026-02-26T11:15:00.000000Z",
-      "items": [
-        {
-          "id": 457,
-          "price_plan_id": 8,
-          "subscription_id": 89,
-          "product_name": "Premium Hosting Plan",
-          "billing_interval": "monthly",
-          "quantity": 1,
-          "unit_price": 75000,
-          "total": 75000
-        }
-      ],
-      "subscription": {
-        "id": 89,
-        "status": "pending",
-        "price_plan_id": 8,
-        "start_date": null,
-        "next_billing_date": null,
-        "note": "Subscription will activate upon payment"
-      },
-      "payment_details": {
-        "flutterwave": {
-          "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz",
-          "tx_ref": "INV-2026-00124-1708956234",
-          "expires_at": "2026-03-05T11:15:00.000000Z"
-        }
-      }
-    }
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="alert alert-warning">
-                            <i class="bi bi-exclamation-triangle me-2"></i>
-                            <strong>Important:</strong> The subscription is created in "pending" status. It will automatically activate when the invoice is paid, and the next billing date will be calculated based on the price plan's billing interval.
-                        </div>
-
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>Duplicate Prevention:</strong> If a pending subscription already exists for the same customer and price plan, a new invoice will not be created. The existing invoice will be returned instead.
-                        </div>
-                    </div>
-
-                    <!-- Usage-Based Invoice -->
-                    <div class="mb-5">
-                        <h4 class="h5 fw-bold">3. Create Usage-Based Invoice</h4>
-                        <p class="text-muted">Usage-based billing is a two-step process: first record usage, then create invoices based on accumulated usage.</p>
-                        
-                        <h6 class="fw-bold mt-4">Step 1: Record Product Usage</h6>
-                        <p><span class="badge bg-success">POST</span> <code>/api/product-usage</code></p>
-                        
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header d-flex justify-content-between">
-                                <span>Request Example - Record Usage</span>
-                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#usage-record')">Copy</button>
-                            </div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white" id="usage-record"><code>{
-  "customer_id": 45,
-  "product_id": 12,
-  "quantity": 5000
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Usage Recorded</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Product usage recorded successfully",
-  "data": {
-    "id": 789,
-    "customer_id": 45,
-    "product_id": 12,
-    "quantity": 5000,
-    "created_at": "2026-02-26T12:00:00.000000Z",
-    "product": {
-      "id": 12,
-      "name": "API Calls",
-      "product_type": "usage",
-      "unit": "calls"
-    },
-    "customer": {
-      "id": 45,
-      "name": "Tech Startup Inc",
-      "email": "billing@techstartup.com"
-    }
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <h6 class="fw-bold mt-4">Step 2: Get Usage Report</h6>
-                        <p><span class="badge bg-primary">GET</span> <code>/api/product-usage/report/{customer_id}</code></p>
-                        <p class="text-muted">Retrieve accumulated usage data for a customer to calculate charges.</p>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Usage Report</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "data": {
-    "customer_id": 45,
-    "customer_name": "Tech Startup Inc",
-    "usage_summary": [
-      {
-        "product_id": 12,
-        "product_name": "API Calls",
-        "product_code": "API-USAGE",
-        "total_purchased": 50000,
-        "total_used": 45000,
-        "balance": 5000,
-        "unit": "calls"
-      },
-      {
-        "product_id": 13,
-        "product_name": "Cloud Storage",
-        "product_code": "STORAGE-GB",
-        "total_purchased": 1000,
-        "total_used": 750,
-        "balance": 250,
-        "unit": "GB"
-      }
-    ]
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <h6 class="fw-bold mt-4">Step 3: Create Invoice for Usage</h6>
-                        <p><span class="badge bg-success">POST</span> <code>/api/invoices</code></p>
-                        <p class="text-muted">Create an invoice based on the usage data. Calculate the amount based on your pricing model (e.g., price per API call, per GB).</p>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header d-flex justify-content-between">
-                                <span>Request Example - Usage Invoice</span>
-                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-usage')">Copy</button>
-                            </div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white" id="invoice-usage"><code>{
-  "organization_id": 1,
-  "customer": {
-    "name": "Tech Startup Inc",
-    "email": "billing@techstartup.com",
-    "phone": "+255734567890"
-  },
-  "products": [
-    {
-      "price_plan_id": 15,
-      "amount": 45000
-    }
-  ],
-  "description": "API Usage - 45,000 calls @ TZS 1 per call",
-  "currency": "TZS",
-  "status": "issued"
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Usage Invoice</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Invoice created successfully",
-  "data": {
-    "invoice": {
-      "id": 125,
-      "invoice_number": "INV-2026-00125",
-      "customer_id": 45,
-      "currency": "TZS",
-      "status": "issued",
-      "description": "API Usage - 45,000 calls @ TZS 1 per call",
-      "subtotal": 45000,
-      "tax_total": 0,
-      "total": 45000,
-      "issued_at": "2026-02-26T12:30:00.000000Z",
-      "items": [
-        {
-          "id": 458,
-          "price_plan_id": 15,
-          "product_name": "API Usage Charges",
-          "quantity": 1,
-          "unit_price": 45000,
-          "total": 45000,
-          "metadata": {
-            "usage_period": "2026-02-01 to 2026-02-28",
-            "total_calls": 45000,
-            "rate_per_call": 1
-          }
-        }
-      ]
-    }
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="alert alert-success">
-                            <i class="bi bi-check-circle me-2"></i>
-                            <strong>Usage-Based Billing Pattern:</strong> 
-                            Record usage throughout the billing period → Retrieve usage report → Calculate charges → Create invoice
+                            <strong>Note:</strong> If the customer email or phone already exists, the existing customer will be used.
                         </div>
                     </div>
 
                     <!-- Create Multiple Products Invoice -->
                     <div class="mb-5">
-                        <h4 class="h5 fw-bold">4. Create Multi-Product Invoice (Mixed Types)</h4>
+                        <h4 class="h5 fw-bold">Create Multiple Products Invoice</h4>
                         <p><span class="badge bg-success">POST</span> <code>/api/invoices</code></p>
-                        <p class="text-muted">Create a single invoice with multiple products of different types (one-time and subscription products can be combined).</p>
+                        <p class="text-muted">Create an invoice with multiple products in a single request.</p>
                         
                         <div class="card bg-dark text-white mb-3">
                             <div class="card-header d-flex justify-content-between">
-                                <span>Request Example - Mixed Products</span>
+                                <span>Request Body</span>
                                 <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-multiple')">Copy</button>
                             </div>
                             <div class="card-body">
@@ -685,128 +292,18 @@ Content-Type: application/json</code></pre>
 }</code></pre>
                             </div>
                         </div>
-
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Multi-Product Invoice</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Invoice created successfully",
-  "data": {
-    "invoice": {
-      "id": 126,
-      "invoice_number": "INV-2026-00126",
-      "customer_id": 46,
-      "currency": "TZS",
-      "status": "issued",
-      "description": "Bundle: Hosting + Domain + SSL",
-      "subtotal": 175000,
-      "tax_total": 31500,
-      "total": 206500,
-      "issued_at": "2026-02-26T13:00:00.000000Z",
-      "items": [
-        {
-          "id": 459,
-          "price_plan_id": 3,
-          "subscription_id": 90,
-          "product_name": "Premium Hosting",
-          "product_type": "Subscription Product",
-          "quantity": 1,
-          "unit_price": 100000,
-          "total": 100000
-        },
-        {
-          "id": 460,
-          "price_plan_id": 5,
-          "subscription_id": null,
-          "product_name": "Domain Registration",
-          "product_type": "One-time Product",
-          "quantity": 1,
-          "unit_price": 50000,
-          "total": 50000
-        },
-        {
-          "id": 461,
-          "price_plan_id": 8,
-          "subscription_id": null,
-          "product_name": "SSL Certificate",
-          "product_type": "One-time Product",
-          "quantity": 1,
-          "unit_price": 25000,
-          "total": 25000
-        }
-      ],
-      "taxes": [
-        {
-          "tax_rate_id": 1,
-          "name": "VAT",
-          "percentage": 15,
-          "amount": 26250
-        },
-        {
-          "tax_rate_id": 2,
-          "name": "Service Tax",
-          "percentage": 3,
-          "amount": 5250
-        }
-      ],
-      "subscriptions": [
-        {
-          "id": 90,
-          "price_plan_id": 3,
-          "status": "pending",
-          "product_name": "Premium Hosting"
-        }
-      ]
-    }
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
-                        <div class="alert alert-warning">
-                            <i class="bi bi-exclamation-triangle me-2"></i>
-                            <strong>Mixed Invoice Behavior:</strong> When an invoice contains both one-time and subscription products, subscriptions are created only for subscription-type products. One-time products are charged without creating a subscription.
-                        </div>
                     </div>
 
                     <!-- Flexible Product Lookup -->
                     <div class="mb-5">
-                        <h4 class="h5 fw-bold">5. Flexible Product Lookup Methods</h4>
-                        <p class="text-muted">You can specify products using three different lookup methods. Choose the method that best fits your integration:</p>
+                        <h4 class="h5 fw-bold">Flexible Product Lookup</h4>
+                        <p class="text-muted">You can specify products using three different methods:</p>
                         
-                        <div class="table-responsive mb-4">
-                            <table class="table table-bordered">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Method</th>
-                                        <th>Parameter</th>
-                                        <th>When to Use</th>
-                                        <th>Example</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><strong>Price Plan ID</strong></td>
-                                        <td><code>price_plan_id</code></td>
-                                        <td>Most specific - when you know the exact plan</td>
-                                        <td>price_plan_id: 5</td>
-                                    </tr>
-                                    <tr>
-                                        <td><strong>Product Code</strong></td>
-                                        <td><code>product_code</code></td>
-                                        <td>User-friendly - use readable codes</td>
-                                        <td>product_code: "HOSTING-BASIC"</td>
-                                    </tr>
-                                    <tr>
-                                        <td><strong>Product ID</strong></td>
-                                        <td><code>product_id</code></td>
-                                        <td>Simple product reference</td>
-                                        <td>product_id: 12</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        <ul class="mb-3">
+                            <li><strong>price_plan_id</strong> - Direct price plan reference (most specific)</li>
+                            <li><strong>product_code</strong> - Product code lookup (user-friendly)</li>
+                            <li><strong>product_id</strong> - Product ID lookup (simple)</li>
+                        </ul>
 
                         <div class="card bg-dark text-white mb-3">
                             <div class="card-header d-flex justify-content-between">
@@ -866,22 +363,13 @@ Content-Type: application/json</code></pre>
 
                     <!-- Invoice with Payment Gateway -->
                     <div class="mb-5">
-                        <h4 class="h5 fw-bold">6. Invoices with Payment Gateway Integration</h4>
-                        <p class="text-muted">Generate payment links automatically when creating invoices. Supports Flutterwave (card/mobile money) and EcoBank control numbers (bank payments).</p>
-                        
-                        <h6 class="fw-bold mt-4">Payment Gateway Parameters</h6>
-                        <ul class="mb-3">
-                            <li><code>payment_gateway</code> (string) - optional: "flutterwave", "control_number", or "both"</li>
-                            <li><code>success_url</code> (string) - required for Flutterwave: redirect URL after successful payment</li>
-                            <li><code>cancel_url</code> (string) - required for Flutterwave: redirect URL after cancelled payment</li>
-                        </ul>
+                        <h4 class="h5 fw-bold">Create Invoice with Payment Gateway</h4>
+                        <p class="text-muted">Generate payment links automatically when creating invoices. Supports Flutterwave and EcoBank control numbers.</p>
                         
                         <h6 class="fw-bold mt-4">Flutterwave Payment Link</h6>
-                        <p class="text-muted">Generate a hosted payment page for card, mobile money, and bank transfer payments.</p>
-                        
                         <div class="card bg-dark text-white mb-3">
                             <div class="card-header d-flex justify-content-between">
-                                <span>Request - Flutterwave Payment</span>
+                                <span>Request Body</span>
                                 <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-flutterwave')">Copy</button>
                             </div>
                             <div class="card-body">
@@ -907,45 +395,10 @@ Content-Type: application/json</code></pre>
                             </div>
                         </div>
 
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Flutterwave Payment</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Invoice created successfully with Flutterwave payment link",
-  "data": {
-    "invoice": {
-      "id": 127,
-      "invoice_number": "INV-2026-00127",
-      "total": 120000,
-      "status": "issued",
-      "customer_email": "sarah@business.com"
-    },
-    "payment_details": {
-      "flutterwave": {
-        "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz789",
-        "tx_ref": "INV-2026-00127-1708960000",
-        "expires_at": "2026-03-05T14:00:00.000000Z",
-        "instructions": "Click the payment link to pay via card, mobile money, or bank transfer",
-        "supported_methods": [
-          "card",
-          "mobile_money",
-          "bank_transfer"
-        ]
-      }
-    },
-    "redirect_url": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz789"
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
                         <h6 class="fw-bold mt-4">Control Number (EcoBank)</h6>
-                        <p class="text-muted">Generate a control number for bank payments through EcoBank.</p>
-                        
                         <div class="card bg-dark text-white mb-3">
                             <div class="card-header d-flex justify-content-between">
-                                <span>Request - Control Number</span>
+                                <span>Request Body</span>
                                 <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-control-number')">Copy</button>
                             </div>
                             <div class="card-body">
@@ -969,45 +422,10 @@ Content-Type: application/json</code></pre>
                             </div>
                         </div>
 
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Control Number</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>{
-  "success": true,
-  "message": "Invoice created successfully with control number",
-  "data": {
-    "invoice": {
-      "id": 128,
-      "invoice_number": "INV-2026-00128",
-      "total": 500000,
-      "status": "issued",
-      "customer_email": "michael@enterprise.com"
-    },
-    "payment_details": {
-      "control_number": {
-        "reference": "9912345678",
-        "amount": 500000,
-        "currency": "TZS",
-        "expires_at": "2026-03-12T14:30:00.000000Z",
-        "payment_instructions": {
-          "mobile_banking": "Dial *150*01*9912345678# from your registered mobile number",
-          "internet_banking": "Login to your internet banking and pay bill using control number: 9912345678",
-          "agent_banking": "Visit any bank agent and provide the control number: 9912345678",
-          "atm": "Use ATM bill payment option with control number: 9912345678"
-        }
-      }
-    }
-  }
-}</code></pre>
-                            </div>
-                        </div>
-
                         <h6 class="fw-bold mt-4">Both Payment Methods</h6>
-                        <p class="text-muted">Generate both Flutterwave payment link AND control number to give customers multiple payment options.</p>
-                        
                         <div class="card bg-dark text-white mb-3">
                             <div class="card-header d-flex justify-content-between">
-                                <span>Request - Both Gateways</span>
+                                <span>Request Body</span>
                                 <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#invoice-both-gateways')">Copy</button>
                             </div>
                             <div class="card-body">
@@ -1026,39 +444,64 @@ Content-Type: application/json</code></pre>
   ],
   "payment_gateway": "both",
   "success_url": "https://yourapp.com/payment/success",
-  "cancel_url": "https://yourapp.com/payment/cancel",
-  "currency": "TZS"
+  "cancel_url": "https://yourapp.com/payment/cancel"
 }</code></pre>
                             </div>
                         </div>
 
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Response - Both Payment Methods</div>
+                        <div class="table-responsive mt-3">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Payment Gateway Option</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><code>flutterwave</code></td>
+                                        <td>Generates card/mobile money payment link via Flutterwave</td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>control_number</code></td>
+                                        <td>Generates EcoBank control number for bank payments</td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>both</code></td>
+                                        <td>Generates both Flutterwave link AND control number</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h6 class="fw-bold mt-4">Response with Payment Details</h6>
+                        <div class="card bg-dark text-white">
+                            <div class="card-header">Sample Response</div>
                             <div class="card-body">
                                 <pre class="mb-0 text-white"><code>{
   "success": true,
-  "message": "Invoice created successfully with multiple payment options",
+  "message": "Invoice created successfully",
   "data": {
-    "invoice": {
-      "id": 129,
-      "invoice_number": "INV-2026-00129",
-      "total": 250000,
-      "status": "issued"
-    },
+    "id": 123,
+    "invoice_number": "INV-2026-00123",
+    "total": 250000,
+    "tax": 45000,
+    "grand_total": 295000,
+    "status": "issued",
     "payment_details": {
       "flutterwave": {
-        "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/xyz789abc",
-        "tx_ref": "INV-2026-00129-1708961000",
-        "expires_at": "2026-03-12T15:00:00.000000Z",
+        "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/...",
+        "tx_ref": "INV-2026-00123-1708956234",
+        "expires_at": "2026-03-05T10:30:34.000000Z",
         "instructions": "Click the payment link to pay via card, mobile money, or bank transfer"
       },
       "control_number": {
-        "reference": "9912345679",
-        "amount": 250000,
+        "reference": "9912345678",
+        "amount": 295000,
         "currency": "TZS",
-        "expires_at": "2026-03-12T15:00:00.000000Z",
+        "expires_at": "2026-03-05T10:30:34.000000Z",
         "payment_instructions": {
-          "mobile_banking": "Dial *150*01*9912345679# from your registered mobile number",
+          "mobile_banking": "Dial *150*01*9912345678# from your registered mobile number",
           "internet_banking": "Login to your internet banking and pay bill using control number",
           "agent_banking": "Visit any bank agent and provide the control number"
         }
@@ -1072,55 +515,13 @@ Content-Type: application/json</code></pre>
 }</code></pre>
                             </div>
                         </div>
-
-                        <div class="table-responsive mt-3">
-                            <table class="table table-bordered">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Payment Gateway Option</th>
-                                        <th>Description</th>
-                                        <th>Required Parameters</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><code>flutterwave</code></td>
-                                        <td>Card, mobile money, and bank transfer via Flutterwave</td>
-                                        <td>success_url, cancel_url</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>control_number</code></td>
-                                        <td>EcoBank control number for bank payments</td>
-                                        <td>None</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>both</code></td>
-                                        <td>Both Flutterwave link AND control number</td>
-                                        <td>success_url, cancel_url</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="alert alert-success mt-3">
-                            <i class="bi bi-check-circle me-2"></i>
-                            <strong>Payment Flexibility:</strong> Using "both" payment_gateway option allows customers to choose their preferred payment method - online payments or bank transfers.
-                        </div>
                     </div>
 
                     <!-- Get Invoice -->
                     <div class="mb-5">
                         <h4 class="h5 fw-bold">Get Invoice by ID</h4>
                         <p><span class="badge bg-primary">GET</span> <code>/api/invoices/{id}</code></p>
-                        <p class="text-muted">Retrieve detailed invoice information including items, taxes, payments, subscriptions, and control numbers.</p>
-                        
-                        <div class="card bg-dark text-white mb-3">
-                            <div class="card-header">Example Request</div>
-                            <div class="card-body">
-                                <pre class="mb-0 text-white"><code>GET /api/invoices/123
-Authorization: Bearer YOUR_API_KEY</code></pre>
-                            </div>
-                        </div>
+                        <p class="text-muted">Retrieve detailed invoice information including items, taxes, payments, and control numbers.</p>
                     </div>
 
                     <!-- Get Invoices by Product -->
@@ -1128,146 +529,6 @@ Authorization: Bearer YOUR_API_KEY</code></pre>
                         <h4 class="h5 fw-bold">Get Invoices by Product</h4>
                         <p><span class="badge bg-primary">GET</span> <code>/api/invoices?product_id={id}&status={status}</code></p>
                         <p class="text-muted">Filter invoices by product and optionally by status (paid, issued, cancelled).</p>
-                    </div>
-
-                    <!-- Complete Parameter Reference -->
-                    <div class="mb-5">
-                        <h4 class="h5 fw-bold">Complete Parameter Reference</h4>
-                        <p class="text-muted">Comprehensive list of all parameters for invoice creation.</p>
-                        
-                        <div class="table-responsive">
-                            <table class="table table-bordered">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Parameter</th>
-                                        <th>Type</th>
-                                        <th>Required</th>
-                                        <th>Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><code>organization_id</code></td>
-                                        <td>integer</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Your organization ID</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>customer</code></td>
-                                        <td>object</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Customer information object</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>customer.name</code></td>
-                                        <td>string</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Customer's full name</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>customer.email</code></td>
-                                        <td>string (email)</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Customer's email address</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>customer.phone</code></td>
-                                        <td>string</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Customer's phone number</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>products</code></td>
-                                        <td>array</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Array of products (minimum 1)</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>products.*.price_plan_id</code></td>
-                                        <td>integer</td>
-                                        <td><span class="badge bg-warning">Conditional</span></td>
-                                        <td>Price plan ID (use ONE of: price_plan_id, product_code, or product_id)</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>products.*.product_code</code></td>
-                                        <td>string</td>
-                                        <td><span class="badge bg-warning">Conditional</span></td>
-                                        <td>Product code (use ONE of: price_plan_id, product_code, or product_id)</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>products.*.product_id</code></td>
-                                        <td>integer</td>
-                                        <td><span class="badge bg-warning">Conditional</span></td>
-                                        <td>Product ID (use ONE of: price_plan_id, product_code, or product_id)</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>products.*.amount</code></td>
-                                        <td>number</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>Invoice amount for this product (minimum: 0)</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>currency</code></td>
-                                        <td>string (3 chars)</td>
-                                        <td><span class="badge bg-danger">Required</span></td>
-                                        <td>3-letter currency code (e.g., "TZS", "USD", "EUR")</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>tax_rate_ids</code></td>
-                                        <td>array</td>
-                                        <td><span class="badge bg-secondary">Optional</span></td>
-                                        <td>Array of tax rate IDs to apply to invoice</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>description</code></td>
-                                        <td>string</td>
-                                        <td><span class="badge bg-secondary">Optional</span></td>
-                                        <td>Invoice description or notes</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>status</code></td>
-                                        <td>string</td>
-                                        <td><span class="badge bg-secondary">Optional</span></td>
-                                        <td>Invoice status: draft, issued, paid, cancelled (default: "issued")</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>date</code></td>
-                                        <td>string (date)</td>
-                                        <td><span class="badge bg-secondary">Optional</span></td>
-                                        <td>Invoice date in Y-m-d format (default: current date)</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>due_date</code></td>
-                                        <td>string (date)</td>
-                                        <td><span class="badge bg-secondary">Optional</span></td>
-                                        <td>Payment due date in Y-m-d format</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>payment_gateway</code></td>
-                                        <td>string</td>
-                                        <td><span class="badge bg-secondary">Optional</span></td>
-                                        <td>Payment gateway: "flutterwave", "control_number", or "both"</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>success_url</code></td>
-                                        <td>string (URL)</td>
-                                        <td><span class="badge bg-warning">Conditional</span></td>
-                                        <td>Required if using Flutterwave - redirect URL after successful payment</td>
-                                    </tr>
-                                    <tr>
-                                        <td><code>cancel_url</code></td>
-                                        <td>string (URL)</td>
-                                        <td><span class="badge bg-warning">Conditional</span></td>
-                                        <td>Required if using Flutterwave - redirect URL after cancelled payment</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="alert alert-info mt-3">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>Product Identifier Rule:</strong> Each product in the products array must have EXACTLY ONE identifier: either <code>price_plan_id</code>, <code>product_code</code>, or <code>product_id</code>. Using multiple identifiers or none will result in a validation error.
-                        </div>
                     </div>
 
                     <!-- Wallet Topup Invoice -->
