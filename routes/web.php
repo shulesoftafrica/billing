@@ -5,7 +5,7 @@ use App\Http\Controllers\ApiDocumentationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('api.docs');
 });
 
 Route::get('/billing/pay/{invoice}', [PaymentPageController::class, 'show'])

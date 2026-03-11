@@ -1,110 +1,11 @@
-## Auth
+## Authentication
 
-### Auth Middleware
-**Method:** `N/A`
-**URL:** `N/A`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
+### Authentication
 
 **Success Response:** `200 OK`
 ```json
 {
-  "message": "Authenticated request accepted when APP_ACCESS_TOKEN is valid."
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`403 Forbidden`
-```json
-{
-  "message": "Forbidden"
-}
-```
-
-`404 Not Found`
-```json
-{
-  "message": "Resource not found."
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "message": "The given data was invalid.",
-  "errors": {}
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-`500 Internal Server Error`
-```json
-{
-  "message": "An unexpected error occurred. Please try again later."
-}
-```
-
-### Handle User
-**Method:** `GET`
-**URL:** `/api/user`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {APP_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "id": 1,
-  "email": "user@example.com"
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
+"message": "API access is authenticated using a Bearer token in the request header. Include the token as: Authorization: Bearer access_token. Contact ShuleSoft to obtain a valid API access token."
 }
 ```
 
