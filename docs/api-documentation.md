@@ -1757,9 +1757,23 @@ func main() {
 }
 ```
 
-### Create Invoices
+### Invoice Types Overview
+
+The billing system supports three types of invoices, automatically determined by the product type:
+
+| Invoice Type | Product Type | Billing Pattern | Use Case |
+|-------------|--------------|-----------------|----------|
+| **One-Time** | One-time Product (product_type_id: 1) | Single charge | One-off services, consulting, project work |
+| **Subscription** | Subscription Product (product_type_id: 2) | Recurring charges | SaaS, memberships, monthly/yearly plans |
+| **Usage-Based** | Usage Product (product_type: usage) | Pay-per-use | API calls, storage, bandwidth, credits |
+
+**Important:** The invoice type is automatically determined by the product type associated with the price plan. You don't need to explicitly specify the invoice type.
+
+### Create One-Time Invoice
 **Method:** `POST`
 **URL:** `/api/invoices`
+
+**Description:** One-time invoices are for products that are charged once without creating a subscription. Perfect for consulting services, one-off projects, or standalone purchases.
 
 **Required Headers:**
 | Key | Value |
@@ -1768,32 +1782,85 @@ func main() {
 | Content-Type | application/json |
 | Accept | application/json |
 
+**Required Parameters:**
+- `organization_id` (integer) - Your organization ID
+- `customer` (object) - Customer information
+- `customer.name` (string) - Customer's full name
+- `customer.email` (string) - Customer's email address
+- `customer.phone` (string) - Customer's phone number
+- `products` (array) - Array of products (minimum 1)
+- `products.*.price_plan_id` (integer) - Price plan ID for a one-time product
+- `products.*.amount` (number) - Invoice amount for this product
+- `currency` (string) - 3-letter currency code (e.g., "TZS", "USD")
+
+**Optional Parameters:**
+- `tax_rate_ids` (array) - Array of tax rate IDs to apply
+- `description` (string) - Invoice description
+- `status` (string) - Invoice status: draft, issued, paid, cancelled (default: "issued")
+- `date` (string) - Invoice date in Y-m-d format (default: current date)
+- `due_date` (string) - Payment due date in Y-m-d format
+- `payment_gateway` (string) - flutterwave, control_number, or both
+- `success_url` (string) - Redirect URL after successful payment (required for Flutterwave)
+- `cancel_url` (string) - Redirect URL after cancelled payment (required for Flutterwave)
+
 **Request Body:**
 ```json
 {
-  "organization_id": "sample",
-  "customer": "sample",
-  "customer.name": "sample",
-  "customer.email": "sample",
-  "customer.phone": "sample",
-  "products": "sample",
-  "products.*.price_plan_id": "sample",
-  "products.*.amount": "sample",
-  "tax_rate_ids": "sample",
-  "description": "sample",
-  "currency": "sample",
-  "status": "sample",
-  "date": "sample",
-  "due_date": "sample"
+  "organization_id": 1,
+  "customer": {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "+255712345678"
+  },
+  "products": [
+    {
+      "price_plan_id": 5,
+      "amount": 50000
+    }
+  ],
+  "description": "Website development project",
+  "currency": "TZS",
+  "status": "issued",
+  "date": "2026-02-26",
+  "due_date": "2026-03-26"
 }
 ```
 
-**Success Response:** `200 OK`
+**Success Response:** `201 Created`
 ```json
 {
   "success": true,
-  "message": "Invoices retrieved successfully",
-  "data": {}
+  "message": "Invoice created successfully",
+  "data": {
+    "invoice": {
+      "id": 123,
+      "invoice_number": "INV-2026-00123",
+      "customer_id": 45,
+      "customer_name": "John Doe",
+      "customer_email": "john@example.com",
+      "currency": "TZS",
+      "status": "issued",
+      "description": "Website development project",
+      "subtotal": 50000,
+      "tax_total": 0,
+      "total": 50000,
+      "date": "2026-02-26",
+      "due_date": "2026-03-26",
+      "issued_at": "2026-02-26T10:30:00.000000Z",
+      "items": [
+        {
+          "id": 456,
+          "price_plan_id": 5,
+          "product_name": "Website Development",
+          "quantity": 1,
+          "unit_price": 50000,
+          "total": 50000
+        }
+      ],
+      "taxes": [],
+      "payments": []
+    }
+  }
 }
 ```
 
@@ -1810,52 +1877,830 @@ func main() {
 `422 Unprocessable Entity`
 ```json
 {
+  "success": false,
   "errors": {
-    "organization_id": [
-      "The organization id field is invalid."
-    ],
-    "customer": [
-      "The customer field is invalid."
-    ],
-    "customer.name": [
-      "The customer name field is invalid."
-    ],
-    "customer.email": [
-      "The customer email field is invalid."
-    ],
-    "customer.phone": [
-      "The customer phone field is invalid."
-    ],
-    "products": [
-      "The products field is invalid."
-    ],
-    "products.*.price_plan_id": [
-      "The products 0 price plan id field is invalid."
-    ],
-    "products.*.amount": [
-      "The products 0 amount field is invalid."
-    ],
-    "tax_rate_ids": [
-      "The tax rate ids field is invalid."
-    ],
-    "tax_rate_ids.*": [
-      "The tax rate ids 0 field is invalid."
-    ],
-    "description": [
-      "The description field is invalid."
-    ],
-    "currency": [
-      "The currency field is invalid."
-    ],
-    "status": [
-      "The status field is invalid."
-    ],
-    "date": [
-      "The date field is invalid."
-    ],
-    "due_date": [
-      "The due date field is invalid."
+    "organization_id": ["The organization id field is required."],
+    "customer.email": ["The customer email must be a valid email address."],
+    "products": ["The products field must have at least 1 items."],
+    "currency": ["The currency must be 3 characters."]
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+### Create Subscription Invoice
+**Method:** `POST`
+**URL:** `/api/invoices`
+
+**Description:** Subscription invoices automatically create a subscription record for recurring billing. The subscription remains in "pending" status until the invoice is paid, then becomes "active".
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Required Parameters:**
+- `organization_id` (integer) - Your organization ID
+- `customer` (object) - Customer information
+- `customer.name` (string) - Customer's full name
+- `customer.email` (string) - Customer's email address
+- `customer.phone` (string) - Customer's phone number
+- `products` (array) - Array of products with subscription price plans
+- `products.*.price_plan_id` (integer) - Price plan ID for a subscription product
+- `products.*.amount` (number) - Invoice amount for this product
+- `currency` (string) - 3-letter currency code
+
+**Optional Parameters:**
+- `tax_rate_ids` (array) - Array of tax rate IDs to apply
+- `description` (string) - Invoice description
+- `status` (string) - Invoice status (default: "issued")
+- `payment_gateway` (string) - flutterwave, control_number, or both
+- `success_url` (string) - Redirect URL after successful payment
+- `cancel_url` (string) - Redirect URL after cancelled payment
+
+**Request Body:**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "Jane Smith",
+    "email": "jane@company.com",
+    "phone": "+255723456789"
+  },
+  "products": [
+    {
+      "price_plan_id": 8,
+      "amount": 75000
+    }
+  ],
+  "description": "Premium hosting - Monthly subscription",
+  "currency": "TZS",
+  "status": "issued",
+  "payment_gateway": "flutterwave",
+  "success_url": "https://yourapp.com/payment/success",
+  "cancel_url": "https://yourapp.com/payment/cancel"
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully",
+  "data": {
+    "invoice": {
+      "id": 124,
+      "invoice_number": "INV-2026-00124",
+      "customer_id": 46,
+      "currency": "TZS",
+      "status": "issued",
+      "description": "Premium hosting - Monthly subscription",
+      "subtotal": 75000,
+      "tax_total": 0,
+      "total": 75000,
+      "due_date": null,
+      "issued_at": "2026-02-26T11:15:00.000000Z",
+      "items": [
+        {
+          "id": 457,
+          "price_plan_id": 8,
+          "subscription_id": 89,
+          "product_name": "Premium Hosting Plan",
+          "billing_interval": "monthly",
+          "quantity": 1,
+          "unit_price": 75000,
+          "total": 75000
+        }
+      ],
+      "subscription": {
+        "id": 89,
+        "status": "pending",
+        "price_plan_id": 8,
+        "start_date": null,
+        "next_billing_date": null,
+        "note": "Subscription will activate upon payment"
+      },
+      "payment_details": {
+        "flutterwave": {
+          "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz",
+          "tx_ref": "INV-2026-00124-1708956234",
+          "expires_at": "2026-03-05T11:15:00.000000Z"
+        }
+      }
+    }
+  }
+}
+```
+
+**Notes:**
+- The subscription is created in "pending" status
+- It will automatically activate when the invoice is paid
+- Next billing date is calculated based on the price plan's billing interval
+- If a pending subscription already exists for the same customer and price plan, the existing invoice is returned
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "errors": {
+    "products.0.price_plan_id": ["The selected price plan id is invalid."],
+    "payment_gateway": ["The payment gateway must be one of: flutterwave, control_number, both."]
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+### Create Multi-Product Invoice
+**Method:** `POST`
+**URL:** `/api/invoices`
+
+**Description:** Create a single invoice with multiple products of different types (one-time and subscription products can be combined).
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "Jane Smith",
+    "email": "jane@company.com",
+    "phone": "+255723456789"
+  },
+  "products": [
+    {
+      "price_plan_id": 3,
+      "amount": 100000
+    },
+    {
+      "price_plan_id": 5,
+      "amount": 50000
+    },
+    {
+      "price_plan_id": 8,
+      "amount": 25000
+    }
+  ],
+  "tax_rate_ids": [1, 2],
+  "description": "Bundle: Hosting + Domain + SSL",
+  "currency": "TZS",
+  "status": "issued"
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully",
+  "data": {
+    "invoice": {
+      "id": 126,
+      "invoice_number": "INV-2026-00126",
+      "customer_id": 46,
+      "currency": "TZS",
+      "status": "issued",
+      "description": "Bundle: Hosting + Domain + SSL",
+      "subtotal": 175000,
+      "tax_total": 31500,
+      "total": 206500,
+      "issued_at": "2026-02-26T13:00:00.000000Z",
+      "items": [
+        {
+          "id": 459,
+          "price_plan_id": 3,
+          "subscription_id": 90,
+          "product_name": "Premium Hosting",
+          "product_type": "Subscription Product",
+          "quantity": 1,
+          "unit_price": 100000,
+          "total": 100000
+        },
+        {
+          "id": 460,
+          "price_plan_id": 5,
+          "subscription_id": null,
+          "product_name": "Domain Registration",
+          "product_type": "One-time Product",
+          "quantity": 1,
+          "unit_price": 50000,
+          "total": 50000
+        },
+        {
+          "id": 461,
+          "price_plan_id": 8,
+          "subscription_id": null,
+          "product_name": "SSL Certificate",
+          "product_type": "One-time Product",
+          "quantity": 1,
+          "unit_price": 25000,
+          "total": 25000
+        }
+      ],
+      "taxes": [
+        {
+          "tax_rate_id": 1,
+          "name": "VAT",
+          "percentage": 15,
+          "amount": 26250
+        },
+        {
+          "tax_rate_id": 2,
+          "name": "Service Tax",
+          "percentage": 3,
+          "amount": 5250
+        }
+      ],
+      "subscriptions": [
+        {
+          "id": 90,
+          "price_plan_id": 3,
+          "status": "pending",
+          "product_name": "Premium Hosting"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Notes:**
+- When an invoice contains both one-time and subscription products, subscriptions are created only for subscription-type products
+- One-time products are charged without creating a subscription
+- Taxes are calculated on the subtotal of all products
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "errors": {
+    "tax_rate_ids.0": ["The selected tax rate id is invalid."]
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+### Create Invoice with Payment Gateway
+**Method:** `POST`
+**URL:** `/api/invoices`
+
+**Description:** Generate payment links automatically when creating invoices. Supports Flutterwave (card/mobile money) and EcoBank control numbers (bank payments).
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Payment Gateway Options:**
+| Option | Description | Required Parameters |
+|--------|-------------|---------------------|
+| `flutterwave` | Card, mobile money, and bank transfer | success_url, cancel_url |
+| `control_number` | EcoBank control number for bank payments | None |
+| `both` | Both Flutterwave link AND control number | success_url, cancel_url |
+
+**Request Body (Flutterwave):**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "Sarah Lee",
+    "email": "sarah@business.com",
+    "phone": "+255756789012"
+  },
+  "products": [
+    {
+      "price_plan_id": 7,
+      "amount": 120000
+    }
+  ],
+  "payment_gateway": "flutterwave",
+  "success_url": "https://yourapp.com/payment/success",
+  "cancel_url": "https://yourapp.com/payment/cancel",
+  "description": "Premium hosting package",
+  "currency": "TZS"
+}
+```
+
+**Success Response (Flutterwave):** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully with Flutterwave payment link",
+  "data": {
+    "invoice": {
+      "id": 127,
+      "invoice_number": "INV-2026-00127",
+      "total": 120000,
+      "status": "issued",
+      "customer_email": "sarah@business.com"
+    },
+    "payment_details": {
+      "flutterwave": {
+        "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz789",
+        "tx_ref": "INV-2026-00127-1708960000",
+        "expires_at": "2026-03-05T14:00:00.000000Z",
+        "instructions": "Click the payment link to pay via card, mobile money, or bank transfer",
+        "supported_methods": ["card", "mobile_money", "bank_transfer"]
+      }
+    },
+    "redirect_url": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz789"
+  }
+}
+```
+
+**Request Body (Control Number):**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "Michael Brown",
+    "email": "michael@enterprise.com",
+    "phone": "+255767890123"
+  },
+  "products": [
+    {
+      "product_code": "CLOUD-SERVER-M",
+      "amount": 500000
+    }
+  ],
+  "payment_gateway": "control_number",
+  "description": "Cloud server subscription",
+  "currency": "TZS"
+}
+```
+
+**Success Response (Control Number):** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully with control number",
+  "data": {
+    "invoice": {
+      "id": 128,
+      "invoice_number": "INV-2026-00128",
+      "total": 500000,
+      "status": "issued",
+      "customer_email": "michael@enterprise.com"
+    },
+    "payment_details": {
+      "control_number": {
+        "reference": "9912345678",
+        "amount": 500000,
+        "currency": "TZS",
+        "expires_at": "2026-03-12T14:30:00.000000Z",
+        "payment_instructions": {
+          "mobile_banking": "Dial *150*01*9912345678# from your registered mobile number",
+          "internet_banking": "Login to your internet banking and pay bill using control number: 9912345678",
+          "agent_banking": "Visit any bank agent and provide the control number: 9912345678",
+          "atm": "Use ATM bill payment option with control number: 9912345678"
+        }
+      }
+    }
+  }
+}
+```
+
+**Request Body (Both Gateways):**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "David Chen",
+    "email": "david@corp.com",
+    "phone": "+255778901234"
+  },
+  "products": [
+    {
+      "price_plan_id": 10,
+      "amount": 250000
+    }
+  ],
+  "payment_gateway": "both",
+  "success_url": "https://yourapp.com/payment/success",
+  "cancel_url": "https://yourapp.com/payment/cancel",
+  "currency": "TZS"
+}
+```
+
+**Success Response (Both):** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully with multiple payment options",
+  "data": {
+    "invoice": {
+      "id": 129,
+      "invoice_number": "INV-2026-00129",
+      "total": 250000,
+      "status": "issued"
+    },
+    "payment_details": {
+      "flutterwave": {
+        "payment_link": "https://checkout.flutterwave.com/v3/hosted/pay/xyz789abc",
+        "tx_ref": "INV-2026-00129-1708961000",
+        "expires_at": "2026-03-12T15:00:00.000000Z",
+        "instructions": "Click the payment link to pay via card, mobile money, or bank transfer"
+      },
+      "control_number": {
+        "reference": "9912345679",
+        "amount": 250000,
+        "currency": "TZS",
+        "expires_at": "2026-03-12T15:00:00.000000Z",
+        "payment_instructions": {
+          "mobile_banking": "Dial *150*01*9912345679# from your registered mobile number",
+          "internet_banking": "Login to your internet banking and pay bill using control number",
+          "agent_banking": "Visit any bank agent and provide the control number"
+        }
+      }
+    },
+    "urls": {
+      "success_url": "https://yourapp.com/payment/success",
+      "cancel_url": "https://yourapp.com/payment/cancel"
+    }
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "errors": {
+    "success_url": ["The success url field is required when payment gateway is flutterwave."],
+    "cancel_url": ["The cancel url field is required when payment gateway is flutterwave."]
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+### Product Lookup Methods
+
+You can specify products using three different lookup methods:
+
+| Method | Parameter | When to Use | Example |
+|--------|-----------|-------------|---------|
+| **Price Plan ID** | `price_plan_id` | Most specific - when you know the exact plan | `"price_plan_id": 5` |
+| **Product Code** | `product_code` | User-friendly - use readable codes | `"product_code": "HOSTING-BASIC"` |
+| **Product ID** | `product_id` | Simple product reference | `"product_id": 12` |
+
+**Important:** Each product must have EXACTLY ONE identifier (price_plan_id, product_code, or product_id). Using multiple identifiers will result in a validation error.
+
+**Example using Product Code:**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "Bob Wilson",
+    "email": "bob@startup.com",
+    "phone": "+255734567890"
+  },
+  "products": [
+    {
+      "product_code": "HOSTING-BASIC",
+      "amount": 50000
+    },
+    {
+      "product_code": "DOMAIN-COM",
+      "amount": 15000
+    }
+  ],
+  "currency": "TZS"
+}
+```
+
+### Complete Parameter Reference
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `organization_id` | integer | **Required** | Your organization ID |
+| `customer` | object | **Required** | Customer information object |
+| `customer.name` | string | **Required** | Customer's full name |
+| `customer.email` | string (email) | **Required** | Customer's email address |
+| `customer.phone` | string | **Required** | Customer's phone number |
+| `products` | array | **Required** | Array of products (minimum 1) |
+| `products.*.price_plan_id` | integer | Conditional | Price plan ID (use ONE of: price_plan_id, product_code, or product_id) |
+| `products.*.product_code` | string | Conditional | Product code (use ONE of: price_plan_id, product_code, or product_id) |
+| `products.*.product_id` | integer | Conditional | Product ID (use ONE of: price_plan_id, product_code, or product_id) |
+| `products.*.amount` | number | **Required** | Invoice amount for this product (minimum: 0) |
+| `currency` | string (3 chars) | **Required** | 3-letter currency code (e.g., "TZS", "USD", "EUR") |
+| `tax_rate_ids` | array | Optional | Array of tax rate IDs to apply to invoice |
+| `description` | string | Optional | Invoice description or notes |
+| `status` | string | Optional | Invoice status: draft, issued, paid, cancelled (default: "issued") |
+| `date` | string (date) | Optional | Invoice date in Y-m-d format (default: current date) |
+| `due_date` | string (date) | Optional | Payment due date in Y-m-d format |
+| `payment_gateway` | string | Optional | Payment gateway: "flutterwave", "control_number", or "both" |
+| `success_url` | string (URL) | Conditional | Required if using Flutterwave - redirect URL after successful payment |
+| `cancel_url` | string (URL) | Conditional | Required if using Flutterwave - redirect URL after cancelled payment |
+
+### Create Usage-Based Invoice
+
+**Description:** Usage-based billing is a two-step process: first record usage throughout the billing period, then create invoices based on accumulated usage.
+
+#### Step 1: Record Product Usage
+**Method:** `POST`
+**URL:** `/api/product-usage`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{
+  "customer_id": 45,
+  "product_id": 12,
+  "quantity": 5000
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Product usage recorded successfully",
+  "data": {
+    "id": 789,
+    "customer_id": 45,
+    "product_id": 12,
+    "quantity": 5000,
+    "created_at": "2026-02-26T12:00:00.000000Z",
+    "product": {
+      "id": 12,
+      "name": "API Calls",
+      "product_type": "usage",
+      "unit": "calls"
+    },
+    "customer": {
+      "id": 45,
+      "name": "Tech Startup Inc",
+      "email": "billing@techstartup.com"
+    }
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "product_id": ["Product usage is only allowed for products with type usage."]
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+#### Step 2: Get Usage Report
+**Method:** `GET`
+**URL:** `/api/product-usage/report/{customer_id}`
+
+**Description:** Retrieve accumulated usage data for a customer to calculate charges.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "data": {
+    "customer_id": 45,
+    "customer_name": "Tech Startup Inc",
+    "usage_summary": [
+      {
+        "product_id": 12,
+        "product_name": "API Calls",
+        "product_code": "API-USAGE",
+        "total_purchased": 50000,
+        "total_used": 45000,
+        "balance": 5000,
+        "unit": "calls"
+      },
+      {
+        "product_id": 13,
+        "product_name": "Cloud Storage",
+        "product_code": "STORAGE-GB",
+        "total_purchased": 1000,
+        "total_used": 750,
+        "balance": 250,
+        "unit": "GB"
+      }
     ]
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`404 Not Found`
+```json
+{
+  "success": true,
+  "message": "No usage data found for this customer",
+  "data": {
+    "customer_id": 45,
+    "customer_name": "Tech Startup Inc",
+    "usage_summary": []
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+#### Step 3: Create Invoice for Usage
+**Method:** `POST`
+**URL:** `/api/invoices`
+
+**Description:** Create an invoice based on the usage data. Calculate the amount based on your pricing model (e.g., price per API call, per GB).
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{
+  "organization_id": 1,
+  "customer": {
+    "name": "Tech Startup Inc",
+    "email": "billing@techstartup.com",
+    "phone": "+255734567890"
+  },
+  "products": [
+    {
+      "price_plan_id": 15,
+      "amount": 45000
+    }
+  ],
+  "description": "API Usage - 45,000 calls @ TZS 1 per call",
+  "currency": "TZS",
+  "status": "issued"
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Invoice created successfully",
+  "data": {
+    "invoice": {
+      "id": 125,
+      "invoice_number": "INV-2026-00125",
+      "customer_id": 45,
+      "currency": "TZS",
+      "status": "issued",
+      "description": "API Usage - 45,000 calls @ TZS 1 per call",
+      "subtotal": 45000,
+      "tax_total": 0,
+      "total": 45000,
+      "issued_at": "2026-02-26T12:30:00.000000Z",
+      "items": [
+        {
+          "id": 458,
+          "price_plan_id": 15,
+          "product_name": "API Usage Charges",
+          "quantity": 1,
+          "unit_price": 45000,
+          "total": 45000,
+          "metadata": {
+            "usage_period": "2026-02-01 to 2026-02-28",
+            "total_calls": 45000,
+            "rate_per_call": 1
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Usage-Based Billing Pattern:**
+Record usage throughout the billing period → Retrieve usage report → Calculate charges → Create invoice
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "errors": {
+    "products.0.amount": ["The products.0.amount must be at least 0."]
   }
 }
 ```
