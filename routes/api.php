@@ -5,7 +5,6 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\OrganizationController;
-use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductTypeController;
@@ -18,35 +17,14 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\TaxRateController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
-use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\StripeWebhookController;
 
-// Authentication routes - Public (no authentication, with strict rate limiting to prevent brute force)
-Route::middleware('throttle:5,1')->group(function () {
-    Route::post('auth/register', [AuthController::class, 'register']);
-    Route::post('auth/login', [AuthController::class, 'login']);
-});
-
-// Webhook routes - Public (no authentication, with strict rate limiting)
-
-
-// Protected API routes - Support both Sanctum tokens and APP_ACCESS_TOKEN for backward compatibility
-Route::middleware(['auth.multi', 'throttle:30,1'])->group(function () {
-    // Auth routes
-    Route::post('auth/logout', [AuthController::class, 'logout']);
-    Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
-    Route::get('auth/me', [AuthController::class, 'me']);
-
-    // User endpoint
-    // Route::get('/user', function (Request $request) {
-    //     return $request->user();
-    // });
-
+// Protected API routes - all require APP_ACCESS_TOKEN authentication with rate limiting
+Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     // Protected API routes
     Route::apiResource('currencies', CurrencyController::class);
     Route::apiResource('countries', CountryController::class);
     Route::apiResource('organizations', OrganizationController::class);
-    Route::apiResource('users', UserController::class);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('products', ProductController::class);
     Route::apiResource('product-types', ProductTypeController::class);
@@ -55,6 +33,7 @@ Route::middleware(['auth.multi', 'throttle:30,1'])->group(function () {
     Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
     Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
+    Route::get('invoices/{id}/payment-gateways ', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
     Route::apiResource('tax-rates', TaxRateController::class);
 
@@ -72,7 +51,6 @@ Route::middleware(['auth.multi', 'throttle:30,1'])->group(function () {
 
     // Subscription routes
     Route::get('subscriptions', [SubscriptionController::class, 'index']);
-    Route::post('subscriptions', [SubscriptionController::class, 'store']);
     Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
 
     // Customer subscriptions routes
@@ -85,17 +63,11 @@ Route::middleware(['auth.multi', 'throttle:30,1'])->group(function () {
     Route::get('product-usages/{customer_id}/{product_id}/history', [ProductUsageController::class, 'getHistory']);
 });
 
-// Phase 2: Advanced Invoice Types - Protected
-// Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('invoices')->group(function () {
-//     Route::post('wallet-topup', [App\Http\Controllers\Api\InvoiceController::class, 'createWalletTopupInvoice']);
-//     Route::post('plan-upgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanUpgradeInvoice']);
-//     Route::post('plan-downgrade', [App\Http\Controllers\Api\InvoiceController::class, 'createPlanDowngradeInvoice']);
-// });
 
 // Phase 2: Enhanced Customer Management - Protected
 Route::middleware(['app.access.token', 'throttle:30,1'])->prefix('customers')->group(function () {
-    Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); //okay
-    Route::get('by-email/{email}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']); //okay
+    Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); 
+    Route::get('by-email/{email}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']);
 });
 
 
