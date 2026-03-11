@@ -22,10 +22,5 @@ class DatabaseSeeder extends Seeder
         $this->call([
             OrganizationSeeder::class,
         ]);
-
-        // Seed users (requires organizations to exist)
-        $this->call([
-            UserSeeder::class,
-        ]);
     }
 }
