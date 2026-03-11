@@ -33,6 +33,7 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
     Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
+    Route::get('invoices/{id}/payment-gateways ', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
     Route::apiResource('tax-rates', TaxRateController::class);
 

@@ -1484,6 +1484,59 @@
 }
 ```
 
+### Get Invoice Payment Gateways
+**Method:** `GET`
+**URL:** `/api/invoices/{id}/payment-gateways`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {APP_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Invoice payment gateways retrieved successfully",
+  "data": {
+    "invoice_id": 1,
+    "invoice_number": "INV-000001",
+    "price_plans": []
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`404 Not Found`
+```json
+{
+  "success": false,
+  "message": "Invoice not found"
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
 ## Organizations
 
 ### List Organizations
