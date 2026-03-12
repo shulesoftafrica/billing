@@ -12,7 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('price_plans', function (Blueprint $table) {
-            $table->unique(['name', 'product_id', 'subscription_type'], 'price_plans_name_product_subscription_type_unique');
+            // NOTE: Using billing_type and billing_interval instead of subscription_type
+            $table->unique(['name', 'product_id', 'billing_type', 'billing_interval'], 'price_plans_name_product_billing_unique');
         });
     }
 
@@ -22,7 +23,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('price_plans', function (Blueprint $table) {
-            $table->dropUnique('price_plans_name_product_subscription_type_unique');
+            $table->dropUnique('price_plans_name_product_billing_unique');
         });
     }
 };

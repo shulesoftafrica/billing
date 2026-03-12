@@ -750,6 +750,119 @@ Authorization: Bearer YOUR_API_KEY</code></pre>
                         </div>
                     </div>
 
+                    <div class="mb-5">
+                        <h4 class="h5 fw-bold">List Subscriptions</h4>
+                        <p><span class="badge bg-primary">GET</span> <code>/api/subscriptions</code></p>
+                        <p class="text-muted">Returns subscriptions for a specific customer identified by their email address.</p>
+                        
+                        <div class="alert alert-danger">
+                            <i class="bi bi-shield-exclamation me-2"></i>
+                            <strong>Security Requirement:</strong> <code>customer_email</code> parameter is REQUIRED. You cannot list all subscriptions without specifying a customer email for privacy protection.
+                        </div>
+
+                        <h6 class="fw-bold mt-4">Query Parameters</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Parameter</th>
+                                        <th>Type</th>
+                                        <th>Required</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><code>customer_email</code></td>
+                                        <td>string</td>
+                                        <td><span class="badge bg-danger">YES</span></td>
+                                        <td>Customer's email address (REQUIRED for security and privacy)</td>
+                                    </tr>
+                                    <tr>
+                                        <td><code>status</code></td>
+                                        <td>string</td>
+                                        <td><span class="badge bg-secondary">No</span></td>
+                                        <td>Filter by status: pending, active, cancelled, expired</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h6 class="fw-bold">Request Examples</h6>
+                        <div class="card bg-dark text-white mb-3">
+                            <div class="card-header d-flex justify-content-between">
+                                <span>Get all subscriptions for a customer</span>
+                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#subscription-list-1')">Copy</button>
+                            </div>
+                            <div class="card-body">
+                                <pre class="mb-0 text-white" id="subscription-list-1"><code>GET /api/subscriptions?customer_email=jane@company.com
+Authorization: Bearer org_live_sk_abc123xyz456</code></pre>
+                            </div>
+                        </div>
+
+                        <div class="card bg-dark text-white mb-3">
+                            <div class="card-header d-flex justify-content-between">
+                                <span>Get active subscriptions for a customer</span>
+                                <button class="btn btn-sm btn-outline-light" onclick="copyToClipboard('#subscription-list-2')">Copy</button>
+                            </div>
+                            <div class="card-body">
+                                <pre class="mb-0 text-white" id="subscription-list-2"><code>GET /api/subscriptions?customer_email=jane@company.com&status=active
+Authorization: Bearer org_live_sk_abc123xyz456</code></pre>
+                            </div>
+                        </div>
+
+                        <h6 class="fw-bold mt-4">Success Response</h6>
+                        <div class="card bg-dark text-white">
+                            <div class="card-header">200 OK</div>
+                            <div class="card-body">
+                                <pre class="mb-0 text-white"><code>{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "customer": {
+        "id": 45,
+        "name": "Jane Smith",
+        "email": "jane@company.com"
+      },
+      "price_plan": {
+        "id": 8,
+        "name": "Premium hosting - Monthly subscription",
+        "amount": 75000,
+        "billing_interval": "monthly",
+        "product": {
+          "id": 3,
+          "name": "Cloud Hosting Premium"
+        }
+      },
+      "status": "active",
+      "start_date": "2024-01-15",
+      "end_date": null,
+      "next_billing_date": "2024-04-15",
+      "created_at": "2024-01-15T10:30:00.000000Z"
+    }
+  ]
+}</code></pre>
+                            </div>
+                        </div>
+
+                        <h6 class="fw-bold mt-4">Error Response - Missing Email</h6>
+                        <div class="card bg-dark text-white">
+                            <div class="card-header">422 Unprocessable Entity</div>
+                            <div class="card-body">
+                                <pre class="mb-0 text-white"><code>{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "customer_email": [
+      "The customer email field is required."
+    ]
+  }
+}</code></pre>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-4">
                         <h4 class="h5 fw-bold">Cancel a Subscription</h4>
                         <p><span class="badge bg-warning">POST</span> <code>/api/subscriptions/{id}/cancel</code></p>
