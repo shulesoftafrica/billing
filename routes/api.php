@@ -61,6 +61,8 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
     Route::get('invoices/{id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
+    Route::post('invoices/plan-upgrade', [InvoiceController::class, 'upgradeSubscription']);
+    Route::post('invoices/plan-downgrade', [InvoiceController::class, 'downgradeSubscription']);
     Route::apiResource('tax-rates', TaxRateController::class);
 
     // Organization payment gateway integration
@@ -122,6 +124,8 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
     Route::get('invoices/{id}/payment-gateways ', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
+    Route::post('invoices/plan-upgrade', [InvoiceController::class, 'upgradeSubscription']);
+    Route::post('invoices/plan-downgrade', [InvoiceController::class, 'downgradeSubscription']);
     Route::apiResource('tax-rates', TaxRateController::class);
 
     // Organization payment gateway integration

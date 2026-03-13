@@ -96,15 +96,27 @@ class SubscriptionController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $filters = [];
+            // Require customer email for security
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'customer_email' => 'required|email',
+                'status' => 'nullable|string|in:pending,active,cancelled,expired',
+            ]);
 
-            // Optional filters
-            if ($request->has('status')) {
-                $filters['status'] = $request->input('status');
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
             }
 
-            if ($request->has('customer_id')) {
-                $filters['customer_id'] = $request->input('customer_id');
+            $filters = [
+                'customer_email' => $request->input('customer_email')
+            ];
+
+            // Optional status filter
+            if ($request->has('status')) {
+                $filters['status'] = $request->input('status');
             }
 
             $subscriptions = $this->subscriptionService->getAllSubscriptions($filters);

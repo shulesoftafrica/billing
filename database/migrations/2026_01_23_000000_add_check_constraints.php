@@ -22,10 +22,12 @@ return new class extends Migration
         DB::statement('ALTER TABLE customers ADD CONSTRAINT customer_status_check CHECK (status IN (\'active\', \'inactive\', \'suspended\'))');
         
         // Products table - status check
-        DB::statement('ALTER TABLE products ADD CONSTRAINT product_status_check CHECK (status IN (\'active\', \'inactive\', \'archived\'))');
+        // NOTE: Skipped because products table uses 'active' boolean column instead of 'status' string column
+        // DB::statement('ALTER TABLE products ADD CONSTRAINT product_status_check CHECK (status IN (\'active\', \'inactive\', \'archived\'))');
         
-        // Price Plans table - subscription type and amount checks
-        DB::statement('ALTER TABLE price_plans ADD CONSTRAINT subscription_type_check CHECK (subscription_type IN (\'daily\',\'weekly\',\'monthly\',\'quarterly\',\'semi_annually\',\'yearly\'))');
+        // Price Plans table - billing type and amount checks
+        // NOTE: Using 'billing_type' column instead of 'subscription_type'
+        DB::statement('ALTER TABLE price_plans ADD CONSTRAINT billing_type_check CHECK (billing_type IN (\'one_time\',\'recurring\'))');
         DB::statement('ALTER TABLE price_plans ADD CONSTRAINT pp_amount_check CHECK (amount >= 0)');
         
         // Subscriptions table - status check
@@ -46,7 +48,8 @@ return new class extends Migration
         DB::statement('ALTER TABLE invoice_taxes ADD CONSTRAINT invoice_taxes_amount_check CHECK (amount >= 0)');
         
         // Payments table - status and amount checks
-        DB::statement('ALTER TABLE payments ADD CONSTRAINT payment_status_check CHECK (notification_status IN (\'pending\', \'processing\', \'completed\', \'failed\', \'cancelled\'))');
+        // NOTE: Using 'status' column (not 'notification_status')
+        DB::statement('ALTER TABLE payments ADD CONSTRAINT payment_status_check CHECK (status IN (\'pending\', \'processing\', \'completed\', \'failed\', \'cancelled\'))');
         DB::statement('ALTER TABLE payments ADD CONSTRAINT payments_amount_check CHECK (amount > 0)');
         
         // Refunds table - status and amount checks
@@ -57,7 +60,8 @@ return new class extends Migration
         DB::statement('ALTER TABLE organization_payment_gateway_integrations ADD CONSTRAINT opgi_status_check CHECK (status IN (\'active\', \'inactive\', \'suspended\', \'pending\'))');
         
         // Configurations table - env check
-        DB::statement('ALTER TABLE configurations ADD CONSTRAINT env_check CHECK (env IN (\'testing\', \'production\'))');
+        // NOTE: Skipped because env column is integer type, not varchar
+        // DB::statement('ALTER TABLE configurations ADD CONSTRAINT env_check CHECK (env IN (\'testing\', \'production\'))');
     }
 
     /**
@@ -70,8 +74,8 @@ return new class extends Migration
             'organizations' => 'org_status_check',
             'users' => 'user_sex_check',
             'customers' => 'customer_status_check',
-            'products' => 'product_status_check',
-            'price_plans' => ['subscription_type_check', 'pp_amount_check'],
+            // 'products' => 'product_status_check', // Skipped - not created because products uses 'active' column
+            'price_plans' => ['billing_type_check', 'pp_amount_check'], // Changed from subscription_type_check to billing_type_check
             'subscriptions' => 'subscription_status_check',
             'invoices' => ['invoice_status_check', 'invoices_amounts_check'],
             'invoice_items' => ['quantity_check', 'prices_check'],
@@ -80,7 +84,7 @@ return new class extends Migration
             'payments' => ['payment_status_check', 'payments_amount_check'],
             'refunds' => ['refund_status_check', 'refunds_amount_check'],
             'organization_payment_gateway_integrations' => 'opgi_status_check',
-            'configurations' => 'env_check',
+            // 'configurations' => 'env_check', // Skipped - env column is integer, not varchar
         ];
 
         foreach ($constraints as $table => $constraint) {

@@ -1382,7 +1382,14 @@ You can specify products using three different lookup methods:
 
 ### Get Invoices by id
 **Method:** `GET`
-**URL:** `/api/invoices/{invoice}`
+**URL:** `/api/invoices/{invoice_id}`
+
+**Description:** Retrieve detailed information about **ONE SPECIFIC INVOICE** by its ID. This endpoint returns a single invoice, not a list of all invoices.
+
+**How it works:**
+- Replace `{invoice_id}` in the URL with the actual invoice ID number
+- Example: To get invoice with ID 123, use `/api/invoices/123`
+- Example: To get invoice with ID 456, use `/api/invoices/456`
 
 **Required Headers:**
 | Key | Value |
@@ -1390,18 +1397,154 @@ You can specify products using three different lookup methods:
 | Authorization | Bearer {YOUR_API_KEY} |
 | Accept | application/json |
 
-**Request Body:**
-```json
-{}
+**URL Path Parameters (NOT request body):**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| invoice_id | integer | Yes | The unique ID of the invoice you want to retrieve. This is part of the URL path. |
+
+**Example Request 1: Get invoice with ID 123**
+```bash
+GET /api/invoices/123
+Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
+Accept: application/json
 ```
 
+**Example Request 2: Get invoice with ID 456**
+```bash
+GET /api/invoices/456
+Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
+Accept: application/json
+```
+
+**cURL Example:**
+```bash
+curl -X GET "https://your-api-domain.com/api/invoices/123" \
+  -H "Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G" \
+  -H "Accept: application/json"
+```
+
+**Request Body:**
+```json
+// NO REQUEST BODY - The invoice ID is in the URL path, not the body
+```
+
+**Important Notes:**
+- ✅ This endpoint returns **ONE invoice** only
+- ✅ The invoice ID must be in the **URL path** (e.g., `/api/invoices/123`)
+- ✅ You do NOT send the invoice ID in the request body
+- ✅ You do NOT need any request body at all
+- ❌ This does NOT return a list of all invoices
+
+**Quick Comparison:**
+| What you want | Endpoint | What it returns |
+|---------------|----------|-----------------|
+| Get ONE specific invoice | `GET /api/invoices/123` | Single invoice with ID 123 |
+| Get ALL invoices | `GET /api/invoices` | List of all invoices |
+
 **Success Response:** `200 OK`
+
+**Returns:** Data for the **single invoice** you requested (invoice ID 123 in this example)
+
 ```json
 {
   "success": true,
-  "data": {}
+  "message": "Invoice details retrieved successfully",
+  "data": {
+    "id": 123,
+    "invoice_number": "INV-2026-00123",
+    "status": "pending",
+    "currency": "TZS",
+    "description": "Monthly subscription - March 2026",
+    "subtotal": 50000.00,
+    "tax_breakdown": [
+      {
+        "invoice_tax_id": 45,
+        "tax_rate_id": 1,
+        "name": "VAT",
+        "country": "TZ",
+        "rate": 18.00,
+        "amount": 9000.00
+      }
+    ],
+    "tax_total": 9000.00,
+    "grand_total": 59000.00,
+    "invoiced_amount": 59000.00,
+    "paid_amount": 0.00,
+    "outstanding_amount": 59000.00,
+    "date": "2026-03-01",
+    "due_date": "2026-03-15",
+    "issued_at": "2026-03-01T10:30:00.000000Z",
+    "created_at": "2026-03-01T10:30:00.000000Z",
+    "updated_at": "2026-03-01T10:30:00.000000Z",
+    "customer": {
+      "id": 456,
+      "name": "John Doe",
+      "email": "john.doe@example.com",
+      "phone": "+255712345678",
+      "organization_id": 1
+    },
+    "price_plans": [
+      {
+        "id": 10,
+        "name": "Premium Monthly Plan",
+        "subscription_type": "recurring",
+        "quantity": 1,
+        "unit_price": 50000.00,
+        "amount": 50000.00,
+        "product_id": 5,
+        "product_name": "Premium Membership",
+        "payment_gateways": [
+          {
+            "id": 3,
+            "payment_gateway_id": 2,
+            "gateway_name": "Stripe",
+            "status": "active",
+            "references": "pi_3AbCdEfGhIjKlMnO",
+            "client_secret": "pi_3AbCdEfGhIjKlMnO_secret_XyZ123"
+          },
+          {
+            "id": 4,
+            "payment_gateway_id": 1,
+            "gateway_name": "Flutterwave",
+            "status": "active",
+            "references": "FLW-123456789"
+          }
+        ]
+      }
+    ],
+    "subscriptions": [
+      {
+        "id": 789,
+        "product_id": 5,
+        "product_name": "Premium Membership",
+        "price_plan_id": 10,
+        "price_plan_name": "Premium Monthly Plan",
+        "subscription_type": "recurring",
+        "customer_id": 456,
+        "status": "active",
+        "start_date": "2026-03-01",
+        "end_date": "2026-04-01",
+        "next_billing_date": "2026-04-01",
+        "created_at": "2026-03-01T10:30:00.000000Z",
+        "updated_at": "2026-03-01T10:30:00.000000Z"
+      }
+    ]
+  }
 }
 ```
+
+**Response Fields Explanation:**
+- **invoice_number**: Unique invoice identifier for display purposes
+- **status**: Current invoice status (`pending`, `paid`, `cancelled`, `overdue`)
+- **subtotal**: Total amount before taxes
+- **tax_breakdown**: Array of all taxes applied to this invoice
+- **grand_total**: Final total amount including all taxes
+- **paid_amount**: Total amount already paid
+- **outstanding_amount**: Remaining balance to be paid
+- **customer**: Complete customer information
+- **price_plans**: Array of products/services with quantities and prices
+- **payment_gateways**: Available payment methods for this invoice with references
+- **subscriptions**: Related subscription details if invoice is for recurring billing
 
 **Error Responses:**
 
@@ -1418,6 +1561,14 @@ You can specify products using three different lookup methods:
 {
   "success": false,
   "message": "Invoice not found"
+}
+```
+
+`500 Internal Server Error`
+```json
+{
+  "success": false,
+  "message": "Invoice detail retrieval failed: [error details]"
 }
 ```
 
@@ -1542,6 +1693,11 @@ You can specify products using three different lookup methods:
 
 **Description:** Subscription invoices automatically create a subscription record for recurring billing. The subscription remains in "pending" status until the invoice is paid, then becomes "active".
 
+**🔄 Idempotent Behavior:**
+- If you call this endpoint again with the **same customer and same price plans** while a **pending invoice already exists**, the system will return the existing invoice instead of creating a duplicate or throwing an error.
+- This prevents duplicate subscriptions and allows safe retry of invoice creation.
+- The response format is identical whether returning an existing invoice or creating a new one.
+
 **Required Headers:**
 | Key | Value |
 |-----|-------|
@@ -1646,7 +1802,36 @@ You can specify products using three different lookup methods:
 - The subscription is created in "pending" status
 - It will automatically activate when the invoice is paid
 - Next billing date is calculated based on the price plan's billing interval
-- If a pending subscription already exists for the same customer and price plan, the existing invoice is returned
+- **🔄 Idempotent Behavior:** If a pending subscription already exists for the same customer and price plan, the existing invoice is returned with `200 OK` status (instead of `201 Created`)
+
+**Example - Creating Duplicate Subscription Invoice:**
+
+If you send the same request twice:
+```bash
+# First Request - Creates new invoice
+POST /api/invoices
+{
+  "customer": {"email": "jane@company.com", ...},
+  "products": [{"price_plan_id": 8, "amount": 75000}],
+  ...
+}
+# Response: 201 Created with invoice_id: 124
+
+# Second Request - Same customer, same plan, invoice still pending
+POST /api/invoices
+{
+  "customer": {"email": "jane@company.com", ...},
+  "products": [{"price_plan_id": 8, "amount": 75000}],
+  ...
+}
+# Response: 200 OK with SAME invoice_id: 124 (not a new invoice!)
+```
+
+The second request returns the existing invoice rather than creating a duplicate. This ensures:
+- ✅ Safe retry logic in case of network failures
+- ✅ No duplicate subscriptions
+- ✅ Same payment link can be reused
+- ✅ Idempotent API behavior
 
 **Error Responses:**
 
@@ -1678,7 +1863,10 @@ You can specify products using three different lookup methods:
 ---
 
 ### List Subscriptions
-**Method:** `GET`
+
+**Description:** Returns subscriptions for a specific customer identified by their email address. This endpoint requires customer email for security and privacy protection.
+
+**Method:** `GET`  
 **URL:** `/api/subscriptions`
 
 **Required Headers:**
@@ -1687,20 +1875,201 @@ You can specify products using three different lookup methods:
 | Authorization | Bearer {YOUR_API_KEY} |
 | Accept | application/json |
 
+**Query Parameters (sent in URL):**
+| Parameter | Type | Required | Description | Possible Values |
+|-----------|------|----------|-------------|-----------------|
+| customer_email | string | **YES** | Customer's email address (REQUIRED for security) | Valid email format (e.g., `jane@company.com`) |
+| status | string | No | Filter by subscription status | `pending`, `active`, `cancelled`, `expired` |
+
 **Request Body:**
-```json
-{}
+```
+NO REQUEST BODY - This is a GET request. All parameters are sent as query strings in the URL.
 ```
 
+**Complete Request Examples:**
+
+**Example 1: Get ALL subscriptions for a customer**
+```http
+GET /api/subscriptions?customer_email=jane@company.com
+Authorization: Bearer org_live_sk_abc123xyz456
+Accept: application/json
+```
+Query Parameters Sent:
+```json
+{
+  "customer_email": "jane@company.com"
+}
+```
+
+**Example 2: Get only ACTIVE subscriptions for a customer**
+```http
+GET /api/subscriptions?customer_email=jane@company.com&status=active
+Authorization: Bearer org_live_sk_abc123xyz456
+Accept: application/json
+```
+Query Parameters Sent:
+```json
+{
+  "customer_email": "jane@company.com",
+  "status": "active"
+}
+```
+
+**Example 3: Get only PENDING subscriptions for a customer**
+```http
+GET /api/subscriptions?customer_email=john@startup.io&status=pending
+Authorization: Bearer org_live_sk_abc123xyz456
+Accept: application/json
+```
+Query Parameters Sent:
+```json
+{
+  "customer_email": "john@startup.io",
+  "status": "pending"
+}
+```
+
+**cURL Examples:**
+```bash
+# Get all subscriptions for a customer
+curl -X GET "https://your-domain.com/api/subscriptions?customer_email=jane@company.com" \
+  -H "Authorization: Bearer org_live_sk_abc123xyz456" \
+  -H "Accept: application/json"
+
+# Get active subscriptions for a customer
+curl -X GET "https://your-domain.com/api/subscriptions?customer_email=jane@company.com&status=active" \
+  -H "Authorization: Bearer org_live_sk_abc123xyz456" \
+  -H "Accept: application/json"
+
+# Get pending subscriptions for a customer
+curl -X GET "https://your-domain.com/api/subscriptions?customer_email=john@startup.io&status=pending" \
+  -H "Authorization: Bearer org_live_sk_abc123xyz456" \
+  -H "Accept: application/json"
+```
+
+**Important Security Notes:**
+- 🔒 **customer_email is REQUIRED** - You cannot list all subscriptions without specifying a customer
+- ✅ **Privacy Protection** - This prevents exposing all customers' subscriptions
+- ✅ **Email Validation** - Must be a valid email format
+- ✅ Query parameters are appended to URL with `?` and separated by `&`
+
 **Success Response:** `200 OK`
+
+**Example: Customer with multiple subscriptions**
 ```json
 {
   "success": true,
-  "data": {}
+  "data": [
+    {
+      "id": 1,
+      "customer": {
+        "id": 45,
+        "name": "Jane Smith",
+        "email": "jane@company.com"
+      },
+      "price_plan": {
+        "id": 8,
+        "name": "Premium hosting - Monthly subscription",
+        "amount": 75000,
+        "billing_interval": "monthly",
+        "product": {
+          "id": 3,
+          "name": "Cloud Hosting Premium"
+        }
+      },
+      "status": "active",
+      "start_date": "2024-01-15",
+      "end_date": null,
+      "next_billing_date": "2024-04-15",
+      "created_at": "2024-01-15T10:30:00.000000Z"
+    },
+    {
+      "id": 3,
+      "customer": {
+        "id": 45,
+        "name": "Jane Smith",
+        "email": "jane@company.com"
+      },
+      "price_plan": {
+        "id": 15,
+        "name": "Basic Plan - Monthly",
+        "amount": 25000,
+        "billing_interval": "monthly",
+        "product": {
+          "id": 2,
+          "name": "Email Service"
+        }
+      },
+      "status": "cancelled",
+      "start_date": "2024-01-01",
+      "end_date": "2024-03-01",
+      "next_billing_date": null,
+      "created_at": "2024-01-01T08:00:00.000000Z"
+    }
+  ]
+}
+```
+
+**Response Fields Explanation:**
+- `id` - Unique subscription identifier
+- `customer` - Customer details (id, name, email) - **All subscriptions belong to the same customer**
+- `price_plan` - Subscription plan information
+  - `amount` - Price in smallest currency unit (e.g., cents for USD, kobo for NGN)
+  - `billing_interval` - How often billing occurs: `monthly`, `yearly`, `quarterly`, etc.
+  - `product` - The product/service being subscribed to
+- `status` - Subscription state:
+  - `pending` - Created but payment not completed (start_date is null)
+  - `active` - Currently active and paid
+  - `cancelled` - Manually cancelled
+  - `expired` - Ended naturally
+- `start_date` - When subscription became active (null if pending)
+- `end_date` - When subscription ended (null if ongoing)
+- `next_billing_date` - Next payment date (null if pending/cancelled/expired)
+- `created_at` - When subscription was created
+
+**Empty Result Example (Customer has no subscriptions):**
+```json
+{
+  "success": true,
+  "data": []
 }
 ```
 
 **Error Responses:**
+
+`422 Unprocessable Entity` (Missing or invalid customer_email)
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "customer_email": [
+      "The customer email field is required."
+    ]
+  }
+}
+```
+
+**Or (Invalid email format):**
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "customer_email": [
+      "The customer email must be a valid email address."
+    ]
+  }
+}
+```
+
+`400 Bad Request`
+```json
+{
+  "success": false,
+  "message": "Invalid filter parameters"
+}
+```
 
 `401 Unauthorized`
 ```json
@@ -1757,6 +2126,401 @@ You can specify products using three different lookup methods:
   "message": "Too Many Attempts."
 }
 ```
+
+---
+
+### Upgrade Subscription
+
+**Description:** Upgrade an active subscription to a higher-tier plan within the same product. The system automatically calculates prorated charges based on actual billing cycle days, ensuring fair pricing across months with different lengths (28-31 days).
+
+**Method:** `POST`  
+**URL:** `/api/invoices/plan-upgrade`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_API_KEY} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| subscription_id | integer | **YES** | ID of the active subscription to upgrade |
+| new_price_plan_id | integer | **YES** | ID of the higher-tier price plan (must be from same product) |
+| payment_gateway | string | **Optional** | Gateway for payment: `flutterwave`, `control_number`, or `both` (default: `both`) |
+| success_url | string (URL) | **Optional** | Redirect URL after successful payment |
+| cancel_url | string (URL) | **Optional** | Redirect URL if payment is cancelled |
+
+**Business Rules:**
+- ✅ Subscription must be in `active` status
+- ✅ New plan must have **higher price** than current plan
+- ✅ New plan must belong to the **same product**
+- ✅ Proration calculated using **actual billing cycle days** (not fixed 30 days)
+- ✅ Creates upgrade invoice that must be paid
+- ✅ Subscription plan switches immediately after payment
+
+**Proration Formula:**
+```
+Billing Cycle Days = Days between current_period_start and current_period_end
+Days Remaining = Billing Cycle Days - Days Used
+
+Old Plan Daily Rate = Old Plan Price ÷ Billing Cycle Days
+New Plan Daily Rate = New Plan Price ÷ Billing Cycle Days
+
+Unused Credit = Old Plan Daily Rate × Days Remaining
+New Plan Charge = New Plan Daily Rate × Days Remaining
+
+Amount to Charge = New Plan Charge - Unused Credit
+```
+
+**Request Body:**
+```json
+{
+  "subscription_id": 89,
+  "new_price_plan_id": 15,
+  "payment_gateway": "flutterwave",
+  "success_url": "https://yourapp.com/upgrade/success",
+  "cancel_url": "https://yourapp.com/upgrade/cancel"
+}
+```
+
+**Example Scenario:**
+- Current Plan: Basic (TZS 30,000/month)
+- New Plan: Standard (TZS 75,000/month)
+- Billing Cycle: Jan 15 - Feb 15 (31 days)
+- Upgrade Date: Jan 25 (10 days used, 21 days remaining)
+- Calculation:
+  - Old Daily Rate: 30,000 ÷ 31 = 967.74 TZS/day
+  - New Daily Rate: 75,000 ÷ 31 = 2,419.35 TZS/day
+  - Unused Credit: 967.74 × 21 = 20,322.54 TZS
+  - New Plan Charge: 2,419.35 × 21 = 50,806.35 TZS
+  - **Amount to Pay: 30,483.81 TZS**
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Subscription upgraded successfully",
+  "data": {
+    "invoice": {
+      "id": 250,
+      "invoice_number": "INV-2026-00250",
+      "status": "issued",
+      "currency": "TZS",
+      "description": null,
+      "subtotal": 30484,
+      "tax_breakdown": [],
+      "tax_total": 0,
+      "grand_total": 30484,
+      "invoiced_amount": 30484,
+      "paid_amount": 0,
+      "outstanding_amount": 30484,
+      "date": null,
+      "due_date": null,
+      "issued_at": "2026-01-25T10:30:00.000000Z",
+      "created_at": "2026-01-25T10:30:00.000000Z",
+      "updated_at": "2026-01-25T10:30:00.000000Z",
+      "customer": {
+        "id": 45,
+        "name": "Jane Smith",
+        "email": "jane@company.com",
+        "phone": "+255723456789",
+        "organization_id": 1
+      },
+      "price_plans": [
+        {
+          "id": 15,
+          "name": "Standard Plan",
+          "subscription_type": null,
+          "quantity": 1,
+          "unit_price": 30484,
+          "amount": 30484,
+          "product_id": 3,
+          "product_name": "Cloud Hosting Premium",
+          "payment_gateways": [
+            {
+              "id": 5,
+              "payment_gateway_id": 2,
+              "gateway_name": "Flutterwave",
+              "status": "active",
+              "references": "https://checkout.flutterwave.com/v3/hosted/pay/abc123xyz789"
+            },
+            {
+              "id": 8,
+              "payment_gateway_id": 1,
+              "gateway_name": "Universal Control Number",
+              "status": "active",
+              "references": "992001234567890"
+            }
+          ]
+        }
+      ],
+      "subscriptions": [
+        {
+          "id": 89,
+          "product_id": 3,
+          "product_name": "Cloud Hosting Premium",
+          "price_plan_id": 15,
+          "price_plan_name": "Standard Plan",
+          "subscription_type": null,
+          "customer_id": 45,
+          "status": "active",
+          "start_date": "2026-01-15",
+          "end_date": null,
+          "next_billing_date": "2026-02-15",
+          "created_at": "2026-01-15T08:00:00.000000Z",
+          "updated_at": "2026-01-25T10:30:00.000000Z"
+        }
+      ]
+    },
+    "subscription": {
+      "id": 89,
+      "status": "active",
+      "previous_plan_id": 8,
+      "current_plan": {
+        "id": 15,
+        "name": "Standard Plan",
+        "amount": 75000,
+        "billing_interval": "monthly"
+      },
+      "next_billing_date": "2026-02-15"
+    },
+    "proration": {
+      "amount_charged": 30484,
+      "credit_applied": 20323,
+      "description": "Prorated for remaining billing cycle"
+    }
+  }
+}
+```
+
+**Payment Details Explanation:**
+- `payment_gateways` array contains all available payment methods
+- `references` field contains:
+  - **Flutterwave**: Direct payment link URL (customer can click to pay)
+  - **Universal Control Number**: Control number for bank payment (e.g., 992001234567890)
+- Payment links are generated asynchronously and will be available within seconds
+- You can poll the invoice endpoint to get updated payment details if needed
+
+**Error Responses:**
+
+`400 Bad Request` - Invalid upgrade attempt
+```json
+{
+  "success": false,
+  "message": "Failed to upgrade subscription: New plan must have a higher price than current plan. Use downgrade endpoint for lower-tier plans."
+}
+```
+
+`400 Bad Request` - Different product
+```json
+{
+  "success": false,
+  "message": "Failed to upgrade subscription: Cannot upgrade to a plan from a different product"
+}
+```
+
+`400 Bad Request` - Not active
+```json
+{
+  "success": false,
+  "message": "Failed to upgrade subscription: Only active subscriptions can be upgraded. Current status: pending"
+}
+```
+
+`404 Not Found`
+```json
+{
+  "success": false,
+  "message": "Subscription or price plan not found"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "subscription_id": ["The subscription id field is required."],
+    "new_price_plan_id": ["The selected new price plan id is invalid."]
+  }
+}
+```
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+---
+
+### Downgrade Subscription
+
+**Description:** Downgrade an active subscription to a lower-tier plan within the same product. The system calculates unused credit from the current plan and can apply it to the customer's wallet for future use.
+
+**Method:** `POST`  
+**URL:** `/api/invoices/plan-downgrade`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_API_KEY} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| subscription_id | integer | **YES** | ID of the active subscription to downgrade |
+| new_price_plan_id | integer | **YES** | ID of the lower-tier price plan (must be from same product) |
+| apply_credit | boolean | No | Whether to apply unused credit to customer wallet (default: `true`) |
+
+**Business Rules:**
+- ✅ Subscription must be in `active` status
+- ✅ New plan must have **lower price** than current plan
+- ✅ New plan must belong to the **same product**
+- ✅ Credit calculated using **actual billing cycle days**
+- ✅ **No invoice created** - downgrade is immediate
+- ✅ Credit can be applied to customer wallet or saved for next billing
+- ✅ Subscription plan switches immediately
+
+**Credit Formula:**
+```
+Billing Cycle Days = Days between current_period_start and current_period_end
+Days Remaining = Billing Cycle Days - Days Used
+
+Old Plan Daily Rate = Old Plan Price ÷ Billing Cycle Days
+New Plan Daily Rate = New Plan Price ÷ Billing Cycle Days
+
+Unused Value = Old Plan Daily Rate × Days Remaining
+New Plan Cost = New Plan Daily Rate × Days Remaining
+
+Credit Amount = Unused Value - New Plan Cost
+```
+
+**Request Body:**
+```json
+{
+  "subscription_id": 89,
+  "new_price_plan_id": 8,
+  "apply_credit": true
+}
+```
+
+**Example Scenario:**
+- Current Plan: Standard (TZS 75,000/month)
+- New Plan: Basic (TZS 30,000/month)
+- Billing Cycle: Jan 15 - Feb 15 (31 days)
+- Downgrade Date: Jan 25 (10 days used, 21 days remaining)
+- Calculation:
+  - Old Daily Rate: 75,000 ÷ 31 = 2,419.35 TZS/day
+  - New Daily Rate: 30,000 ÷ 31 = 967.74 TZS/day
+  - Unused Value: 2,419.35 × 21 = 50,806.35 TZS
+  - New Plan Cost: 967.74 × 21 = 20,322.54 TZS
+  - **Credit: 30,483.81 TZS** (available for future use)
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Subscription downgraded successfully",
+  "data": {
+    "subscription": {
+      "id": 89,
+      "status": "active",
+      "previous_plan_id": 15,
+      "current_plan": {
+        "id": 8,
+        "name": "Basic Plan",
+        "amount": 30000,
+        "billing_interval": "monthly"
+      },
+      "next_billing_date": "2026-02-15"
+    },
+    "credit": {
+      "credit_amount": 30484,
+      "credit_applied": true,
+      "days_remaining": 21,
+      "description": "Credit from unused portion of higher plan"
+    },
+    "payment_details": {
+      "available_gateways": [
+        {
+          "id": 5,
+          "payment_gateway_id": 2,
+          "gateway_name": "Flutterwave",
+          "status": "active"
+        },
+        {
+          "id": 8,
+          "payment_gateway_id": 1,
+          "gateway_name": "Universal Control Number",
+          "status": "active"
+        }
+      ],
+      "note": "No payment required for downgrade. These payment methods will be available for your next billing cycle on 2026-02-15"
+    }
+  }
+}
+```
+
+**Payment Details Explanation:**
+- `payment_details` contains available payment gateways for this organization
+- **No payment required** for downgrade - this is informational only
+- Shows payment methods that will be available for the next billing cycle
+- Credit can be applied to reduce future payments
+
+**Error Responses:**
+
+`400 Bad Request` - Invalid downgrade attempt
+```json
+{
+  "success": false,
+  "message": "Failed to downgrade subscription: New plan must have a lower price than current plan. Use upgrade endpoint for higher-tier plans."
+}
+```
+
+`400 Bad Request` - Different product
+```json
+{
+  "success": false,
+  "message": "Failed to downgrade subscription: Cannot downgrade to a plan from a different product"
+}
+```
+
+`404 Not Found`
+```json
+{
+  "success": false,
+  "message": "Subscription or price plan not found"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "subscription_id": ["The subscription id field is required."]
+  }
+}
+```
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+---
 
 ## Wallets
 

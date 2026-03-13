@@ -1695,4 +1695,255 @@ class InvoiceController extends Controller
             });
     }
 
+    /**
+     * Upgrade subscription to a higher-tier plan
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function upgradeSubscription(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'subscription_id' => 'required|integer|exists:subscriptions,id',
+            'new_price_plan_id' => 'required|integer|exists:price_plans,id',
+            'payment_gateway' => 'nullable|string|in:flutterwave,control_number,both',
+            'success_url' => 'nullable|url',
+            'cancel_url' => 'nullable|url',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $gatewayConfig = [
+                'payment_gateway' => $request->input('payment_gateway', 'both'),
+                'success_url' => $request->input('success_url'),
+                'cancel_url' => $request->input('cancel_url'),
+            ];
+
+            $subscriptionService = new SubscriptionService();
+            $invoice = $subscriptionService->upgradeSubscription(
+                $request->input('subscription_id'),
+                $request->input('new_price_plan_id'),
+                $gatewayConfig
+            );
+
+            // Get subscription with updated plan
+            $subscription = Subscription::with(['customer', 'pricePlan'])
+                ->find($request->input('subscription_id'));
+
+            // Dispatch payment gateway jobs
+            $paymentGateway = $request->input('payment_gateway', 'both');
+            $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
+            $cancelUrl = $request->input('cancel_url') ?: config('app.url') . '/payment/cancel';
+            
+            // Get organization gateways for the invoice's product
+            $invoiceItem = $invoice->invoiceItems->first();
+            if ($invoiceItem && $invoiceItem->pricePlan) {
+                $product = $invoiceItem->pricePlan->product;
+                $customer = $invoice->customer;
+                
+                $organizationGateways = OrganizationPaymentGatewayIntegration::with('paymentGateway')
+                    ->where('organization_id', $customer->organization_id)
+                    ->where('status', 'active')
+                    ->get();
+                
+                foreach ($organizationGateways as $orgGateway) {
+                    $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
+                    
+                    // Dispatch jobs based on payment_gateway parameter
+                    if ($paymentGateway === 'both' || 
+                        ($paymentGateway === 'control_number' && $gatewayName === 'universal control number') ||
+                        ($paymentGateway === 'flutterwave' && $gatewayName === 'flutterwave')) {
+                        
+                        if ($gatewayName === 'universal control number') {
+                            CreateEcobankReferenceJob::dispatch(
+                                $invoice->id,
+                                $product->id,
+                                $customer->id,
+                                $orgGateway->id,
+                                $successUrl
+                            );
+                        } elseif ($gatewayName === 'flutterwave') {
+                            CreateFlutterwaveReferenceJob::dispatch(
+                                $invoice->id,
+                                $product->id,
+                                $customer->id,
+                                $orgGateway->id,
+                                $successUrl,
+                                $cancelUrl
+                            );
+                        }
+                    }
+                }
+            }
+            
+            // Reload invoice with all relationships for payment details
+            $invoice->load([
+                'customer',
+                'payments',
+                'invoiceTaxes.taxRate',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription.pricePlan.product',
+            ]);
+            
+            // Build control numbers map for payment details
+            $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
+            
+            // Format invoice with payment details
+            $invoiceData = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subscription upgraded successfully',
+                'data' => [
+                    'invoice' => $invoiceData,
+                    'subscription' => [
+                        'id' => $subscription->id,
+                        'status' => $subscription->status,
+                        'previous_plan_id' => $subscription->previous_plan_id,
+                        'current_plan' => [
+                            'id' => $subscription->pricePlan->id,
+                            'name' => $subscription->pricePlan->name,
+                            'amount' => $subscription->pricePlan->amount,
+                            'billing_interval' => $subscription->pricePlan->billing_interval,
+                        ],
+                        'next_billing_date' => $subscription->next_billing_date?->toDateString(),
+                    ],
+                    'proration' => [
+                        'amount_charged' => $invoice->total,
+                        'credit_applied' => $invoice->proration_credit,
+                        'description' => 'Prorated for remaining billing cycle',
+                    ],
+                ],
+            ], 200);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Subscription or price plan not found',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Subscription upgrade failed', [
+                'subscription_id' => $request->input('subscription_id'),
+                'new_plan_id' => $request->input('new_price_plan_id'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upgrade subscription: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Downgrade subscription to a lower-tier plan
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function downgradeSubscription(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'subscription_id' => 'required|integer|exists:subscriptions,id',
+            'new_price_plan_id' => 'required|integer|exists:price_plans,id',
+            'apply_credit' => 'nullable|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $applyCredit = $request->input('apply_credit', true);
+
+            $subscriptionService = new SubscriptionService();
+            $result = $subscriptionService->downgradeSubscription(
+                $request->input('subscription_id'),
+                $request->input('new_price_plan_id'),
+                $applyCredit
+            );
+
+            $subscription = $result['subscription'];
+            
+            // Get available payment gateways for this organization
+            $customer = $subscription->customer;
+            $product = $subscription->pricePlan->product;
+            
+            $organizationGateways = OrganizationPaymentGatewayIntegration::with('paymentGateway')
+                ->where('organization_id', $customer->organization_id)
+                ->where('status', 'active')
+                ->get();
+            
+            $paymentGateways = $organizationGateways->map(function ($orgGateway) {
+                $gatewayName = $orgGateway->paymentGateway->name ?? 'Unknown';
+                
+                return [
+                    'id' => $orgGateway->id,
+                    'payment_gateway_id' => $orgGateway->payment_gateway_id,
+                    'gateway_name' => $gatewayName,
+                    'status' => $orgGateway->status,
+                ];
+            })->values();
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'data' => [
+                    'subscription' => [
+                        'id' => $subscription->id,
+                        'status' => $subscription->status,
+                        'previous_plan_id' => $subscription->previous_plan_id,
+                        'current_plan' => [
+                            'id' => $subscription->pricePlan->id,
+                            'name' => $subscription->pricePlan->name,
+                            'amount' => $subscription->pricePlan->amount,
+                            'billing_interval' => $subscription->pricePlan->billing_interval,
+                        ],
+                        'next_billing_date' => $subscription->next_billing_date?->toDateString(),
+                    ],
+                    'credit' => [
+                        'credit_amount' => $result['credit_details']['credit_amount'],
+                        'credit_applied' => $result['credit_applied'],
+                        'days_remaining' => $result['credit_details']['days_remaining'],
+                        'description' => 'Credit from unused portion of higher plan',
+                    ],
+                    'payment_details' => [
+                        'available_gateways' => $paymentGateways,
+                        'note' => 'No payment required for downgrade. These payment methods will be available for your next billing cycle on ' . $subscription->next_billing_date?->toDateString(),
+                    ],
+                ],
+            ], 200);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Subscription or price plan not found',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Subscription downgrade failed', [
+                'subscription_id' => $request->input('subscription_id'),
+                'new_plan_id' => $request->input('new_price_plan_id'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to downgrade subscription: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
 }
