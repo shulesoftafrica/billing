@@ -1386,7 +1386,6 @@ class SubscriptionService
             
             // Get new price plan
             $newPlan = PricePlan::where('id', $newPricePlanId)
-                ->where('active', true)
                 ->firstOrFail();
             
             $oldPlan = $subscription->pricePlan;
@@ -1450,7 +1449,6 @@ class SubscriptionService
             
             // Get new price plan
             $newPlan = PricePlan::where('id', $newPricePlanId)
-                ->where('active', true)
                 ->firstOrFail();
             
             $oldPlan = $subscription->pricePlan;
@@ -1559,11 +1557,6 @@ class SubscriptionService
             'quantity' => 1,
             'unit_price' => $prorationDetails['amount_to_charge'],
             'total' => $prorationDetails['amount_to_charge'],
-            'description' => sprintf(
-                'Upgrade to %s (prorated for %d days)',
-                $newPlan->name,
-                $prorationDetails['days_remaining']
-            ),
         ]);
         
         return $invoice;

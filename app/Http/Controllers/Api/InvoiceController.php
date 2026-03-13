@@ -45,7 +45,7 @@ class InvoiceController extends Controller
     protected $labId = 'KmiqL3yCLf1V68oRQrIv';
     protected $baseUrl = 'https://payservice.ecobank.com';
     protected $origin = 'https://payservice.ecobank.com/PayPortal';
-    protected $callBackUrl = 'https://shulesoftapi.shulesoft.africa/api/ecobank/notification';
+    protected $callBackUrl = 'https://shulesoftapi.shulesoft.africa/api/v1/ecobank/notification';
 
     /**
      * Display a listing of the resource.
@@ -1056,34 +1056,33 @@ class InvoiceController extends Controller
                         return $this->shouldIncludeControlNumberForInvoice($controlNumber, $invoice->id);
                     })
                     ->map(function ($controlNumber) use ($invoice) {
-                    $integration = $controlNumber->organizationPaymentGatewayIntegration;
+                        $integration = $controlNumber->organizationPaymentGatewayIntegration;
 
-                    if (!$integration || !$integration->paymentGateway) {
-                        return null;
-                    }
+                        if (!$integration || !$integration->paymentGateway) {
+                            return null;
+                        }
 
-                    $gatewayName = (string) $integration->paymentGateway->name;
+                        $gatewayName = (string) $integration->paymentGateway->name;
 
-                    $gatewayData = [
-                        'id' => $integration->id,
-                        'payment_gateway_id' => $integration->payment_gateway_id,
-                        'gateway_name' => $gatewayName,
-                        'status' => $integration->status,
-                        'references' => $controlNumber->reference,
-                    ];
+                        $gatewayData = [
+                            'id' => $integration->id,
+                            'payment_gateway_id' => $integration->payment_gateway_id,
+                            'gateway_name' => $gatewayName,
+                            'status' => $integration->status,
+                            'references' => $controlNumber->reference,
+                        ];
 
-                    if (strtolower(trim($gatewayName)) === 'stripe') {
-                        $gatewayData['client_secret'] = $this->extractClientSecretFromControlNumberMetadata($controlNumber->metadata);
-                        $gatewayData['payment_link'] = url('/billing/pay/' . $invoice->id);
+                        if (strtolower(trim($gatewayName)) === 'stripe') {
+                            $gatewayData['client_secret'] = $this->extractClientSecretFromControlNumberMetadata($controlNumber->metadata);
+                            $gatewayData['payment_link'] = url('/billing/pay/' . $invoice->id);
+                        }
 
-                    }
+                        if (strtolower(trim($gatewayName)) === 'flutterwave') {
+                            $gatewayData['payment_link'] = $this->extractPaymentLinkFromControlNumberMetadata($controlNumber->metadata);
+                        }
 
-                    if (strtolower(trim($gatewayName)) === 'flutterwave') {
-                        $gatewayData['payment_link'] = $this->extractPaymentLinkFromControlNumberMetadata($controlNumber->metadata);
-                    }
-
-                    return $gatewayData;
-                })->filter()->values();
+                        return $gatewayData;
+                    })->filter()->values();
 
                 return [
                     'id' => $item->pricePlan->id,
@@ -1530,9 +1529,9 @@ class InvoiceController extends Controller
             }
 
             $paymentIntentService = app(PaymentIntentService::class);
-            
 
-           $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($invoice->currency ?: 'TZS'));
+
+            $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($invoice->currency ?: 'TZS'));
             if ($stripeAmount <= 0 || (StripeAmountHelper::countDigits($stripeAmount)) > 8) {
                 Log::warning('Calculated Stripe amount is invalid', [
                     'invoice_id' => $invoice->id,
@@ -1676,7 +1675,6 @@ class InvoiceController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
-
         try {
             $gatewayConfig = [
                 'payment_gateway' => $request->input('payment_gateway', 'both'),
@@ -1696,29 +1694,23 @@ class InvoiceController extends Controller
                 ->find($request->input('subscription_id'));
 
             // Dispatch payment gateway jobs
-            $paymentGateway = $request->input('payment_gateway', 'both');
             $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
             $cancelUrl = $request->input('cancel_url') ?: config('app.url') . '/payment/cancel';
-            
+
             // Get organization gateways for the invoice's product
             $invoiceItem = $invoice->invoiceItems->first();
             if ($invoiceItem && $invoiceItem->pricePlan) {
                 $product = $invoiceItem->pricePlan->product;
                 $customer = $invoice->customer;
-                
+
                 $organizationGateways = OrganizationPaymentGatewayIntegration::with('paymentGateway')
                     ->where('organization_id', $customer->organization_id)
                     ->where('status', 'active')
                     ->get();
-                
+
                 foreach ($organizationGateways as $orgGateway) {
                     $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
-                    
-                    // Dispatch jobs based on payment_gateway parameter
-                    if ($paymentGateway === 'both' || 
-                        ($paymentGateway === 'control_number' && $gatewayName === 'universal control number') ||
-                        ($paymentGateway === 'flutterwave' && $gatewayName === 'flutterwave')) {
-                        
+
                         if ($gatewayName === 'universal control number') {
                             CreateEcobankReferenceJob::dispatch(
                                 $invoice->id,
@@ -1736,11 +1728,18 @@ class InvoiceController extends Controller
                                 $successUrl,
                                 $cancelUrl
                             );
+                        } elseif ($gatewayName === 'stripe') {
+                            CreateStripeReferenceJob::dispatch(
+                                $invoice->id,
+                                $product->id,
+                                $customer->id,
+                                $orgGateway->id,
+                                $successUrl
+                            );
                         }
-                    }
                 }
             }
-            
+
             // Reload invoice with all relationships for payment details
             $invoice->load([
                 'customer',
@@ -1749,10 +1748,10 @@ class InvoiceController extends Controller
                 'invoiceItems.pricePlan.product',
                 'invoiceItems.subscription.pricePlan.product',
             ]);
-            
+
             // Build control numbers map for payment details
             $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
-            
+
             // Format invoice with payment details
             $invoiceData = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
 
@@ -1780,7 +1779,6 @@ class InvoiceController extends Controller
                     ],
                 ],
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
@@ -1834,19 +1832,19 @@ class InvoiceController extends Controller
             );
 
             $subscription = $result['subscription'];
-            
+
             // Get available payment gateways for this organization
             $customer = $subscription->customer;
             $product = $subscription->pricePlan->product;
-            
+
             $organizationGateways = OrganizationPaymentGatewayIntegration::with('paymentGateway')
                 ->where('organization_id', $customer->organization_id)
                 ->where('status', 'active')
                 ->get();
-            
+
             $paymentGateways = $organizationGateways->map(function ($orgGateway) {
                 $gatewayName = $orgGateway->paymentGateway->name ?? 'Unknown';
-                
+
                 return [
                     'id' => $orgGateway->id,
                     'payment_gateway_id' => $orgGateway->payment_gateway_id,
@@ -1883,7 +1881,6 @@ class InvoiceController extends Controller
                     ],
                 ],
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
@@ -1903,5 +1900,4 @@ class InvoiceController extends Controller
             ], 500);
         }
     }
-
 }

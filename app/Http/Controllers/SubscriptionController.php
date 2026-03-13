@@ -98,7 +98,7 @@ class SubscriptionController extends Controller
         try {
             // Require customer email for security
             $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-                'customer_email' => 'required|email',
+                'customer_email' => 'nullable|email',
                 'status' => 'nullable|string|in:pending,active,cancelled,expired',
             ]);
 

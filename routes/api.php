@@ -92,7 +92,7 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
 
     // Enhanced customer management
     Route::prefix('customers')->group(function () {
-        Route::get('by-phone/{phone}', [CustomerController::class, 'lookupByPhoneWithStatus']); 
+        Route::get('by-phone/{phone}', [CustomerController::class, 'lookupByPhoneWithStatus']);
         Route::get('by-email/{email}', [CustomerController::class, 'lookupByEmailWithStatus']);
     });
 
@@ -155,7 +155,7 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
 
     // Enhanced customer management
     Route::prefix('customers')->group(function () {
-        Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']); 
+        Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']);
         Route::get('by-email/{email}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']);
     });
 
@@ -170,10 +170,12 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
 |--------------------------------------------------------------------------
 | No authentication required - Webhooks validate via signature verification
 */
-Route::middleware('throttle:30,1')->group(function () {
-    Route::prefix('webhooks')->group(function () {
-        Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
-        Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
-        Route::post('stripe', StripeWebhookController::class); //stripe
+Route::prefix('v1')->group(function () {
+    Route::middleware('throttle:30,1')->group(function () {
+        Route::prefix('webhooks')->group(function () {
+            Route::post('ecobank/notification', [WebhookController::class, 'handleUCNPayment']); //ucn
+            Route::post('flutterwave', [WebhookController::class, 'handleFlutterWaveWebhook']); //flutterwave
+            Route::post('stripe', StripeWebhookController::class); //stripe
+        });
     });
 });
