@@ -614,6 +614,35 @@ class FlutterwaveService
     }
 
     /**
+     * Create Flutterwave hosted payment link using v3 payments endpoint.
+     * Endpoint: POST /v3/payments
+     */
+    public function createHostedPaymentLink(array $payload): array
+    {
+        $response = $this->request(
+            method: 'POST',
+            url: $this->resolveV3PaymentsEndpoint(),
+            body: $payload
+        );
+
+        $data = $this->extractDataOrFail($response->success, $response->message, $response->data);
+        $link = $data['link'] ?? null;
+
+        if (!is_string($link) || trim($link) === '') {
+            throw new RuntimeException('Flutterwave hosted payment response did not include a payment link.');
+        }
+
+        return [
+            'status' => $response->raw['status'] ?? null,
+            'message' => $response->message,
+            'link' => $link,
+            'data' => $data,
+            'http_status' => $response->httpStatus,
+            'raw' => $response->raw,
+        ];
+    }
+
+    /**
      * Compatibility helper for transaction verification.
      * Endpoint: GET /transactions/{id}/verify (legacy transaction verification flow)
      */
@@ -753,7 +782,6 @@ class FlutterwaveService
                 ? (string) $value
                 : $key . ': ' . (string) $value;
         }
-
         $curlOptions = [
             CURLOPT_URL => $requestUrl,
             CURLOPT_RETURNTRANSFER => true,
@@ -816,44 +844,13 @@ class FlutterwaveService
 
     private function resolveBearerToken(): string
     {
-        $url = 'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
+        return config('services.flutterwave.api_key');
+    }
 
-        $postFields = http_build_query([
-            'client_id'     => env('CLIENT_ID'),
-            'client_secret' => env('CLIENT_SECRETE'),
-            'grant_type'    => 'client_credentials',
-        ]);
-        $ch = curl_init();
-
-        curl_setopt_array($ch, [
-            CURLOPT_URL            => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $postFields,
-            CURLOPT_HTTPHEADER     => [
-                'Content-Type: application/x-www-form-urlencoded',
-            ],
-        ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-
-        curl_close($ch);
-
-        if ($curlError) {
-            throw new \RuntimeException('cURL error: ' . $curlError);
-        }
-
-        $data = json_decode($response, true);
-
-        if ($httpCode !== 200 || empty($data['access_token'])) {
-            throw new \RuntimeException(
-                'Failed to obtain access token. HTTP ' . $httpCode . ': ' . ($data['error_description'] ?? $response)
-            );
-        }
-
-        return $data['access_token'];
+    private function resolveV3PaymentsEndpoint(): string
+    {
+        $baseUrl =config('services.flutterwave.v3_base_url');
+        return rtrim($baseUrl, '/') . '/v3/payments';
     }
 
     private function extractDataOrFail(bool $success, string $message, mixed $data): array
@@ -904,6 +901,7 @@ class FlutterwaveService
     private function resolveGatewayConfigValue(string $key): mixed
     {
         $config = $this->gateway?->config;
+        dd($config, 'config');
 
         if (is_string($config)) {
             $decodedConfig = json_decode($config, true);

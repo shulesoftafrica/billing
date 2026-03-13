@@ -37,12 +37,16 @@ return [
     'flutterwave' => [
         'encryption_key' => env('ENCRYPTION_KEY'),
         'secret_hash' => env('FLUTTERWAVE_SECRET_HASH'),
+        'secret_key' => env('FLUTTERWAVE_SECRET_KEY', env('FLW_SECRET_KEY')),
+        'v3_base_url' => env('FLUTTERWAVE_V3_BASE_URL'),
+        'api_key' => env('FLUTTERWAVE_API_KEY'),
+
     ],
 
     'stripe' => [
         'secret' => env('STRIPE_SECRETE_KEY'),
         'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
-        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'), 
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
 ];

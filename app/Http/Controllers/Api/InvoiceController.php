@@ -17,13 +17,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Services\SubscriptionService;
 use App\Services\FlutterwaveService;
 use App\Services\Stripe\PaymentIntentService;
-use App\Services\Flutterwave\Models\CreateCustomerRequest;
-use App\Services\Flutterwave\Models\CreateOrderRequest;
-use App\Services\Flutterwave\Models\CreatePaymentMethodRequest;
 use App\Services\Stripe\StripeAmountHelper;
 use App\Traits\ValidatePhoneNumber;
 use App\Jobs\Payments\CreateEcobankReferenceJob;
@@ -47,7 +45,7 @@ class InvoiceController extends Controller
     protected $labId = 'KmiqL3yCLf1V68oRQrIv';
     protected $baseUrl = 'https://payservice.ecobank.com';
     protected $origin = 'https://payservice.ecobank.com/PayPortal';
-    protected $callBackUrl = 'https://safariapi.safaribook.africa/api/ecobank/notification';
+    protected $callBackUrl = 'https://shulesoftapi.shulesoft.africa/api/ecobank/notification';
 
     /**
      * Display a listing of the resource.
@@ -1057,7 +1055,7 @@ class InvoiceController extends Controller
                     ->filter(function ($controlNumber) use ($invoice) {
                         return $this->shouldIncludeControlNumberForInvoice($controlNumber, $invoice->id);
                     })
-                    ->map(function ($controlNumber) {
+                    ->map(function ($controlNumber) use ($invoice) {
                     $integration = $controlNumber->organizationPaymentGatewayIntegration;
 
                     if (!$integration || !$integration->paymentGateway) {
@@ -1076,6 +1074,12 @@ class InvoiceController extends Controller
 
                     if (strtolower(trim($gatewayName)) === 'stripe') {
                         $gatewayData['client_secret'] = $this->extractClientSecretFromControlNumberMetadata($controlNumber->metadata);
+                        $gatewayData['payment_link'] = url('/billing/pay/' . $invoice->id);
+
+                    }
+
+                    if (strtolower(trim($gatewayName)) === 'flutterwave') {
+                        $gatewayData['payment_link'] = $this->extractPaymentLinkFromControlNumberMetadata($controlNumber->metadata);
                     }
 
                     return $gatewayData;
@@ -1172,6 +1176,19 @@ class InvoiceController extends Controller
         );
 
         return is_string($clientSecret) && trim($clientSecret) !== '' ? $clientSecret : null;
+    }
+
+    private function extractPaymentLinkFromControlNumberMetadata($metadata): ?string
+    {
+        $metadata = $this->normalizeControlNumberMetadata($metadata);
+
+        $paymentLink = data_get(
+            $metadata,
+            'payment_link',
+            data_get($metadata, 'data.link', data_get($metadata, 'flutterwave_response.data.link'))
+        );
+
+        return is_string($paymentLink) && trim($paymentLink) !== '' ? $paymentLink : null;
     }
 
     private function normalizeControlNumberMetadata($metadata): array
@@ -1375,7 +1392,6 @@ class InvoiceController extends Controller
             }
 
             $flutterwaveService = new FlutterwaveService();
-        // dd($this->resolveBearerToken());
 
             if (!$flutterwaveService->isActive()) {
                 Log::warning('Flutterwave gateway not active', [
@@ -1387,109 +1403,54 @@ class InvoiceController extends Controller
                 ];
             }
 
-            // $resolvedFlutterwaveCustomerId =  $request->input('flutterwave_customer_id');
-            $resolvedFlutterwaveCustomerId = 'cus_WU8C56hDji' ;// $request->input('flutterwave_customer_id');
+            $txRef = (string) ($request->input('tx_ref')
+                ?: ($invoice->invoice_number . '-' . $product->id . '-' . Str::lower(Str::random(10))));
+            $redirectUrl = (string) ($request->input('redirect_url')
+                ?: $request->input('success_url')
+                ?: (config('app.url') . '/payment/callback'));
 
-         
-            if (!$resolvedFlutterwaveCustomerId) {
-                $customerEmail = $customer->email ?: 'customer@example.com';
-                $validatedPhone = $this->validatePhone((string) $customer->phone);
-                $phonePayload = null;
-
-                if ($validatedPhone !== false) {
-                    $phonePayload = [
-                        'country_code' => $validatedPhone['country_code'],
-                        'number' => $validatedPhone['national_number'],
-                    ];
-                }
-
-                $existingCustomers = $flutterwaveService->searchCustomers($customerEmail, 1, 10);
-                if (!empty($existingCustomers['data'][0])) {
-                    $resolvedFlutterwaveCustomerId = $existingCustomers['data'][0]->id;
-                } else {
-                    $nameParts = preg_split('/\s+/', trim((string) $customer->name)) ?: ['Customer'];
-                    $createdCustomer = $flutterwaveService->createCustomer(new CreateCustomerRequest(
-                        email: $customerEmail,
-                        name: [
-                            'first' => $nameParts[0] ?? 'Customer',
-                            'last' => $nameParts[1] ?? 'User',
-                        ],
-                        phone: $phonePayload,
-                        meta: [
-                            'local_customer_id' => $customer->id,
-                            'organization_id' => $customer->organization_id,
-                        ]
-                    ));
-
-                    $resolvedFlutterwaveCustomerId = $createdCustomer->id;
-                }
-            }
-           
-
-            $resolvedPaymentMethodId = 'pmd_MxRH2NMrGs'; //TESTING - Remove this line in production
-
-            if (!$resolvedPaymentMethodId) {
-                $providedPaymentMethod = $request->input('flutterwave_payment_method', []);
-                $paymentMethodType = (string) ($providedPaymentMethod['type'] ?? 'card');
-                $paymentMethodPayload = (array) ($providedPaymentMethod['payload'] ?? []);
-
-                if (strtolower($paymentMethodType) === 'card') {
-                    $paymentMethodPayload = array_merge(
-                        $this->generateRandomCardTestPayload(),
-                        $paymentMethodPayload
-                    );
-                }
-                $createdPaymentMethod = $flutterwaveService->createPaymentMethod(new CreatePaymentMethodRequest(
-                    type: $paymentMethodType,
-                    paymentData: $paymentMethodPayload,
-                    customerId: $resolvedFlutterwaveCustomerId,
-                    meta: [
-                        'invoice_id' => $invoice->id,
-                        'invoice_number' => $invoice->invoice_number,
-                    ],
-                ));
-                
-
-                $resolvedPaymentMethodId = $createdPaymentMethod->id;
-            }
-          
-            $orderReference = $invoice->invoice_number . '-' . $product->id . '-' . str_replace('.', '', (string) microtime(true));
-            $orderMeta = [
+            $meta = [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'local_customer_id' => $customer->id,
-                'flutterwave_customer_id' => $resolvedFlutterwaveCustomerId,
-                'flutterwave_payment_method_id' => $resolvedPaymentMethodId,
                 'organization_id' => $customer->organization_id,
                 'product_id' => $product->id,
             ];
 
-            $order = $flutterwaveService->createOrder(new CreateOrderRequest(
-                amount: (float) $invoice->total,
-                currency: (string) ($invoice->currency ?: 'TZS'),
-                reference: $orderReference,
-                customerId: $resolvedFlutterwaveCustomerId,
-                paymentMethodId: $resolvedPaymentMethodId,
-                redirectUrl: $request->success_url ?: config('app.url') . '/payment/callback',
-                meta: $orderMeta,
-                merchantVatAmount: (float) $invoice->tax_total,
-            ));
-            $flutterwaveData = $order->toArray();
-            $txRef = $order->reference ?: $orderReference;
-            $paymentLink = $order->redirectUrl();
+            $payload = [
+                'amount' => (float) $invoice->total,
+                'tx_ref' => $txRef,
+                'currency' => (string) ($invoice->currency ?: 'NGN'),
+                'redirect_url' => $redirectUrl,
+                'customer' => [
+                    'email' => (string) ($customer->email ?: 'customer@example.com'),
+                    'phone_number' => (string) ($customer->phone ?: ''),
+                    'name' => (string) ($customer->name ?: 'Customer'),
+                ],
+                'customizations' => [
+                    'title' => (string) ($request->input('customizations.title') ?: ('Invoice ' . $invoice->invoice_number)),
+                ],
+                'meta' => array_merge($meta, (array) $request->input('meta', [])),
+            ];
 
-            if (empty($order->id)) {
-                Log::warning('Flutterwave order creation returned empty id', [
-                    'invoice_id' => $invoice->id,
-                    'reference' => $orderReference,
-                    'response' => $flutterwaveData,
-                ]);
+            if ($request->filled('customizations.logo')) {
+                $payload['customizations']['logo'] = (string) $request->input('customizations.logo');
+            }
 
-                return [
-                    'success' => false,
-                    'message' => 'Payment order creation failed',
+            if ($request->filled('configuration.session_duration')) {
+                $payload['configuration'] = [
+                    'session_duration' => (int) $request->input('configuration.session_duration'),
                 ];
             }
+
+            foreach (['max_retry_attempt', 'payment_plan', 'payment_options', 'link_expiration'] as $optionalField) {
+                if ($request->filled($optionalField)) {
+                    $payload[$optionalField] = $request->input($optionalField);
+                }
+            }
+
+            $flutterwaveResponse = $flutterwaveService->createHostedPaymentLink($payload);
+            $paymentLink = (string) $flutterwaveResponse['link'];
 
             $controlNumber = ControlNumber::create([
                 'customer_id' => $customer->id,
@@ -1497,31 +1458,28 @@ class InvoiceController extends Controller
                 'organization_payment_gateway_integration_id' => $orgGateway->id,
                 'product_id' => $product->id,
                 'metadata' => json_encode([
-                    'order_id' => $order->id,
                     'payment_link' => $paymentLink,
                     'reference' => $txRef,
-                    'status' => $order->status,
-                    'next_action' => $flutterwaveData['next_action'] ?? null,
-                    'processor_response' => $flutterwaveData['processor_response'] ?? null,
-                    'payment_method_details' => $flutterwaveData['payment_method_details'] ?? null,
-                    'billing_details' => $flutterwaveData['billing_details'] ?? null,
-                    'created_datetime' => $flutterwaveData['created_datetime'] ?? null,
-                    'expires_at' => $flutterwaveData['expires_at'] ?? null,
+                    'status' => $flutterwaveResponse['status'] ?? null,
+                    'message' => $flutterwaveResponse['message'] ?? null,
+                    'data' => $flutterwaveResponse['data'] ?? null,
                     'instructions' => 'Click the payment link to pay via card, mobile money, or bank transfer',
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'customer_id' => $customer->id,
                     'organization_id' => $customer->organization_id,
                     'product_id' => $product->id,
+                    'meta' => [
+                        'invoice_id' => $invoice->id,
+                    ],
                 ]),
             ]);
 
             Log::info('Flutterwave payment link generated successfully', [
                 'invoice_id' => $invoice->id,
-                'order_id' => $order->id,
                 'payment_link' => $paymentLink,
                 'tx_ref' => $txRef,
-                'status' => $order->status,
+                'status' => $flutterwaveResponse['status'] ?? null,
             ]);
 
             return [
