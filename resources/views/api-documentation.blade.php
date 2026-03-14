@@ -171,6 +171,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;700&display=swap" rel="stylesheet">
+    
+    <!-- Prism.js for Syntax Highlighting -->
+    <link id="prism-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+    <link id="prism-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" disabled>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    
     <style>
         :root {
             --bg: #f5f8ff;
@@ -187,6 +198,21 @@
             --warning: #f59e0b;
             --radius: 14px;
             --sidebar-width: 280px;
+        }
+
+        [data-theme="dark"] {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface-soft: #1c2128;
+            --surface-code: #0d1117;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-soft: #c9d1d9;
+            --accent: #58a6ff;
+            --accent-soft: rgba(88, 166, 255, 0.15);
+            --success: #3fb950;
+            --danger: #f85149;
+            --warning: #d29922;
         }
 
         * { box-sizing: border-box; }
@@ -217,10 +243,16 @@
             z-index: 20;
         }
 
+        [data-theme="dark"] .sidebar {
+            background: #0d1117;
+        }
+
         .logo {
             font-size: 1.35rem;
             margin: 0 0 14px;
             letter-spacing: 0.3px;
+            color: var(--text);
+            font-weight: 600;
         }
 
         .search {
@@ -234,6 +266,11 @@
             font-family: 'IBM Plex Mono', monospace;
             font-size: 0.84rem;
             margin-bottom: 16px;
+        }
+
+        .search::placeholder {
+            color: var(--text-soft);
+            opacity: 1;
         }
 
         .search:focus {
@@ -272,6 +309,26 @@
             transform: rotate(-90deg);
         }
 
+        /* Authentication menu item styling */
+        a.nav-section-toggle {
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+
+        a.nav-section-toggle:hover {
+            background: linear-gradient(135deg, rgba(79, 141, 255, 0.12) 0%, rgba(79, 141, 255, 0.05) 100%);
+            color: var(--accent);
+            transform: translateX(2px);
+        }
+
+        a.nav-section-toggle:hover span {
+            color: var(--accent);
+        }
+
+        a.nav-section-toggle:active {
+            transform: translateX(4px);
+        }
+
         .nav-links {
             border-top: 1px solid var(--border);
             padding: 6px;
@@ -305,6 +362,10 @@
             background: var(--accent-soft);
         }
 
+        [data-theme="dark"] .nav-link.active {
+            color: #79c0ff;
+        }
+
         .method-badge,
         .status-badge {
             font-family: 'IBM Plex Mono', monospace;
@@ -321,10 +382,23 @@
         .method-patch { background: rgba(168, 85, 247, 0.20); color: #6b21a8; border-color: rgba(147, 51, 234, .50); }
         .method-delete { background: rgba(239, 68, 68, 0.20); color: #b91c1c; border-color: rgba(220, 38, 38, .50); }
 
+        /* Dark mode method badges */
+        [data-theme="dark"] .method-get { background: rgba(46, 160, 67, 0.25); color: #7ee787; border-color: rgba(46, 160, 67, .50); }
+        [data-theme="dark"] .method-post { background: rgba(88, 166, 255, 0.25); color: #79c0ff; border-color: rgba(88, 166, 255, .50); }
+        [data-theme="dark"] .method-put { background: rgba(210, 153, 34, 0.25); color: #f0b72f; border-color: rgba(210, 153, 34, .50); }
+        [data-theme="dark"] .method-patch { background: rgba(191, 132, 255, 0.25); color: #e0b2ff; border-color: rgba(191, 132, 255, .50); }
+        [data-theme="dark"] .method-delete { background: rgba(248, 81, 73, 0.25); color: #ffa198; border-color: rgba(248, 81, 73, .50); }
+
         .status-2xx { background: rgba(34, 197, 94, 0.20); color: #0f6b3f; border-color: rgba(22, 163, 74, .50); }
         .status-4xx { background: rgba(239, 68, 68, 0.20); color: #b91c1c; border-color: rgba(220, 38, 38, .50); }
         .status-5xx { background: rgba(245, 158, 11, 0.20); color: #92400e; border-color: rgba(217, 119, 6, .50); }
         .status-default { background: rgba(148, 163, 184, 0.20); color: #334155; border-color: rgba(100, 116, 139, .50); }
+
+        /* Dark mode status badges */
+        [data-theme="dark"] .status-2xx { background: rgba(46, 160, 67, 0.25); color: #7ee787; border-color: rgba(46, 160, 67, .50); }
+        [data-theme="dark"] .status-4xx { background: rgba(248, 81, 73, 0.25); color: #ffa198; border-color: rgba(248, 81, 73, .50); }
+        [data-theme="dark"] .status-5xx { background: rgba(210, 153, 34, 0.25); color: #f0b72f; border-color: rgba(210, 153, 34, .50); }
+        [data-theme="dark"] .status-default { background: rgba(148, 163, 184, 0.25); color: #94a3b8; border-color: rgba(148, 163, 184, .50); }
 
         .main {
             margin-left: var(--sidebar-width);
@@ -344,9 +418,14 @@
             backdrop-filter: blur(8px);
         }
 
+        [data-theme="dark"] .topbar {
+            background: rgba(13, 17, 23, 0.92);
+        }
+
         .topbar h1 {
             margin: 0;
             font-size: 1.3rem;
+            color: var(--text);
         }
 
         .topbar-meta {
@@ -363,6 +442,32 @@
             border-radius: 999px;
             padding: 6px 10px;
             background: var(--surface);
+        }
+
+        .theme-toggle {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            font-size: 1.2rem;
+            transition: all 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--surface-soft);
+            border-color: var(--accent);
+            transform: scale(1.05);
+        }
+
+        .theme-toggle:active {
+            transform: scale(0.95);
         }
 
         .content {
@@ -439,6 +544,7 @@
         .api-section h2 {
             margin: 0 0 14px;
             font-size: 1.25rem;
+            color: var(--text);
         }
 
         .endpoint-card {
@@ -452,6 +558,10 @@
 
         .endpoint-card.open {
             border-color: rgba(79, 141, 255, 0.45);
+        }
+
+        [data-theme="dark"] .endpoint-card.open {
+            border-color: rgba(88, 166, 255, 0.50);
         }
 
         .endpoint-header {
@@ -479,6 +589,10 @@
             border-radius: 8px;
             border: 1px solid var(--border);
             padding: 4px 8px;
+        }
+
+        [data-theme="dark"] .endpoint-url {
+            color: #79c0ff;
         }
 
         .endpoint-name {
@@ -537,6 +651,11 @@
             color: #2b4368;
         }
 
+        [data-theme="dark"] th,
+        [data-theme="dark"] td {
+            color: #c9d1d9;
+        }
+
         tr:last-child td { border-bottom: 0; }
 
         pre {
@@ -554,9 +673,59 @@
             overflow-x: auto;
         }
 
+        [data-theme="dark"] pre {
+            color: #e6edf3;
+        }
+
         .request-pre { border-left: 4px solid #3b82f6; }
         .success-pre { border-left: 4px solid #22c55e; }
         .error-pre { border-left: 4px solid #ef4444; }
+
+        /* Copy Button Styles */
+        .code-block-wrapper {
+            position: relative;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 6px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-soft);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .code-block-wrapper:hover .copy-button {
+            opacity: 1;
+        }
+
+        .copy-button:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .copy-button:active {
+            transform: translateY(0);
+        }
+
+        .copy-button.copied {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+            opacity: 1;
+        }
 
         .response-head {
             display: flex;
@@ -651,6 +820,226 @@
             display: none;
         }
 
+        /* Authentication Guide Styles */
+        .auth-guide {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 28px;
+        }
+
+        .auth-guide h2 {
+            margin: 0 0 16px;
+            font-size: 1.5rem;
+            color: var(--text);
+        }
+
+        .auth-guide h3 {
+            margin: 24px 0 12px;
+            font-size: 1.1rem;
+            color: var(--text);
+        }
+
+        .auth-guide h4 {
+            margin: 16px 0 8px;
+            font-size: 0.95rem;
+            color: var(--text-soft);
+        }
+
+        .auth-guide p {
+            margin: 8px 0;
+            line-height: 1.6;
+            color: var(--text-soft);
+            font-size: 0.9rem;
+        }
+
+        [data-theme="dark"] .auth-guide p {
+            color: #c9d1d9;
+        }
+
+        .auth-guide ul, .auth-guide ol {
+            margin: 8px 0;
+            padding-left: 24px;
+            color: var(--text-soft);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .auth-guide li {
+            margin: 4px 0;
+        }
+
+        .auth-guide code {
+            background: var(--surface-code);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+            color: #17315b;
+        }
+
+        [data-theme="dark"] .auth-guide code {
+            color: #79c0ff;
+        }
+
+        .auth-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            margin: 24px 0;
+        }
+
+        .auth-step-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .request-pre, .success-pre, .error-pre {
+            background: var(--surface-soft);
+            border-left: 4px solid var(--border);
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin: 12px 0;
+        }
+
+        .request-pre {
+            background: rgba(79, 141, 255, 0.05);
+            border-left-color: #4F8DFF;
+        }
+
+        .success-pre {
+            background: rgba(46, 213, 115, 0.05);
+            border-left-color: #2ed573;
+        }
+
+        .error-pre {
+            background: rgba(255, 71, 87, 0.05);
+            border-left-color: #ff4757;
+        }
+
+        .auth-guide .alert {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 12px 0;
+            color: #b91c1c;
+            font-size: 0.9rem;
+        }
+
+        .auth-guide .alert strong {
+            color: #991b1b;
+        }
+
+        .auth-guide .alert-success {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-left: 4px solid #22c55e;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+            color: #15803d;
+            font-size: 0.9rem;
+        }
+
+        .auth-guide .alert-success strong {
+            color: #166534;
+        }
+
+        .auth-guide .alert-success a {
+            color: #1976d2;
+            text-decoration: underline;
+        }
+
+        .auth-guide .info-box {
+            background: rgba(79, 141, 255, 0.1);
+            border: 1px solid rgba(79, 141, 255, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 12px 0;
+            color: #1e40af;
+            font-size: 0.9rem;
+        }
+
+        /* Dark mode overrides for alert boxes */
+        [data-theme="dark"] .auth-guide .alert {
+            background: rgba(248, 81, 73, 0.15);
+            border-color: rgba(248, 81, 73, 0.3);
+            color: #ffa198;
+        }
+
+        [data-theme="dark"] .auth-guide .alert strong {
+            color: #ff7b72;
+        }
+
+        [data-theme="dark"] .auth-guide .alert-success {
+            background: rgba(63, 185, 80, 0.15);
+            border-color: rgba(63, 185, 80, 0.3);
+            border-left-color: #3fb950;
+            color: #7ee787;
+        }
+
+        [data-theme="dark"] .auth-guide .alert-success strong {
+            color: #a5e3b5;
+        }
+
+        [data-theme="dark"] .auth-guide .alert-success a {
+            color: #58a6ff;
+        }
+
+        [data-theme="dark"] .auth-guide .info-box {
+            background: rgba(88, 166, 255, 0.15);
+            border-color: rgba(88, 166, 255, 0.3);
+            color: #79c0ff;
+        }
+
+        .auth-steps {
+            display: grid;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .auth-step {
+            background: var(--surface-soft);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .auth-step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-right: 12px;
+        }
+
+        .auth-step-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+
         @media (max-width: 980px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -675,6 +1064,10 @@
                 font-family: 'IBM Plex Mono', monospace;
                 cursor: pointer;
             }
+
+            .auth-guide {
+                padding: 16px;
+            }
         }
     </style>
 </head>
@@ -685,6 +1078,14 @@
         <input id="endpointSearch" class="search" type="text" placeholder="Search endpoints...">
 
         <nav id="sidebarNav">
+            {{-- Authentication Section --}}
+            <div class="nav-section">
+                <a href="#authentication-guide" class="nav-section-toggle" style="text-decoration: none; display: flex; justify-content: space-between; align-items: center;">
+                    <span>🔐 Authentication</span>
+                    <span style="font-size: 1.2em;">→</span>
+                </a>
+            </div>
+
             @foreach ($sections as $sectionIndex => $section)
                 @php
                     $sectionSlug = \Illuminate\Support\Str::slug($section['name']) . '-' . $sectionIndex;
@@ -721,12 +1122,191 @@
                 <h1>API Reference</h1>
             </div>
             <div class="topbar-meta">
+                <button type="button" class="theme-toggle" id="themeToggle" title="Toggle dark mode">
+                    <span id="themeIcon">🌙</span>
+                </button>
                 <span class="pill">/api</span>
                 <span class="pill">v1</span>
             </div>
         </header>
 
         <div class="content" id="content">
+            {{-- Authentication Guide Section --}}
+            <section class="auth-guide" id="authentication-guide">
+                <h2>🔐 Authentication Guide</h2>
+                <p>This API uses <strong>OAuth 2.0 Client Credentials</strong> for authentication. Follow this guide to obtain your API credentials and start making authenticated requests.</p>
+
+                <div class="info-box">
+                    <strong>Quick Reference:</strong><br>
+                    <strong>Token Expiration:</strong> 90 days (7,776,000 seconds)<br>
+                    <strong>Rate Limit:</strong> 60 requests per minute<br>
+                    <strong>Base URL:</strong> <code>{{ url('/') }}</code>
+                </div>
+
+                <div class="alert-success">
+                    <strong>🎯 Getting Started:</strong><br>
+                    <strong>Step 1:</strong> Register your account and organization through the <strong>Dashboard</strong> at <a href="{{ url('/dashboard/register') }}" style="color: #1976d2; text-decoration: underline;">{{ url('/dashboard/register') }}</a><br>
+                    <strong>Step 2:</strong> After registration, use the dashboard or the API endpoints below to create your OAuth client credentials<br>
+                    <strong>Step 3:</strong> Use your client credentials to get access tokens and start making API requests
+                </div>
+
+                <h3>📋 Option 1: Create OAuth Client via Dashboard (Recommended)</h3>
+                <p>After registering through the dashboard, you can generate your API credentials directly from your account settings. This is the easiest way to get started.</p>
+
+                <h3>📋 Option 2: Create OAuth Client via API</h3>
+                <p>Alternatively, you can programmatically create OAuth clients using your user token:</p>
+
+                <div class="auth-steps">
+                    <div class="auth-step">
+                        <div class="auth-step-title">
+                            <span class="auth-step-number">1</span>
+                            <span>Login to Get User Token</span>
+                        </div>
+                        <p>Use your dashboard credentials to get a user token:</p>
+                        <pre class="request-pre">POST {{ url('/api/v1/auth/login') }}
+Content-Type: application/json
+
+{
+  "email": "your-email@example.com",
+  "password": "YourPassword123!"
+}</pre>
+                        <p><strong>Response:</strong> You'll receive a user token.</p>
+                        <pre class="success-pre">{
+  "access_token": "shulesoft_1|abc123xyz...",
+  "token_type": "Bearer",
+  "expires_in": 2592000,
+  "user": {
+    "id": 1,
+    "organization_id": 1,
+    "name": "Your Name",
+    "email": "your-email@example.com",
+    "role": "admin"
+  }
+}</pre>
+                    </div>
+
+                    <div class="auth-step">
+                        <div class="auth-step-title">
+                            <span class="auth-step-number">2</span>
+                            <span>Create OAuth Client</span>
+                        </div>
+                        <p>Use your user token to create API client credentials:</p>
+                        <pre class="request-pre">POST {{ url('/api/v1/oauth/clients') }}
+Authorization: Bearer {YOUR_USER_TOKEN_FROM_STEP_1}
+Content-Type: application/json
+
+{
+  "organization_email": "your-org@example.com",
+  "name": "Production API Client",
+  "environment": "live",
+  "allowed_scopes": ["*"]
+}</pre>
+                        <div class="alert">
+                            <strong>⚠️ CRITICAL:</strong> Save your <code>client_id</code> and <code>client_secret</code> immediately! The <code>client_secret</code> is shown only once and cannot be retrieved again.
+                        </div>
+                        <p><strong>Response:</strong></p>
+                        <pre class="success-pre">{
+  "message": "OAuth client created successfully",
+  "client": {
+    "client_id": "org_live_client_abc123xyz...",
+    "client_secret": "org_live_secret_xyz789def...",
+    "environment": "live",
+    "allowed_scopes": ["*"]
+  }
+}</pre>
+                    </div>
+
+                    <div class="auth-step">
+                        <div class="auth-step-title">
+                            <span class="auth-step-number">3</span>
+                            <span>Get Access Token (For API Requests)</span>
+                        </div>
+                        <p>Exchange your client credentials for an access token:</p>
+                        <pre class="request-pre">POST {{ url('/api/v1/oauth/token') }}
+Content-Type: application/json
+
+{
+  "grant_type": "client_credentials",
+  "client_id": "org_live_client_abc123xyz...",
+  "client_secret": "org_live_secret_xyz789def...",
+  "scope": "*"
+}</pre>
+                        <p><strong>Response:</strong></p>
+                        <pre class="success-pre">{
+  "access_token": "shulesoft_2|def456ghi789...",
+  "token_type": "Bearer",
+  "expires_in": 7776000,
+  "scope": "*",
+  "organization_id": 1
+}</pre>
+                        <p><strong>Use this access token</strong> in all your API requests:</p>
+                        <pre class="request-pre">GET {{ url('/api/v1/products') }}
+Authorization: Bearer shulesoft_2|def456ghi789...
+Accept: application/json</pre>
+                    </div>
+                </div>
+       
+
+                <h3>🔄 Token Management</h3>
+                <ul>
+                    <li><strong>Token Lifetime:</strong> Access tokens expire after 90 days</li>
+                    <li><strong>Token Caching:</strong> Cache tokens and reuse them until expiration</li>
+                    <li><strong>Token Refresh:</strong> When you receive a 401 error, request a new token</li>
+                    <li><strong>Security:</strong> Store credentials in environment variables, never in code</li>
+                </ul>
+
+                <h3>🔐 Best Practices</h3>
+                <ol>
+                    <li><strong>Never commit credentials to version control</strong> - Use environment variables</li>
+                    <li><strong>Use separate clients for different environments</strong> - Create <code>test</code> clients for development</li>
+                    <li><strong>Implement automatic token refresh</strong> - Handle 401 errors gracefully</li>
+                    <li><strong>Cache access tokens</strong> - Reduce unnecessary token requests</li>
+                    <li><strong>Monitor token usage</strong> - Check last_used_at in client list endpoint</li>
+                </ol>
+
+                <h3>❓ Common Errors</h3>
+                <div class="auth-step">
+                    <h4>Invalid Client Credentials (401)</h4>
+                    <pre class="error-pre">{
+  "error": "invalid_client",
+  "error_description": "Client authentication failed"
+}</pre>
+                    <p><strong>Solution:</strong> Verify your <code>client_id</code> and <code>client_secret</code> are correct.</p>
+                </div>
+
+                <div class="auth-step">
+                    <h4>Expired Token (401)</h4>
+                    <pre class="error-pre">{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}</pre>
+                    <p><strong>Solution:</strong> Request a new access token using your client credentials.</p>
+                </div>
+
+                <div class="auth-step">
+                    <h4>Rate Limit Exceeded (429)</h4>
+                    <pre class="error-pre">{
+  "message": "Too Many Attempts."
+}</pre>
+                    <p><strong>Solution:</strong> Wait 60 seconds before making more requests. Implement exponential backoff.</p>
+                </div>
+
+                <h3>🛠️ Managing Your OAuth Clients</h3>
+                <p>You can manage your OAuth clients using these endpoints:</p>
+
+                <h4>List All Clients</h4>
+                <pre class="request-pre">GET {{ url('/api/v1/oauth/clients') }}
+Authorization: Bearer {YOUR_USER_TOKEN}</pre>
+
+                <h4>Revoke a Client</h4>
+                <pre class="request-pre">DELETE {{ url('/api/v1/oauth/clients/{client_id}') }}
+Authorization: Bearer {YOUR_USER_TOKEN}</pre>
+
+                <div class="info-box">
+                    <strong>📖 Ready to start?</strong> Use your access token with any of the endpoints documented below. All endpoints require the <code>Authorization: Bearer {token}</code> header.
+                </div>
+            </section>
+
             @foreach ($sections as $sectionIndex => $section)
                 @php
                     $sectionSlug = \Illuminate\Support\Str::slug($section['name']) . '-' . $sectionIndex;
@@ -988,6 +1568,16 @@
         });
     });
 
+    // Handle authentication link click
+    const authLink = document.querySelector('a.nav-section-toggle[href="#authentication-guide"]');
+    if (authLink) {
+        authLink.addEventListener('click', () => {
+            if (window.innerWidth <= 980) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+    }
+
     searchInput.addEventListener('input', (event) => {
         const query = event.target.value.trim().toLowerCase();
 
@@ -1041,6 +1631,87 @@
             sidebar.classList.toggle('mobile-open');
         });
     }
+
+    // Dark/Light Mode Toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+    const htmlElement = document.documentElement;
+
+    // Function to switch Prism.js theme
+    const switchPrismTheme = (theme) => {
+        const prismLight = document.getElementById('prism-light');
+        const prismDark = document.getElementById('prism-dark');
+        
+        if (theme === 'dark') {
+            prismLight.setAttribute('disabled', 'true');
+            prismDark.removeAttribute('disabled');
+        } else {
+            prismDark.setAttribute('disabled', 'true');
+            prismLight.removeAttribute('disabled');
+        }
+    };
+
+    // Check for saved theme preference or default to 'light'
+    const currentTheme = localStorage.getItem('theme') || 
+                        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    
+    // Apply theme on page load
+    htmlElement.setAttribute('data-theme', currentTheme);
+    themeIcon.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+    switchPrismTheme(currentTheme);
+
+    // Toggle theme
+    themeToggle.addEventListener('click', () => {
+        const theme = htmlElement.getAttribute('data-theme');
+        const newTheme = theme === 'dark' ? 'light' : 'dark';
+        
+        htmlElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        switchPrismTheme(newTheme);
+    });
+
+    // Copy Buttons for Code Blocks
+    document.querySelectorAll('pre').forEach((pre) => {
+        // Don't add copy button if already wrapped
+        if (pre.parentElement.classList.contains('code-block-wrapper')) return;
+
+        // Create wrapper
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block-wrapper';
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+
+        // Create copy button
+        const button = document.createElement('button');
+        button.className = 'copy-button';
+        button.innerHTML = '<span>📋</span><span>Copy</span>';
+        button.setAttribute('aria-label', 'Copy code to clipboard');
+        
+        // Add click handler
+        button.addEventListener('click', async () => {
+            const code = pre.textContent;
+            
+            try {
+                await navigator.clipboard.writeText(code);
+                button.innerHTML = '<span>✓</span><span>Copied!</span>';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.innerHTML = '<span>📋</span><span>Copy</span>';
+                    button.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+                button.innerHTML = '<span>✗</span><span>Failed</span>';
+                setTimeout(() => {
+                    button.innerHTML = '<span>📋</span><span>Copy</span>';
+                }, 2000);
+            }
+        });
+
+        wrapper.appendChild(button);
+    });
 </script>
 </body>
 </html>

@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\ClientCredentialsController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\OrganizationController;
@@ -24,8 +25,10 @@ use App\Http\Controllers\StripeWebhookController;
 |--------------------------------------------------------------------------
 | Public Authentication Routes
 |--------------------------------------------------------------------------
+| User authentication (email/password) - for web and mobile apps
 */
 Route::prefix('v1/auth')->group(function () {
+    // User authentication (email/password)
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
     
@@ -34,6 +37,27 @@ Route::prefix('v1/auth')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::post('logout-all', [AuthController::class, 'logoutAll']);
         Route::get('me', [AuthController::class, 'me']);
+        Route::post('generate-token', [AuthController::class, 'generateToken']);
+        Route::get('tokens', [AuthController::class, 'listTokens']);
+        Route::delete('tokens/{id}', [AuthController::class, 'revokeToken']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| OAuth Client Credentials Routes
+|--------------------------------------------------------------------------
+| OAuth2 client credentials grant (client_id/client_secret) - for API integrations
+*/
+Route::prefix('v1/oauth')->group(function () {
+    // Public: Get access token using client credentials
+    Route::post('token', [ClientCredentialsController::class, 'getToken']);
+    
+    // Protected: Manage OAuth clients (requires user authentication)
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('clients', [ClientCredentialsController::class, 'createClient']);
+        Route::get('clients', [ClientCredentialsController::class, 'listClients']);
+        Route::delete('clients/{id}', [ClientCredentialsController::class, 'revokeClient']);
     });
 });
 
@@ -103,13 +127,13 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
 
 /*
 |--------------------------------------------------------------------------
-| Legacy Routes - Deprecated (Backward Compatibility)
+| Legacy Routes - MIGRATED TO SANCTUM
 |--------------------------------------------------------------------------
-| ⚠️ DEPRECATED: Use /api/v1/* routes instead
-| These routes use the legacy APP_ACCESS_TOKEN authentication
-| Will be removed in a future version
+| ✅ UPDATED: Now using Sanctum authentication (auth:sanctum)
+| These routes maintain backward compatibility but now use modern auth
+| Accepts both user tokens and OAuth client tokens
 */
-Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // Protected API routes
     Route::apiResource('currencies', CurrencyController::class);
     Route::apiResource('countries', CountryController::class);
@@ -122,7 +146,7 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
     Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
     Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
-    Route::get('invoices/{id}/payment-gateways ', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
+    Route::get('invoices/{id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
     Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
     Route::post('invoices/plan-upgrade', [InvoiceController::class, 'upgradeSubscription']);
     Route::post('invoices/plan-downgrade', [InvoiceController::class, 'downgradeSubscription']);
@@ -155,8 +179,8 @@ Route::middleware(['app.access.token', 'throttle:30,1'])->group(function () {
 
     // Enhanced customer management
     Route::prefix('customers')->group(function () {
-        Route::get('by-phone/{phone}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByPhoneWithStatus']);
-        Route::get('by-email/{email}', [App\Http\Controllers\Api\CustomerController::class, 'lookupByEmailWithStatus']);
+        Route::get('by-phone/{phone}', [CustomerController::class, 'lookupByPhoneWithStatus']);
+        Route::get('by-email/{email}', [CustomerController::class, 'lookupByEmailWithStatus']);
     });
 
     // Payment endpoints

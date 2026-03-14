@@ -15,7 +15,7 @@ class BankAccountController extends Controller
     public function index(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
         ]);
 
         if ($validator->fails()) {
@@ -45,7 +45,7 @@ class BankAccountController extends Controller
             'account_number' => 'required|string|max:255',
             'branch' => 'required|string|max:255',
             'refer_bank_id' => 'required|integer',
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
         ]);
 
         if ($validator->fails()) {
@@ -104,7 +104,7 @@ class BankAccountController extends Controller
             'account_number' => 'sometimes|required|string|max:255',
             'branch' => 'sometimes|required|string|max:255',
             'refer_bank_id' => 'sometimes|required|integer',
-            'organization_id' => 'sometimes|required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
         ]);
 
         if ($validator->fails()) {
