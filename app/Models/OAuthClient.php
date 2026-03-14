@@ -10,6 +10,13 @@ class OAuthClient extends Model
 {
     use HasFactory;
 
+    /**
+     * The table associated with the model.
+     *
+     * @var string
+     */
+    protected $table = 'oauth_clients';
+
     protected $fillable = [
         'organization_id',
         'name',
