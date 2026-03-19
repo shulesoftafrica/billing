@@ -218,6 +218,327 @@
         </x-slot>
     </x-docs.endpoint>
 
+    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">⬆️ Subscription Upgrade & Downgrade</h3>
+    <p>Change subscription plans mid-cycle with automatic proration. The system calculates fair charges based on actual billing cycle days.</p>
+
+    <x-docs.endpoint
+        id="upgrade-subscription"
+        method="POST"
+        url="/api/v1/invoices/plan-upgrade"
+        title="Upgrade Subscription"
+        description="Upgrade to a higher-tier plan with automatic proration. Customer pays the difference for remaining days in the billing cycle.">
+        
+        <x-slot name="requestBody">
+            <x-docs.code-block language="json" label="request">
+{
+  "subscription_id": 89,
+  "new_price_plan_id": 15,
+  "payment_gateway": "flutterwave",
+  "success_url": "https://yourapp.com/upgrade/success",
+  "cancel_url": "https://yourapp.com/upgrade/cancel"
+}
+            </x-docs.code-block>
+
+            <x-docs.parameter-table :headers="['Parameter', 'Type', 'Required', 'Description']">
+                <tr>
+                    <td><code>subscription_id</code></td>
+                    <td>integer</td>
+                    <td><span class="badge-required">Required</span></td>
+                    <td>ID of the active subscription to upgrade</td>
+                </tr>
+                <tr>
+                    <td><code>new_price_plan_id</code></td>
+                    <td>integer</td>
+                    <td><span class="badge-required">Required</span></td>
+                    <td>ID of the higher-tier price plan (must be same product, higher price)</td>
+                </tr>
+                <tr>
+                    <td><code>payment_gateway</code></td>
+                    <td>string</td>
+                    <td><span class="badge-optional">Optional</span></td>
+                    <td>Payment method: <code>flutterwave</code>, <code>control_number</code>, or <code>both</code> (default: both)</td>
+                </tr>
+                <tr>
+                    <td><code>success_url</code></td>
+                    <td>string</td>
+                    <td><span class="badge-optional">Optional</span></td>
+                    <td>Redirect URL after successful payment</td>
+                </tr>
+                <tr>
+                    <td><code>cancel_url</code></td>
+                    <td>string</td>
+                    <td><span class="badge-optional">Optional</span></td>
+                    <td>Redirect URL if payment is cancelled</td>
+                </tr>
+            </x-docs.parameter-table>
+
+            <div class="alert alert-info" style="background: #e3f2fd; border-left: 4px solid #2196F3; padding: 15px; margin: 20px 0;">
+                <strong>📐 Proration Formula:</strong>
+                <pre style="background: #fff; padding: 10px; margin: 10px 0; border-radius: 4px;">
+Billing Cycle Days = Days from current_period_start to next_billing_date
+Days Remaining = Billing Cycle Days - Days Used
+
+Old Plan Daily Rate = Old Plan Price ÷ Billing Cycle Days
+New Plan Daily Rate = New Plan Price ÷ Billing Cycle Days
+
+Unused Credit = Old Plan Daily Rate × Days Remaining
+New Plan Charge = New Plan Daily Rate × Days Remaining
+
+Amount to Pay = New Plan Charge - Unused Credit</pre>
+            </div>
+
+            <div class="alert alert-success" style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0;">
+                <strong>💡 Example Calculation:</strong><br>
+                <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+                    <li>Current Plan: Basic (TZS 30,000/month)</li>
+                    <li>New Plan: Standard (TZS 75,000/month)</li>
+                    <li>Billing Cycle: Jan 15 - Feb 15 (31 days)</li>
+                    <li>Upgrade Date: Jan 25 (10 days used, 21 days remaining)</li>
+                    <li>Old Daily Rate: 30,000 ÷ 31 = 967.74 TZS/day</li>
+                    <li>New Daily Rate: 75,000 ÷ 31 = 2,419.35 TZS/day</li>
+                    <li>Unused Credit: 967.74 × 21 = 20,322.54 TZS</li>
+                    <li>New Plan Charge: 2,419.35 × 21 = 50,806.35 TZS</li>
+                    <li><strong>Amount to Pay: 30,483.81 TZS</strong></li>
+                </ul>
+            </div>
+        </x-slot>
+
+        <x-slot name="responses">
+            <div class="response-head">
+                <span class="response-title">Success Response</span>
+                <span class="status-badge status-2xx">200 OK</span>
+            </div>
+            <x-docs.code-block language="json">
+{
+  "success": true,
+  "message": "Subscription upgraded successfully",
+  "data": {
+    "invoice": {
+      "id": 250,
+      "invoice_number": "INV-2026-00250",
+      "status": "issued",
+      "currency": "TZS",
+      "subtotal": 30484,
+      "grand_total": 30484,
+      "outstanding_amount": 30484,
+      "issued_at": "2026-01-25T10:30:00.000000Z",
+      "customer": {
+        "id": 45,
+        "name": "Jane Smith",
+        "email": "jane@company.com",
+        "phone": "+255723456789"
+      },
+      "price_plans": [
+        {
+          "id": 15,
+          "name": "Standard Plan",
+          "unit_price": 30484,
+          "amount": 30484,
+          "product_name": "Cloud Hosting Premium",
+          "payment_gateways": [
+            {
+              "gateway_name": "Flutterwave",
+              "status": "active",
+              "payment_link": "https://checkout.flutterwave.com/...",
+              "reference": "FLW-REF-1234567890"
+            },
+            {
+              "gateway_name": "Universal Control Number",
+              "status": "active",
+              "control_number": "UCN9876543210",
+              "reference": "UCN9876543210"
+            }
+          ]
+        }
+      ]
+    },
+    "subscription": {
+      "id": 89,
+      "status": "active",
+      "previous_plan_id": 8,
+      "current_plan": {
+        "id": 15,
+        "name": "Standard Plan",
+        "amount": 75000
+      },
+      "next_billing_date": "2026-02-15"
+    },
+    "proration": {
+      "days_used": 10,
+      "days_remaining": 21,
+      "billing_cycle_days": 31,
+      "old_plan_daily_rate": 967.74,
+      "new_plan_daily_rate": 2419.35,
+      "unused_credit": 20322.54,
+      "new_plan_charge": 50806.35,
+      "amount_charged": 30483.81
+    }
+  }
+}
+            </x-docs.code-block>
+
+            <div class="response-head" style="margin-top: 20px;">
+                <span class="response-title">Error Response - Invalid Upgrade</span>
+                <span class="status-badge status-4xx">400 Bad Request</span>
+            </div>
+            <x-docs.code-block language="json">
+{
+  "success": false,
+  "message": "Failed to upgrade subscription: New plan must have a higher price than current plan. Use downgrade endpoint for lower-tier plans."
+}
+            </x-docs.code-block>
+        </x-slot>
+    </x-docs.endpoint>
+
+    <x-docs.endpoint
+        id="downgrade-subscription"
+        method="POST"
+        url="/api/v1/invoices/plan-downgrade"
+        title="Downgrade Subscription"
+        description="Downgrade to a lower-tier plan. The system calculates unused credit which can be applied to the customer's account for future use.">
+        
+        <x-slot name="requestBody">
+            <x-docs.code-block language="json" label="request">
+{
+  "subscription_id": 89,
+  "new_price_plan_id": 8,
+  "apply_credit": true
+}
+            </x-docs.code-block>
+
+            <x-docs.parameter-table :headers="['Parameter', 'Type', 'Required', 'Description']">
+                <tr>
+                    <td><code>subscription_id</code></td>
+                    <td>integer</td>
+                    <td><span class="badge-required">Required</span></td>
+                    <td>ID of the active subscription to downgrade</td>
+                </tr>
+                <tr>
+                    <td><code>new_price_plan_id</code></td>
+                    <td>integer</td>
+                    <td><span class="badge-required">Required</span></td>
+                    <td>ID of the lower-tier price plan (must be same product, lower price)</td>
+                </tr>
+                <tr>
+                    <td><code>apply_credit</code></td>
+                    <td>boolean</td>
+                    <td><span class="badge-optional">Optional</span></td>
+                    <td>Whether to apply unused credit to customer wallet (default: <code>true</code>)</td>
+                </tr>
+            </x-docs.parameter-table>
+
+            <div class="alert alert-info" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0;">
+                <strong>💰 Credit Calculation:</strong>
+                <pre style="background: #fff; padding: 10px; margin: 10px 0; border-radius: 4px;">
+Billing Cycle Days = Days from current_period_start to current_period_end
+Days Remaining = Billing Cycle Days - Days Used
+
+Old Plan Daily Rate = Old Plan Price ÷ Billing Cycle Days
+New Plan Daily Rate = New Plan Price ÷ Billing Cycle Days
+
+Unused Value = Old Plan Daily Rate × Days Remaining
+New Plan Cost = New Plan Daily Rate × Days Remaining
+
+Credit Amount = Unused Value - New Plan Cost</pre>
+            </div>
+
+            <div class="alert alert-success" style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0;">
+                <strong>💡 Example Calculation:</strong><br>
+                <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+                    <li>Current Plan: Standard (TZS 75,000/month)</li>
+                    <li>New Plan: Basic (TZS 30,000/month)</li>
+                    <li>Billing Cycle: Jan 15 - Feb 15 (31 days)</li>
+                    <li>Downgrade Date: Jan 25 (10 days used, 21 days remaining)</li>
+                    <li>Old Daily Rate: 75,000 ÷ 31 = 2,419.35 TZS/day</li>
+                    <li>New Daily Rate: 30,000 ÷ 31 = 967.74 TZS/day</li>
+                    <li>Unused Value: 2,419.35 × 21 = 50,806.35 TZS</li>
+                    <li>New Plan Cost: 967.74 × 21 = 20,322.54 TZS</li>
+                    <li><strong>Credit: 30,483.81 TZS</strong> (available for future use)</li>
+                </ul>
+            </div>
+        </x-slot>
+
+        <x-slot name="responses">
+            <div class="response-head">
+                <span class="response-title">Success Response</span>
+                <span class="status-badge status-2xx">200 OK</span>
+            </div>
+            <x-docs.code-block language="json">
+{
+  "success": true,
+  "message": "Subscription downgraded successfully",
+  "data": {
+    "subscription": {
+      "id": 89,
+      "status": "active",
+      "previous_plan_id": 15,
+      "current_plan": {
+        "id": 8,
+        "name": "Basic Plan",
+        "amount": 30000,
+        "billing_interval": "monthly"
+      },
+      "next_billing_date": "2026-02-15"
+    },
+    "credit": {
+      "credit_amount": 30484,
+      "credit_applied": true,
+      "days_remaining": 21,
+      "description": "Credit from unused portion of higher plan"
+    },
+    "proration_details": {
+      "days_used": 10,
+      "days_remaining": 21,
+      "billing_cycle_days": 31,
+      "old_plan_name": "Standard Plan",
+      "old_plan_amount": 75000,
+      "new_plan_name": "Basic Plan",
+      "new_plan_amount": 30000,
+      "old_plan_daily_rate": 2419.35,
+      "new_plan_daily_rate": 967.74,
+      "unused_value": 50806.35,
+      "new_plan_cost": 20322.54,
+      "credit_calculated": 30483.81
+    }
+  }
+}
+            </x-docs.code-block>
+
+            <div class="response-head" style="margin-top: 20px;">
+                <span class="response-title">Error Response - Invalid Downgrade</span>
+                <span class="status-badge status-4xx">400 Bad Request</span>
+            </div>
+            <x-docs.code-block language="json">
+{
+  "success": false,
+  "message": "Failed to downgrade subscription: New plan must have a lower price than current plan. Use upgrade endpoint for higher-tier plans."
+}
+            </x-docs.code-block>
+        </x-slot>
+    </x-docs.endpoint>
+
+    <div class="alert alert-warning" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 20px; margin: 30px 0;">
+        <h4 style="margin-top: 0; color: #e65100;">⚠️ Important Business Rules</h4>
+        <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+            <li><strong>Subscription Status:</strong> Only <code>active</code> subscriptions can be upgraded or downgraded</li>
+            <li><strong>Same Product:</strong> New plan must belong to the <strong>same product</strong> as current plan</li>
+            <li><strong>Price Validation:</strong>
+                <ul style="margin-top: 5px;">
+                    <li>Upgrade: New plan must have <strong>higher price</strong> than current plan</li>
+                    <li>Downgrade: New plan must have <strong>lower price</strong> than current plan</li>
+                </ul>
+            </li>
+            <li><strong>Proration:</strong> All calculations use <strong>actual billing cycle days</strong> (28-31 days depending on month)</li>
+            <li><strong>Payment:</strong>
+                <ul style="margin-top: 5px;">
+                    <li>Upgrade: Creates invoice with payment required</li>
+                    <li>Downgrade: No payment required, credit applied to account</li>
+                </ul>
+            </li>
+            <li><strong>Immediate Effect:</strong> Plan changes take effect immediately upon successful operation</li>
+        </ul>
+    </div>
+
     <x-docs.endpoint
         id="cancel-subscription"
         method="POST"
