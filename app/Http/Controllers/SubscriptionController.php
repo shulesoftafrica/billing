@@ -3,9 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Services\SubscriptionService;
+use App\Models\OrganizationPaymentGatewayIntegration;
+use App\Models\Product;
+use App\Models\PricePlan;
+use App\Jobs\Payments\CreateEcobankReferenceJob;
+use App\Jobs\Payments\CreateFlutterwaveReferenceJob;
+use App\Jobs\Payments\CreateStripeReferenceJob;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SubscriptionController extends Controller
 {
@@ -48,43 +56,174 @@ class SubscriptionController extends Controller
                 $planIds
             );
 
+            // Get organization ID from the first price plan
+            $firstPlan = PricePlan::with('product')->find($planIds[0]);
+            $organizationId = $firstPlan->product->organization_id;
+            $customer = $invoice->customer;
+
+            // Get all organization integrated gateways
+            $organizationGateways = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
+                ->where('organization_id', $organizationId)
+                ->get();
+
+            // Get all products associated with the price plans
+            $products = Product::whereIn(
+                'id',
+                PricePlan::whereIn('id', $planIds)->pluck('product_id')
+            )->get();
+
+            // Dispatch jobs to generate control numbers and payment links
+            $gatewayJobs = [];
+            foreach ($products as $product) {
+                foreach ($organizationGateways as $orgGateway) {
+                    $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
+
+                    if (
+                        $gatewayName === 'universal control number'
+                        || $gatewayName === 'flutterwave'
+                        || $gatewayName === 'stripe'
+                    ) {
+                        $gatewayJobs[] = [
+                            'product_id' => $product->id,
+                            'organization_gateway_id' => $orgGateway->id,
+                            'gateway_name' => $gatewayName,
+                        ];
+                    }
+                }
+            }
+
+            if (count($gatewayJobs) > 0) {
+                foreach ($gatewayJobs as $jobData) {
+                    $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
+
+                    if ($jobData['gateway_name'] === 'universal control number') {
+                        CreateEcobankReferenceJob::dispatch(
+                            $invoice->id,
+                            $jobData['product_id'],
+                            $customer->id,
+                            $jobData['organization_gateway_id'],
+                            $successUrl
+                        );
+                    } elseif ($jobData['gateway_name'] === 'flutterwave') {
+                        CreateFlutterwaveReferenceJob::dispatch(
+                            $invoice->id,
+                            $jobData['product_id'],
+                            $customer->id,
+                            $jobData['organization_gateway_id'],
+                            $successUrl
+                        );
+                    } elseif ($jobData['gateway_name'] === 'stripe') {
+                        CreateStripeReferenceJob::dispatch(
+                            $invoice->id,
+                            $jobData['product_id'],
+                            $customer->id,
+                            $jobData['organization_gateway_id'],
+                            $successUrl
+                        );
+                    }
+                }
+            }
+
+            // Load full relationships for comprehensive response
+            $invoice->load([
+                'customer',
+                'invoiceItems.pricePlan.product',
+                'invoiceItems.subscription',
+            ]);
+
+            // Build control numbers map
+            $controlNumbersMap = $this->buildControlNumbersMap($customer->id, $invoice->id);
+
+            // Build comprehensive response
+            $responseData = [
+                'invoice' => [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'status' => $invoice->status,
+                    'currency' => $invoice->currency,
+                    'subtotal' => $invoice->subtotal,
+                    'tax_total' => $invoice->tax_total,
+                    'total' => $invoice->total,
+                    'due_date' => $invoice->due_date,
+                    'issued_at' => $invoice->issued_at,
+                ],
+                'customer' => [
+                    'id' => $invoice->customer->id,
+                    'name' => $invoice->customer->name,
+                    'email' => $invoice->customer->email,
+                    'phone' => $invoice->customer->phone,
+                ],
+                'subscriptions' => $invoice->invoiceItems
+                    ->filter(fn($item) => $item->subscription !== null)
+                    ->map(function ($item) {
+                        $subscription = $item->subscription;
+                        return [
+                            'id' => $subscription->id,
+                            'price_plan_id' => $item->price_plan_id,
+                            'plan_name' => $item->pricePlan->name,
+                            'product_name' => $item->pricePlan->product->name,
+                            'status' => $subscription->status,
+                            'start_date' => $subscription->start_date,
+                            'end_date' => $subscription->end_date,
+                            'next_billing_date' => $subscription->next_billing_date,
+                            'amount' => $item->unit_price,
+                        ];
+                    })->values(),
+                'control_numbers' => $controlNumbersMap,
+                'payment_message' => count($controlNumbersMap) > 0 
+                    ? 'Control numbers and payment links are being generated. You will receive them shortly.'
+                    : 'Payment gateway is not configured for this organization.',
+            ];
+
             return response()->json([
                 'success' => true,
                 'message' => 'Subscriptions created successfully',
-                'data' => [
-                    'invoice' => [
-                        'id' => $invoice->id,
-                        'invoice_number' => $invoice->invoice_number,
-                        'status' => $invoice->status,
-                        'subtotal' => $invoice->subtotal,
-                        'tax_total' => $invoice->tax_total,
-                        'total' => $invoice->total,
-                        'due_date' => $invoice->due_date,
-                        'issued_at' => $invoice->issued_at,
-                    ],
-                    'invoice_items' => $invoice->invoiceItems->map(function ($item) {
-                        return [
-                            'id' => $item->id,
-                            'price_plan_id' => $item->price_plan_id,
-                            'plan_name' => $item->pricePlan->name,
-                            'quantity' => $item->quantity,
-                            'unit_price' => $item->unit_price,
-                            'total' => $item->total,
-                        ];
-                    }),
-                    'customer' => [
-                        'id' => $invoice->customer->id,
-                        'name' => $invoice->customer->name,
-                        'email' => $invoice->customer->email,
-                    ],
-                ],
+                'data' => $responseData,
             ], 201);
         } catch (\Exception $e) {
+            Log::error('Subscription creation failed: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 400);
         }
+    }
+
+    /**
+     * Build control numbers map for customer and invoice products
+     */
+    private function buildControlNumbersMap(int $customerId, int $invoiceId): array
+    {
+        // Get product IDs from the invoice
+        $invoice = \App\Models\Invoice::with('invoiceItems.pricePlan')->find($invoiceId);
+        if (!$invoice) {
+            return [];
+        }
+
+        $productIds = $invoice->invoiceItems
+            ->pluck('pricePlan.product_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return [];
+        }
+
+        // Query control numbers by customer and products
+        $controlNumbers = \App\Models\ControlNumber::where('customer_id', $customerId)
+            ->whereIn('product_id', $productIds->toArray())
+            ->with('paymentGatewayIntegration.paymentGateway')
+            ->get();
+
+        return $controlNumbers->map(function ($cn) {
+            return [
+                'reference' => $cn->reference,
+                'payment_link' => $cn->metadata['payment_link'] ?? null,
+                'gateway' => $cn->paymentGatewayIntegration->paymentGateway->name ?? 'Unknown',
+                'expires_at' => $cn->expires_at,
+            ];
+        })->toArray();
     }
 
     /**
