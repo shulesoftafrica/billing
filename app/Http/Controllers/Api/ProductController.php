@@ -111,7 +111,7 @@ class ProductController extends Controller
             'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
             'price_plans.*.subscription_type' => $subscriptionTypeRule,
             'price_plans.*.amount' => 'required_if:price_plans,!=null|numeric|min:0',
-            'price_plans.*.currency' => 'required_if:price_plans,!=null|string|min:2|max:5',
+            'price_plans.*.currency_id' => 'required_if:price_plans,!=null|integer|exists:currencies,id',
             'price_plans.*.rate' => 'nullable|integer|min:1',
         ]);
 
@@ -148,19 +148,37 @@ class ProductController extends Controller
             // Handle price plans
             if ($productTypeId == 1 && empty($pricePlans)) {
                 // Create default price plan for product_type_id = 1 when no price plans provided
+                // Get default currency_id (use first currency or id=1)
+                $defaultCurrencyId = \DB::table('currencies')->value('id') ?? 1;
+                
                 $product->pricePlans()->create([
                     'name' => $validatedData['name'],
+                    'billing_type' => 'one_time',
+                    'billing_interval' => null,
                     'subscription_type' => null,
                     'amount' => 0,
-                    'currency' => 'TZS', // Default currency
+                    'currency_id' => $defaultCurrencyId,
                 ]);
             } else {
                 // Create provided price plans
                 foreach ($pricePlans as $plan) {
-                    // Set default rate if not provided for product_type_id = 3
-                    if ($productTypeId == 3 && !isset($plan['rate'])) {
-                        $plan['rate'] = 1;
+                    // Map product_type_id to billing_type
+                    if ($productTypeId == 1) {
+                        $plan['billing_type'] = 'one_time';
+                        $plan['billing_interval'] = null;
+                    } elseif ($productTypeId == 2) {
+                        $plan['billing_type'] = 'recurring';
+                        // Map subscription_type to billing_interval
+                        $plan['billing_interval'] = $plan['subscription_type'] ?? null;
+                    } elseif ($productTypeId == 3) {
+                        $plan['billing_type'] = 'usage';
+                        $plan['billing_interval'] = null;
+                        // Set default rate if not provided for product_type_id = 3
+                        if (!isset($plan['rate'])) {
+                            $plan['rate'] = 1;
+                        }
                     }
+                    
                     $product->pricePlans()->create($plan);
                 }
             }
