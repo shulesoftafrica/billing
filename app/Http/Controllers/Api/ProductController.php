@@ -72,10 +72,12 @@ class ProductController extends Controller
         // Determine rules based on product_type_id
         $productTypeId = $request->input('product_type_id');
 
-        // For product_type_id = 1: price_plans optional (max 1), subscription_type not allowed
-        // For product_type_id = 3: price_plans mandatory, subscription_type optional
-        // For other product_type_id: price_plans mandatory, array with min 1, subscription_type required
-        $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
+        // For product_type_id = 1 (one-time): price_plans optional (max 1)
+        // For product_type_id = 3 (usage/wallet): price_plans optional - pricing defined at invoice creation
+        // For product_type_id = 2 (subscription): price_plans mandatory
+        $pricePlansRule = ($productTypeId == 1 || $productTypeId == 3) 
+            ? 'nullable|array' 
+            : 'required|array|min:1';
 
         // Valid subscription types
         $validSubscriptionTypes = ['daily', 'weekly', 'monthly', 'quarterly', 'semi_annually', 'yearly'];
@@ -85,7 +87,7 @@ class ProductController extends Controller
                 ? 'nullable|in:' . implode(',', $validSubscriptionTypes)
                 : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes));
 
-        // Amount is optional for product_type_id = 3 (usage/wallet products), required for others
+        // Amount is optional for product_type_id = 3 (usage/wallet products)
         $amountRule = $productTypeId == 3 ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
 
         $validator = Validator::make($request->all(), [
@@ -164,6 +166,10 @@ class ProductController extends Controller
                     'currency_id' => $defaultCurrencyId,
                     'active' => true,
                 ]);
+            } elseif ($productTypeId == 3 && empty($pricePlans)) {
+                // For wallet products (type 3), price plans are optional
+                // Price plans will be created when funding the wallet via invoice
+                // Skip creating any default price plans
             } else {
                 // Create provided price plans
                 foreach ($pricePlans as $plan) {
