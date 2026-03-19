@@ -6,10 +6,10 @@
         <strong>📋 Workflow Overview:</strong><br>
         <ol style="margin: 10px 0 0 20px; line-height: 1.8;">
             <li><strong>Setup Product:</strong> Create a usage product (product_type_id = 3) with a price plan (rate = price per unit)</li>
-            <li><strong>Customer Purchase:</strong> Create invoice using the price_plan_id (identifies product) and amount (total payment)</li>
+            <li><strong>Customer Purchase:</strong> Create invoice using the price_plan_id (identifies product) and amount (total payment). System generates a wallet_id (UCN)</li>
             <li><strong>System Calculation:</strong> Quantity = amount ÷ rate (e.g., 50,000 TZS ÷ 50 TZS/SMS = 1,000 SMS)</li>
-            <li><strong>Record Usage:</strong> Track consumption as customer uses the service (deducts from balance)</li>
-            <li><strong>Check Balance:</strong> balance = total_purchased - total_used</li>
+            <li><strong>Record Usage:</strong> Track consumption using the wallet_id (UCN) as customer uses the service (deducts from balance)</li>
+            <li><strong>Check Balance:</strong> Query balance using wallet_id (UCN): balance = total_purchased - total_used</li>
         </ol>
     </div>
 
@@ -262,21 +262,20 @@
         <x-slot name="requestBody">
             <x-docs.code-block language="json" label="request">
 {
-  "customer_id": 45,
-  "product_id": 12,
+  "wallet_id": "UCN1234567890",
   "quantity": 150
 }
             </x-docs.code-block>
 
             <x-docs.parameter-table :headers="['Parameter', 'Type', 'Required', 'Description']">
                 <tr>
-                    <td><code>customer_id</code></td>
-                    <td>integer</td>
+                    <td><code>wallet_id</code></td>
+                    <td>string</td>
                     <td><span class="badge-required">Required</span></td>
-                    <td>Customer who consumed the service</td>
+                    <td>Wallet UCN (Unique Control Number/Reference) identifying the customer's wallet for a specific product</td>
                 </tr>
                 <tr>
-                    <td><code>product_id</code></td>
+                    <td><code>quantity</code></td>
                     <td>integer</td>
                     <td><span class="badge-required">Required</span></td>
                     <td>Usage product ID (must have product_type_id = 3)</td>
@@ -301,21 +300,19 @@
   "message": "Product usage recorded successfully",
   "data": {
     "id": 789,
-    "customer_id": 45,
-    "product_id": 12,
+    "wallet_id": "UCN1234567890",
     "quantity": 150,
-    "created_at": "2026-03-15T14:30:00.000000Z",
-    "product": {
-      "id": 12,
-      "name": "SMS Credits",
-      "product_type": "usage",
-      "unit": "SMS"
-    },
     "customer": {
       "id": 45,
       "name": "Tech Startup Inc",
       "email": "billing@techstartup.com"
-    }
+    },
+    "product": {
+      "id": 12,
+      "name": "SMS Credits",
+      "unit": "SMS"
+    },
+    "created_at": "2026-03-15T14:30:00.000000Z"
   }
 }
             </x-docs.code-block>
@@ -339,33 +336,27 @@
     </x-docs.endpoint>
 
     <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">💰 Step 4: Check Balance</h3>
-    <p>Get the current wallet balance for a specific product and customer.</p>
+    <p>Get the current wallet balance using the wallet's unique control number (UCN).</p>
 
     <x-docs.endpoint
         id="get-usage-balance"
         method="GET"
-        url="/api/v1/product-usages/balance"
+        url="/api/v1/product-usages/{wallet_id}/balance"
         title="Get Usage Balance"
-        description="Check remaining credits (Balance = Purchased - Used)">
+        description="Check remaining credits for a specific wallet (Balance = Purchased - Used)">
         
         <x-slot name="requestBody">
             <x-docs.parameter-table :headers="['Parameter', 'Type', 'Location', 'Description']">
                 <tr>
-                    <td><code>customer_id</code></td>
-                    <td>integer</td>
-                    <td>Query</td>
-                    <td>Customer ID to check balance for</td>
-                </tr>
-                <tr>
-                    <td><code>product_id</code></td>
-                    <td>integer</td>
-                    <td>Query</td>
-                    <td>Usage product ID</td>
+                    <td><code>wallet_id</code></td>
+                    <td>string</td>
+                    <td>Path</td>
+                    <td>Wallet UCN (Unique Control Number) - obtained from invoice creation or purchase response</td>
                 </tr>
             </x-docs.parameter-table>
 
             <x-docs.code-block language="bash" label="example">
-GET /api/v1/product-usages/balance?customer_id=45&product_id=12
+GET /api/v1/product-usages/UCN1234567890/balance
             </x-docs.code-block>
         </x-slot>
 
@@ -379,6 +370,7 @@ GET /api/v1/product-usages/balance?customer_id=45&product_id=12
   "success": true,
   "message": "Usage balance retrieved successfully",
   "data": {
+    "wallet_id": "UCN1234567890",
     "customer": {
       "id": 45,
       "name": "Tech Startup Inc",
@@ -514,15 +506,16 @@ GET /api/v1/product-usages/balance?customer_id=45&product_id=12
         <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; line-height: 1.6;"><code># 1. Create usage product (product_type_id = 3)
 POST /api/v1/products
 
-# 2. Customer buys 1000 SMS credits (creates ProductPurchase)
+# 2. Customer buys 1000 SMS credits (generates wallet_id/UCN)
 POST /api/v1/invoices
+Response includes: {"control_numbers": [{"reference": "UCN1234567890", ...}]}
 
-# 3. Customer sends 150 SMS (creates ProductUsage)
+# 3. Customer sends 150 SMS using their wallet
 POST /api/v1/product-usages
-{"customer_id": 45, "product_id": 12, "quantity": 150}
+{"wallet_id": "UCN1234567890", "quantity": 150}
 
 # 4. Check remaining balance (1000 - 150 = 850)
-GET /api/v1/product-usages/balance?customer_id=45&product_id=12
+GET /api/v1/product-usages/UCN1234567890/balance
 
 # 5. Generate invoice for accumulated usage (if post-paid model)
 POST /api/v1/invoices

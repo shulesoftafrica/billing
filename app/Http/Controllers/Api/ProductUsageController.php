@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\ProductUsage;
 use App\Models\ProductPurchase;
+use App\Models\ControlNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -21,8 +22,7 @@ class ProductUsageController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'customer_id' => 'required|exists:customers,id',
-            'product_id' => 'required|exists:products,id',
+            'wallet_id' => 'required|string|exists:control_numbers,reference',
             'quantity' => 'required|numeric|min:0',
         ]);
 
@@ -37,23 +37,37 @@ class ProductUsageController extends Controller
         try {
             $validated = $validator->validated();
 
-            $product = Product::with('productType')->findOrFail($validated['product_id']);
-            $productTypeName = strtolower((string) optional($product->productType)->name);
+            // Find wallet by UCN (reference)
+            $wallet = ControlNumber::where('reference', $validated['wallet_id'])
+                ->with(['customer', 'product.productType'])
+                ->firstOrFail();
+
+            if (!$wallet->customer_id || !$wallet->product_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => [
+                        'wallet_id' => ['Invalid wallet: missing customer or product association.'],
+                    ],
+                ], 422);
+            }
+
+            $productTypeName = strtolower((string) optional($wallet->product->productType)->name);
 
             if ($productTypeName !== 'usage') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
                     'errors' => [
-                        'product_id' => ['Product usage is only allowed for products with type usage.'],
+                        'wallet_id' => ['Product usage is only allowed for products with type usage.'],
                     ],
                 ], 422);
             }
 
             // Create product usage record
             $productUsage = ProductUsage::create([
-                'customer_id' => $validated['customer_id'],
-                'product_id' => $validated['product_id'],
+                'customer_id' => $wallet->customer_id,
+                'product_id' => $wallet->product_id,
                 'quantity' => $validated['quantity'],
             ]);
 
@@ -63,7 +77,22 @@ class ProductUsageController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Product usage recorded successfully',
-                'data' => $productUsage
+                'data' => [
+                    'id' => $productUsage->id,
+                    'wallet_id' => $wallet->reference,
+                    'quantity' => $productUsage->quantity,
+                    'customer' => [
+                        'id' => $productUsage->customer->id,
+                        'name' => $productUsage->customer->name,
+                        'email' => $productUsage->customer->email,
+                    ],
+                    'product' => [
+                        'id' => $productUsage->product->id,
+                        'name' => $productUsage->product->name,
+                        'unit' => $productUsage->product->unit,
+                    ],
+                    'created_at' => $productUsage->created_at,
+                ]
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -163,34 +192,29 @@ class ProductUsageController extends Controller
     }
 
     /**
-     * Get usage balance for a customer and product
+     * Get usage balance for a wallet
      * Balance = sum(product_purchase.quantity) - sum(product_usage.quantity)
      *
-     * @param Request $request
+     * @param string $walletId - Wallet UCN (reference)
      * @return \Illuminate\Http\JsonResponse
      */
-    public function getBalance(Request $request)
+    public function getBalance(string $walletId)
     {
-        $validator = Validator::make($request->all(), [
-            'customer_id' => 'required|exists:customers,id',
-            'product_id' => 'required|exists:products,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         try {
-            $customerId = $request->input('customer_id');
-            $productId = $request->input('product_id');
+            // Find wallet by UCN (reference)
+            $wallet = ControlNumber::where('reference', $walletId)
+                ->with(['customer', 'product'])
+                ->firstOrFail();
 
-            // Verify customer and product exist
-            $customer = Customer::findOrFail($customerId);
-            $product = Product::findOrFail($productId);
+            if (!$wallet->customer_id || !$wallet->product_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid wallet: missing customer or product association',
+                ], 422);
+            }
+
+            $customerId = $wallet->customer_id;
+            $productId = $wallet->product_id;
 
             // Calculate total purchased quantity
             $totalPurchased = ProductPurchase::where('customer_id', $customerId)
@@ -209,17 +233,18 @@ class ProductUsageController extends Controller
                 'success' => true,
                 'message' => 'Usage balance retrieved successfully',
                 'data' => [
+                    'wallet_id' => $wallet->reference,
                     'customer' => [
-                        'id' => $customer->id,
-                        'name' => $customer->name,
-                        'email' => $customer->email,
-                        'phone' => $customer->phone,
+                        'id' => $wallet->customer->id,
+                        'name' => $wallet->customer->name,
+                        'email' => $wallet->customer->email,
+                        'phone' => $wallet->customer->phone,
                     ],
                     'product' => [
-                        'id' => $product->id,
-                        'name' => $product->name,
-                        'description' => $product->description,
-                        'unit' => $product->unit,
+                        'id' => $wallet->product->id,
+                        'name' => $wallet->product->name,
+                        'description' => $wallet->product->description,
+                        'unit' => $wallet->product->unit,
                     ],
                     'usage' => [
                         'total_purchased' => $totalPurchased,
