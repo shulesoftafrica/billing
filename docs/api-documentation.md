@@ -1,41 +1,550 @@
-## Authentication
+﻿## Authentication
 
-### Login
+This API uses **OAuth 2.0 Client Credentials** for authentication. To integrate with the billing platform, you'll need to obtain API credentials and exchange them for access tokens.
+
+###  Quick Reference
+
+```http
+# Get Access Token
+POST /api/v1/oauth/token
+Content-Type: application/json
+
+{
+  "grant_type": "client_credentials",
+  "client_id": "org_live_client_abc123xyz...",
+  "client_secret": "org_live_secret_xyz789abc...",
+  "scope": "*"
+}
+
+# Use Token in Requests
+GET /api/v1/{endpoint}
+Authorization: Bearer shulesoft_2|def456ghi789...
+Accept: application/json
+```
+
+**Token Expiration:** 90 days (7,776,000 seconds)  
+**Rate Limit:** 60 requests per minute  
+**Base URL:** `https://api.yourbillingplatform.com`
+
+---
+
+### 🚀 Quick Start: Getting Your API Credentials
+
+**Step 1: Create Your Account (One-time Setup)**
+
+First, create a user account if you don't have one:
 
 **Method:** `POST`  
-**URL:** `/api/login`
+**URL:** `/api/v1/auth/register`
 
 **Request Body:**
 ```json
 {
-  "email": "user@example.com",
-  "password": "your_password"
+  "organization_id": 1,
+  "name": "John Doe",
+  "email": "john@yourcompany.com",
+  "password": "SecurePassword123!",
+  "password_confirmation": "SecurePassword123!",
+  "role": "admin"
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "message": "User registered successfully",
+  "access_token": "shulesoft_1|abc123xyz...",
+  "token_type": "Bearer",
+  "expires_in": 2592000,
+  "expires_at": "2026-04-13T10:44:36+00:00",
+  "user": {
+    "id": 1,
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@yourcompany.com",
+    "role": "admin"
+  }
+}
+```
+
+---
+
+**Step 2: Create OAuth Client Credentials (One-time Setup)**
+
+Use your user token from Step 1 to create API client credentials:
+
+**Method:** `POST`  
+**URL:** `/api/v1/oauth/clients`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_USER_TOKEN_FROM_STEP_1} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{
+  "name": "Production API Client",
+  "environment": "live",
+  "allowed_scopes": ["*"]
+}
+```
+
+**Parameters:**
+- `name` (required): Descriptive name for this client (e.g., "Production Server", "Mobile App")
+- `environment` (required): `test` for testing, `live` for production
+- `allowed_scopes` (optional): Array of scopes, use `["*"]` for full access
+- `expires_at` (optional): Expiration date in ISO 8601 format
+
+**🔒 Security Note:** The OAuth client is automatically created for your authenticated user's organization. You cannot create clients for other organizations.
+
+**Success Response:** `201 Created`
+```json
+{
+  "message": "OAuth client created successfully",
+  "client": {
+    "id": 1,
+    "name": "Production API Client",
+    "client_id": "org_live_client_abc123xyz456def789ghi012jkl345mno",
+    "client_secret": "org_live_secret_xyz789abc012def345ghi678jkl901mno234pqr567",
+    "environment": "live",
+    "allowed_scopes": ["*"],
+    "expires_at": null,
+    "created_at": "2026-03-14T10:00:00+00:00"
+  },
+  "warning": "Store the client_secret securely. It will not be shown again."
+}
+```
+
+**⚠️ CRITICAL:** Save your `client_id` and `client_secret` immediately! The `client_secret` is shown **only once** and cannot be retrieved again. Store it securely (e.g., environment variables, secrets manager).
+
+---
+
+**Step 3: Get Access Token (For Each API Session)**
+
+Exchange your client credentials for an access token:
+
+**Method:** `POST`  
+**URL:** `/api/v1/oauth/token`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body:**
+```json
+{
+  "grant_type": "client_credentials",
+  "client_id": "org_live_client_abc123xyz456def789ghi012jkl345mno",
+  "client_secret": "org_live_secret_xyz789abc012def345ghi678jkl901mno234pqr567",
+  "scope": "*"
 }
 ```
 
 **Success Response:** `200 OK`
 ```json
 {
-  "success": true,
-  "api_key": "org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G"
+  "access_token": "shulesoft_2|def456ghi789jkl012mno345pqr678stu901vwx234",
+  "token_type": "Bearer",
+  "expires_in": 7776000,
+  "scope": "*",
+  "organization_id": 1
 }
 ```
 
-`401 Unauthorized`
+**Response Fields:**
+- `access_token`: Your API access token (use this for all API requests)
+- `token_type`: Always "Bearer"
+- `expires_in`: Token lifetime in seconds (90 days = 7,776,000 seconds)
+- `scope`: Granted permissions
+- `organization_id`: Your organization ID
+
+**Error Response:** `401 Unauthorized`
 ```json
 {
-  "success": false,
-  "message": "Invalid credentials"
+  "error": "invalid_client",
+  "error_description": "Client authentication failed"
 }
 ```
 
-**Using Your API Key:**
+---
 
-Include the API key in all requests:
+**Step 4: Use Access Token for API Requests**
 
+Include the access token in the `Authorization` header for all API requests:
+
+```http
+GET /api/v1/products
+Authorization: Bearer shulesoft_2|def456ghi789jkl012mno345pqr678stu901vwx234
+Accept: application/json
 ```
-Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
+
+---
+
+### 📝 Complete Example: cURL
+
+```bash
+# Step 1: Register user (one-time)
+curl -X POST https://api.yourbillingplatform.com/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organization_id": 1,
+    "name": "John Doe",
+    "email": "john@yourcompany.com",
+    "password": "SecurePassword123!",
+    "password_confirmation": "SecurePassword123!",
+    "role": "admin"
+  }'
+
+# Save the access_token from response
+
+# Step 2: Create OAuth client (one-time)
+curl -X POST https://api.yourbillingplatform.com/api/v1/oauth/clients \
+  -H "Authorization: Bearer shulesoft_1|abc123xyz..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production API Client",
+    "environment": "live",
+    "allowed_scopes": ["*"]
+  }'
+
+# Save the client_id and client_secret from response
+
+# Step 3: Get access token (when needed)
+curl -X POST https://api.yourbillingplatform.com/api/v1/oauth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "org_live_client_abc123xyz...",
+    "client_secret": "org_live_secret_xyz789def...",
+    "scope": "*"
+  }'
+
+# Step 4: Use access token for API calls
+curl -X GET https://api.yourbillingplatform.com/api/v1/products \
+  -H "Authorization: Bearer shulesoft_2|def456ghi..." \
+  -H "Accept: application/json"
 ```
+
+---
+
+### 📝 Complete Example: JavaScript/Node.js
+
+```javascript
+const axios = require('axios');
+
+const API_BASE_URL = 'https://api.yourbillingplatform.com';
+
+// Store these securely (environment variables)
+const CLIENT_ID = 'org_live_client_abc123xyz456def789ghi012jkl345mno';
+const CLIENT_SECRET = 'org_live_secret_xyz789abc012def345ghi678jkl901mno234pqr567';
+
+// Step 3: Get access token
+async function getAccessToken() {
+  const response = await axios.post(`${API_BASE_URL}/api/v1/oauth/token`, {
+    grant_type: 'client_credentials',
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    scope: '*'
+  });
+  
+  return response.data.access_token;
+}
+
+// Step 4: Make API request
+async function getProducts() {
+  const accessToken = await getAccessToken();
+  
+  const response = await axios.get(`${API_BASE_URL}/api/v1/products`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
+    }
+  });
+  
+  return response.data;
+}
+
+// Usage
+getProducts()
+  .then(products => console.log('Products:', products))
+  .catch(error => console.error('Error:', error.response?.data));
+```
+
+---
+
+### 📝 Complete Example: Python
+
+```python
+import requests
+import os
+
+API_BASE_URL = 'https://api.yourbillingplatform.com'
+
+# Store these securely (environment variables)
+CLIENT_ID = os.getenv('BILLING_CLIENT_ID')
+CLIENT_SECRET = os.getenv('BILLING_CLIENT_SECRET')
+
+# Step 3: Get access token
+def get_access_token():
+    response = requests.post(f'{API_BASE_URL}/api/v1/oauth/token', json={
+        'grant_type': 'client_credentials',
+        'client_id': CLIENT_ID,
+        'client_secret': CLIENT_SECRET,
+        'scope': '*'
+    })
+    response.raise_for_status()
+    return response.json()['access_token']
+
+# Step 4: Make API request
+def get_products():
+    access_token = get_access_token()
+    
+    response = requests.get(
+        f'{API_BASE_URL}/api/v1/products',
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Accept': 'application/json'
+        }
+    )
+    response.raise_for_status()
+    return response.json()
+
+# Usage
+if __name__ == '__main__':
+    try:
+        products = get_products()
+        print('Products:', products)
+    except requests.exceptions.RequestException as e:
+        print('Error:', e.response.json() if e.response else str(e))
+```
+
+---
+
+### 📝 Complete Example: PHP
+
+```php
+<?php
+
+$apiBaseUrl = 'https://api.yourbillingplatform.com';
+
+// Store these securely (environment variables)
+$clientId = getenv('BILLING_CLIENT_ID');
+$clientSecret = getenv('BILLING_CLIENT_SECRET');
+
+// Step 3: Get access token
+function getAccessToken($apiBaseUrl, $clientId, $clientSecret) {
+    $ch = curl_init();
+    
+    curl_setopt_array($ch, [
+        CURLOPT_URL => "$apiBaseUrl/api/v1/oauth/token",
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode([
+            'grant_type' => 'client_credentials',
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'scope' => '*'
+        ])
+    ]);
+    
+    $response = curl_exec($ch);
+    curl_close($ch);
+    
+    $data = json_decode($response, true);
+    return $data['access_token'];
+}
+
+// Step 4: Make API request
+function getProducts($apiBaseUrl, $accessToken) {
+    $ch = curl_init();
+    
+    curl_setopt_array($ch, [
+        CURLOPT_URL => "$apiBaseUrl/api/v1/products",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            "Authorization: Bearer $accessToken",
+            'Accept: application/json'
+        ]
+    ]);
+    
+    $response = curl_exec($ch);
+    curl_close($ch);
+    
+    return json_decode($response, true);
+}
+
+// Usage
+try {
+    $accessToken = getAccessToken($apiBaseUrl, $clientId, $clientSecret);
+    $products = getProducts($apiBaseUrl, $accessToken);
+    print_r($products);
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage();
+}
+```
+
+---
+
+### 🔐 Best Practices
+
+1. **Store Credentials Securely**
+   - Never commit `client_secret` to version control
+   - Use environment variables or secrets management (AWS Secrets Manager, Azure Key Vault, etc.)
+   - Rotate credentials periodically
+
+2. **Token Management**
+   - Cache access tokens until they expire (90 days for client credentials)
+   - Implement automatic token refresh when tokens expire
+   - Handle 401 errors by requesting a new token
+
+3. **Error Handling**
+   - Implement retry logic for network failures
+   - Handle rate limiting (429 errors) with exponential backoff
+   - Log authentication failures for security monitoring
+
+4. **Environment Separation**
+   - Use `test` environment for development/staging
+   - Use `live` environment for production only
+   - Create separate OAuth clients for different environments
+
+---
+
+### 🔄 Token Expiration & Renewal
+
+Access tokens expire after **90 days** (7,776,000 seconds). When you receive a `401 Unauthorized` error, request a new token:
+
+```javascript
+// Example: Token renewal on 401 error
+async function makeApiRequest(url, options = {}) {
+  let accessToken = await getAccessToken();
+  
+  try {
+    return await fetch(url, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+        ...options.headers
+      }
+    });
+  } catch (error) {
+    if (error.response?.status === 401) {
+      // Token expired, get a new one
+      accessToken = await getAccessToken();
+      return await fetch(url, {
+        ...options,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+          ...options.headers
+        }
+      });
+    }
+    throw error;
+  }
+}
+```
+
+---
+
+### 🛠️ Managing Your OAuth Clients
+
+**List All Your OAuth Clients**
+
+**Method:** `GET`  
+**URL:** `/api/v1/oauth/clients`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_USER_TOKEN} |
+| Accept | application/json |
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Production API Client",
+      "client_id": "org_live_client_abc123xyz...",
+      "environment": "live",
+      "status": "active",
+      "allowed_scopes": ["*"],
+      "last_used_at": "2026-03-14T11:00:00+00:00",
+      "last_used_ip": "192.168.1.100",
+      "expires_at": null,
+      "created_at": "2026-03-14T10:00:00+00:00"
+    }
+  ]
+}
+```
+
+---
+
+**Revoke an OAuth Client**
+
+**Method:** `DELETE`  
+**URL:** `/api/v1/oauth/clients/{client_id}`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_USER_TOKEN} |
+| Accept | application/json |
+
+**Success Response:** `200 OK`
+```json
+{
+  "message": "Client revoked successfully",
+  "client": {
+    "id": 1,
+    "name": "Production API Client",
+    "status": "revoked"
+  }
+}
+```
+
+---
+
+### ❓ Common Errors
+
+**Invalid Client Credentials**
+```json
+{
+  "error": "invalid_client",
+  "error_description": "Client authentication failed"
+}
+```
+**Solution:** Verify your `client_id` and `client_secret` are correct.
+
+---
+
+**Expired Token**
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+**Solution:** Request a new access token using your client credentials.
+
+---
+
+**Rate Limit Exceeded**
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+**Solution:** Wait 60 seconds before making more requests. Current limit: 60 requests per minute.
 
 ---
 
@@ -43,27 +552,30 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### List All Products
 **Method:** `GET`
-**URL:** `/api/products`
+**URL:** `/api/v1/products`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "organization_id": "sample",
-  "product_type": "sample"
-}
-```
 
 **Success Response:** `200 OK`
 ```json
 {
   "success": true,
-  "data": {}
+  "data": [
+    {
+      "id": 1,
+      "organization_id": 1,
+      "product_type_id": 2,
+      "name": "Premium Hosting Plan",
+      "description": "Monthly recurring hosting",
+      "unit": "month",
+      "status": "active",
+      "created_at": "2026-03-14T10:00:00+00:00"
+    }
+  ]
 }
 ```
 
@@ -77,20 +589,6 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 }
 ```
 
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "organization_id": [
-      "The organization id field is invalid."
-    ],
-    "product_type": [
-      "The product type field is invalid."
-    ]
-  }
-}
-```
-
 `429 Too Many Requests`
 ```json
 {
@@ -100,9 +598,11 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Create Products
 **Method:** `POST`
-**URL:** `/api/products`
+**URL:** `/api/v1/products`
 
 **Description:** Create a new product with pricing plans. Products must be assigned a product type that determines their billing behavior.
+
+> **💡 Note:** The `organization_id` parameter is **optional**. If not provided, it will be automatically extracted from your access token. You only need to include it if you want to explicitly specify it (must match your token's organization).
 
 **Product Type IDs:**
 - `1` - **One-time Product**: For single-charge items (consulting, projects, one-off services)
@@ -112,29 +612,490 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
+
+**Request Body Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `organization_id` | integer | Optional | Auto-injected from token. Only specify if needed (must match token's organization) |
+| `product_type_id` | integer | **Required** | Product type: `1` (One-time), `2` (Subscription), `3` (Usage-based) |
+| `name` | string | **Required** | Product name (max 255 chars, unique per organization) |
+| `product_code` | string | Optional | Unique product identifier/SKU (unique per organization, e.g., "safarichat", "premium-plan") |
+| `description` | string | Optional | Product description |
+| `unit` | string | Optional | Unit of measurement (max 255 chars, e.g., "month", "GB", "API call", "user") |
+| `status` | string | **Required** | Product status: `active`, `inactive`, or `archived` |
+| `price_plans` | array | Conditional | **Required** for types 2 & 3, Optional for type 1 (max 1 plan) |
+| `price_plans[].name` | string | **Required** | Price plan name (max 255 chars) |
+| `price_plans[].subscription_type` | string | Conditional | **Required** for type 2. Optional for type 3. Not allowed for type 1. Values: `daily`, `weekly`, `monthly`, `quarterly`, `semi_annually`, `yearly` |
+| `price_plans[].amount` | number | **Required** | Price amount (min: 0) |
+| `price_plans[].currency` | string | **Required** | Currency code (2-5 chars, e.g., "TZS", "USD", "EUR") |
+| `price_plans[].rate` | integer | Optional | Rate or conversion factor (min: 1, useful for usage-based billing) |
 
 **Request Body:**
 ```json
 {
-  "organization_id": 1,
-  "product_type_id": 2,
-  "name": "Premium Hosting Plan",
-  "description": "Monthly recurring hosting with 100GB storage and unlimited bandwidth",
+  "product_type_id": 2,  // 1: One-time Product, 2: Subscription Product, 3: Usage Product
+  "name": "SafariChat Platform",
+  "product_code": "safarichat",
+  "description": "WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports",
   "unit": "month",
   "status": "active",
   "price_plans": [
     {
-      "name": "Monthly Plan",
+      "name": "Trial Plan",
       "subscription_type": "monthly",
-      "amount": 75000,
+      "amount": 0,
+      "currency": "TZS",
+      "rate": 3
+    },
+    {
+      "name": "Starter Plan",
+      "subscription_type": "monthly",
+      "amount": 69000,
+      "currency": "TZS",
+      "rate": 30
+    },
+    {
+      "name": "Pro Plan",
+      "subscription_type": "monthly",
+      "amount": 149000,
+      "currency": "TZS",
+      "rate": 30
+    },
+    {
+      "name": "Premium Plan",
+      "subscription_type": "monthly",
+      "amount": 299000,
       "currency": "TZS",
       "rate": 30
     }
   ]
 }
+```
+
+**How to Send the Request:**
+
+**Using cURL (Command Line):**
+```bash
+curl -X POST "https://yourdomain.com/api/v1/products" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "product_type_id": 2,
+    "name": "SafariChat Platform",
+    "product_code": "safarichat",
+    "description": "WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports",
+    "unit": "month",
+    "status": "active",
+    "price_plans": [
+      {
+        "name": "Trial Plan",
+        "subscription_type": "monthly",
+        "amount": 0,
+        "currency": "TZS",
+        "rate": 3
+      },
+      {
+        "name": "Starter Plan",
+        "subscription_type": "monthly",
+        "amount": 69000,
+        "currency": "TZS",
+        "rate": 30
+      },
+      {
+        "name": "Pro Plan",
+        "subscription_type": "monthly",
+        "amount": 149000,
+        "currency": "TZS",
+        "rate": 30
+      },
+      {
+        "name": "Premium Plan",
+        "subscription_type": "monthly",
+        "amount": 299000,
+        "currency": "TZS",
+        "rate": 30
+      }
+    ]
+  }'
+```
+
+**Using PHP (with Guzzle):**
+```php
+<?php
+use GuzzleHttp\Client;
+
+$client = new Client([
+    'base_uri' => 'https://yourdomain.com',
+    'headers' => [
+        'Authorization' => 'Bearer YOUR_ACCESS_TOKEN',
+        'Content-Type' => 'application/json',
+        'Accept' => 'application/json'
+    ]
+]);
+
+$response = $client->post('/api/v1/products', [
+    'json' => [
+        'product_type_id' => 2,
+        'name' => 'SafariChat Platform',
+        'product_code' => 'safarichat',
+        'description' => 'WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports',
+        'unit' => 'month',
+        'status' => 'active',
+        'price_plans' => [
+            [
+                'name' => 'Trial Plan',
+                'subscription_type' => 'monthly',
+                'amount' => 0,
+                'currency' => 'TZS',
+                'rate' => 3
+            ],
+            [
+                'name' => 'Starter Plan',
+                'subscription_type' => 'monthly',
+                'amount' => 69000,
+                'currency' => 'TZS',
+                'rate' => 30
+            ],
+            [
+                'name' => 'Pro Plan',
+                'subscription_type' => 'monthly',
+                'amount' => 149000,
+                'currency' => 'TZS',
+                'rate' => 30
+            ],
+            [
+                'name' => 'Premium Plan',
+                'subscription_type' => 'monthly',
+                'amount' => 299000,
+                'currency' => 'TZS',
+                'rate' => 30
+            ]
+        ]
+    ]
+]);
+
+$data = json_decode($response->getBody(), true);
+echo "Product created with ID: " . $data['data']['id'];
+```
+
+**Using JavaScript (Fetch API):**
+```javascript
+const createProduct = async () => {
+  const response = await fetch('https://yourdomain.com/api/v1/products', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      product_type_id: 2,
+      name: 'SafariChat Platform',
+      product_code: 'safarichat',
+      description: 'WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports',
+      unit: 'month',
+      status: 'active',
+      price_plans: [
+        {
+          name: 'Trial Plan',
+          subscription_type: 'monthly',
+          amount: 0,
+          currency: 'TZS',
+          rate: 3
+        },
+        {
+          name: 'Starter Plan',
+          subscription_type: 'monthly',
+          amount: 69000,
+          currency: 'TZS',
+          rate: 30
+        },
+        {
+          name: 'Pro Plan',
+          subscription_type: 'monthly',
+          amount: 149000,
+          currency: 'TZS',
+          rate: 30
+        },
+        {
+          name: 'Premium Plan',
+          subscription_type: 'monthly',
+          amount: 299000,
+          currency: 'TZS',
+          rate: 30
+        }
+      ]
+    })
+  });
+
+  const data = await response.json();
+  console.log('Product created:', data);
+  return data;
+};
+
+createProduct();
+```
+
+**Using Python (requests library):**
+```python
+import requests
+import json
+
+url = "https://yourdomain.com/api/v1/products"
+headers = {
+    "Authorization": "Bearer YOUR_ACCESS_TOKEN",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+payload = {
+    "product_type_id": 2,
+    "name": "SafariChat Platform",
+    "product_code": "safarichat",
+    "description": "WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports",
+    "unit": "month",
+    "status": "active",
+    "price_plans": [
+        {
+            "name": "Trial Plan",
+            "subscription_type": "monthly",
+            "amount": 0,
+            "currency": "TZS",
+            "rate": 3
+        },
+        {
+            "name": "Starter Plan",
+            "subscription_type": "monthly",
+            "amount": 69000,
+            "currency": "TZS",
+            "rate": 30
+        },
+        {
+            "name": "Pro Plan",
+            "subscription_type": "monthly",
+            "amount": 149000,
+            "currency": "TZS",
+            "rate": 30
+        },
+        {
+            "name": "Premium Plan",
+            "subscription_type": "monthly",
+            "amount": 299000,
+            "currency": "TZS",
+            "rate": 30
+        }
+    ]
+}
+
+response = requests.post(url, headers=headers, json=payload)
+data = response.json()
+
+if response.status_code == 201:
+    print(f"Product created with ID: {data['data']['id']}")
+else:
+    print(f"Error: {data}")
+```
+
+**Using Node.js (Axios):**
+```javascript
+const axios = require('axios');
+
+const createProduct = async () => {
+  try {
+    const response = await axios.post(
+      'https://yourdomain.com/api/v1/products',
+      {
+        product_type_id: 2,
+        name: 'SafariChat Platform',
+        product_code: 'safarichat',
+        description: 'WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports',
+        unit: 'month',
+        status: 'active',
+        price_plans: [
+          {
+            name: 'Trial Plan',
+            subscription_type: 'monthly',
+            amount: 0,
+            currency: 'TZS',
+            rate: 3
+          },
+          {
+            name: 'Starter Plan',
+            subscription_type: 'monthly',
+            amount: 69000,
+            currency: 'TZS',
+            rate: 30
+          },
+          {
+            name: 'Pro Plan',
+            subscription_type: 'monthly',
+            amount: 149000,
+            currency: 'TZS',
+            rate: 30
+          },
+          {
+            name: 'Premium Plan',
+            subscription_type: 'monthly',
+            amount: 299000,
+            currency: 'TZS',
+            rate: 30
+          }
+        ]
+      },
+      {
+        headers: {
+          'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    console.log('Product created:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating product:', error.response?.data || error.message);
+  }
+};
+
+createProduct();
+```
+
+**Advanced Example - Product with Multiple Pricing Tiers:**
+```json
+{
+  "product_type_id": 2,
+  "name": "SafariChat Platform",
+  "product_code": "safarichat",
+  "description": "WhatsApp business messaging platform with AI-powered features",
+  "unit": "month",
+  "status": "active",
+  "price_plans": [
+    {
+      "name": "Trial Plan",
+      "subscription_type": "monthly",
+      "amount": 0,
+      "currency": "TZS",
+      "rate": 3
+    },
+    {
+      "name": "Starter Plan",
+      "subscription_type": "monthly",
+      "amount": 69000,
+      "currency": "TZS",
+      "rate": 30
+    },
+    {
+      "name": "Pro Plan",
+      "subscription_type": "monthly",
+      "amount": 149000,
+      "currency": "TZS",
+      "rate": 30
+    },
+    {
+      "name": "Premium Plan",
+      "subscription_type": "monthly",
+      "amount": 299000,
+      "currency": "TZS",
+      "rate": 30
+    }
+  ]
+}
+```
+
+**cURL Example for Multi-Tier Product:**
+```bash
+curl -X POST "https://yourdomain.com/api/v1/products" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "product_type_id": 2,
+    "name": "SafariChat Platform",
+    "product_code": "safarichat",
+    "description": "WhatsApp business messaging platform with AI-powered features",
+    "unit": "month",
+    "status": "active",
+    "price_plans": [
+      {
+        "name": "Trial Plan",
+        "subscription_type": "monthly",
+        "amount": 0,
+        "currency": "TZS",
+        "rate": 3
+      },
+      {
+        "name": "Starter Plan",
+        "subscription_type": "monthly",
+        "amount": 69000,
+        "currency": "TZS",
+        "rate": 30
+      },
+      {
+        "name": "Pro Plan",
+        "subscription_type": "monthly",
+        "amount": 149000,
+        "currency": "TZS",
+        "rate": 30
+      },
+      {
+        "name": "Premium Plan",
+        "subscription_type": "monthly",
+        "amount": 299000,
+        "currency": "TZS",
+        "rate": 30
+      }
+    ]
+  }'
+```
+
+**Usage-Based Product Example:**
+```json
+{
+  "product_type_id": 3,
+  "name": "API Credits",
+  "product_code": "api-credits",
+  "description": "Pay-per-use API call credits",
+  "unit": "API call",
+  "status": "active",
+  "price_plans": [
+    {
+      "name": "Standard Rate",
+      "amount": 50,
+      "currency": "TZS",
+      "rate": 1
+    }
+  ]
+}
+```
+
+**cURL Example for Usage-Based Product:**
+```bash
+curl -X POST "https://yourdomain.com/api/v1/products" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "product_type_id": 3,
+    "name": "API Credits",
+    "product_code": "api-credits",
+    "description": "Pay-per-use API call credits",
+    "unit": "API call",
+    "status": "active",
+    "price_plans": [
+      {
+        "name": "Standard Rate",
+        "amount": 50,
+        "currency": "TZS",
+        "rate": 1
+      }
+    ]
+  }'
 ```
 
 **Success Response:** `201 Created`
@@ -147,6 +1108,7 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
     "organization_id": 1,
     "product_type_id": 2,
     "name": "Premium Hosting Plan",
+    "product_code": "premium-hosting",
     "description": "Monthly recurring hosting with 100GB storage and unlimited bandwidth",
     "unit": "month",
     "status": "active",
@@ -203,14 +1165,32 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 }
 ```
 
+**Integration Tips:**
+
+1. **Replace YOUR_ACCESS_TOKEN** with your actual token obtained from the OAuth client credentials flow
+2. **Replace yourdomain.com** with your actual API base URL
+3. **Test in development** before deploying to production
+4. **Handle errors gracefully** - Always check response status codes
+5. **Store tokens securely** - Never hardcode tokens in your source code
+6. **Use environment variables** for sensitive data
+
+**Common Mistakes to Avoid:**
+
+- ❌ Forgetting the `Bearer` prefix in Authorization header
+- ❌ Missing `Content-Type: application/json` header
+- ❌ Sending `product_type_id` as string instead of integer
+- ❌ Forgetting to include `subscription_type` for subscription products (type 2)
+- ❌ Using invalid subscription_type values (must be: daily, weekly, monthly, quarterly, semi_annually, yearly)
+- ❌ Duplicate `name` or `product_code` within the same organization
+
 ### Delete Products
 **Method:** `DELETE`
-**URL:** `/api/products/{product}`
+**URL:** `/api/v1/products/{product}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -253,24 +1233,232 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Get Single Product
 **Method:** `GET`
-**URL:** `/api/products/{product}`
+**URL:** `/api/v1/products/{product}`
+
+**Description:** Retrieve a single product by its ID or product code. The response includes the product details, organization, product type, and all associated price plans.
+
+**URL Parameters:**
+- `{product}` - **Required**. Can be either:
+  - Product ID (integer): e.g., `/api/v1/products/1`
+  - Product Code (string): e.g., `/api/v1/products/safarichat`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
 ```json
-{}
+No request body required for GET request
+```
+
+**How to Use This Endpoint:**
+
+This endpoint retrieves a **specific product** from your organization. You must specify which product you want by including either its **ID** or **product_code** in the URL path (not in the request body).
+
+**Option 1: Get Product by ID**
+- Replace `{product}` with the numeric product ID
+- Example: `/api/v1/products/1`
+- Use this when you know the database ID
+
+**Option 2: Get Product by Code** 
+- Replace `{product}` with the product_code string
+- Example: `/api/v1/products/safarichat`
+- Use this for friendly, memorable identifiers
+
+**Example Requests:**
+
+**Using Product ID:**
+```bash
+# Get product with ID = 1
+curl -X GET "https://yourdomain.com/api/v1/products/1" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Accept: application/json"
+```
+
+**Using Product Code:**
+```bash
+# Get product with code = "safarichat"
+curl -X GET "https://yourdomain.com/api/v1/products/safarichat" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Accept: application/json"
+```
+
+**PHP Example (Using Product Code):**
+```php
+<?php
+use GuzzleHttp\Client;
+
+$client = new Client([
+    'base_uri' => 'https://yourdomain.com',
+    'headers' => [
+        'Authorization' => 'Bearer YOUR_ACCESS_TOKEN',
+        'Accept' => 'application/json'
+    ]
+]);
+
+// Get product by code
+$response = $client->get('/api/v1/products/safarichat');
+$product = json_decode($response->getBody(), true);
+
+echo "Product: " . $product['data']['name'] . "\n";
+echo "Price Plans: " . count($product['data']['price_plans']) . "\n";
+```
+
+**JavaScript Example (Using Product ID):**
+```javascript
+const getProduct = async (productId) => {
+  const response = await fetch(`https://yourdomain.com/api/v1/products/${productId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer YOUR_ACCESS_TOKEN',
+      'Accept': 'application/json'
+    }
+  });
+
+  const data = await response.json();
+  console.log('Product:', data.data.name);
+  console.log('Price Plans:', data.data.price_plans.length);
+  return data;
+};
+
+// Get product with ID 1
+getProduct(1);
+```
+
+**Python Example (Using Product Code):**
+```python
+import requests
+
+url = "https://yourdomain.com/api/v1/products/safarichat"
+headers = {
+    "Authorization": "Bearer YOUR_ACCESS_TOKEN",
+    "Accept": "application/json"
+}
+
+response = requests.get(url, headers=headers)
+data = response.json()
+
+if response.status_code == 200:
+    print(f"Product: {data['data']['name']}")
+    print(f"Price Plans: {len(data['data']['price_plans'])}")
+else:
+    print(f"Error: {data}")
 ```
 
 **Success Response:** `200 OK`
 ```json
 {
   "success": true,
-  "data": {}
+  "message": "Product retrieved successfully",
+  "data": {
+    "id": 1,
+    "organization_id": 1,
+    "product_type_id": 2,
+    "name": "SafariChat Platform",
+    "product_code": "safarichat",
+    "description": "WhatsApp business messaging platform with AI-powered features, booking calendars, and sales reports",
+    "unit": "month",
+    "active": true,
+    "status": "active",
+    "created_at": "2026-03-14T10:30:00.000000Z",
+    "updated_at": "2026-03-14T10:30:00.000000Z",
+    "organization": {
+      "id": 1,
+      "name": "Your Organization",
+      "email": "your-org@example.com",
+      "phone": "+255123456789",
+      "address": "Dar es Salaam, Tanzania",
+      "created_at": "2026-01-01T08:00:00.000000Z",
+      "updated_at": "2026-01-01T08:00:00.000000Z"
+    },
+    "product_type": {
+      "id": 2,
+      "name": "Subscription Product",
+      "description": "Recurring billing products",
+      "created_at": "2026-01-01T08:00:00.000000Z",
+      "updated_at": "2026-01-01T08:00:00.000000Z"
+    },
+    "price_plans": [
+      {
+        "id": 1,
+        "product_id": 1,
+        "name": "Trial Plan",
+        "billing_type": "recurring",
+        "billing_interval": "monthly",
+        "amount": "0.00",
+        "currency_id": 1,
+        "currency": "TZS",
+        "rate": 3,
+        "subscription_type": "monthly",
+        "plan_code": null,
+        "feature_code": null,
+        "trial_period_days": 3,
+        "setup_fee": "0.00",
+        "metadata": null,
+        "created_at": "2026-03-14T10:30:00.000000Z",
+        "updated_at": "2026-03-14T10:30:00.000000Z"
+      },
+      {
+        "id": 2,
+        "product_id": 1,
+        "name": "Starter Plan",
+        "billing_type": "recurring",
+        "billing_interval": "monthly",
+        "amount": "69000.00",
+        "currency_id": 1,
+        "currency": "TZS",
+        "rate": 30,
+        "subscription_type": "monthly",
+        "plan_code": null,
+        "feature_code": null,
+        "trial_period_days": 0,
+        "setup_fee": "0.00",
+        "metadata": null,
+        "created_at": "2026-03-14T10:30:00.000000Z",
+        "updated_at": "2026-03-14T10:30:00.000000Z"
+      },
+      {
+        "id": 3,
+        "product_id": 1,
+        "name": "Pro Plan",
+        "billing_type": "recurring",
+        "billing_interval": "monthly",
+        "amount": "149000.00",
+        "currency_id": 1,
+        "currency": "TZS",
+        "rate": 30,
+        "subscription_type": "monthly",
+        "plan_code": null,
+        "feature_code": null,
+        "trial_period_days": 0,
+        "setup_fee": "0.00",
+        "metadata": null,
+        "created_at": "2026-03-14T10:30:00.000000Z",
+        "updated_at": "2026-03-14T10:30:00.000000Z"
+      },
+      {
+        "id": 4,
+        "product_id": 1,
+        "name": "Premium Plan",
+        "billing_type": "recurring",
+        "billing_interval": "monthly",
+        "amount": "299000.00",
+        "currency_id": 1,
+        "currency": "TZS",
+        "rate": 30,
+        "subscription_type": "monthly",
+        "plan_code": null,
+        "feature_code": null,
+        "trial_period_days": 0,
+        "setup_fee": "0.00",
+        "metadata": null,
+        "created_at": "2026-03-14T10:30:00.000000Z",
+        "updated_at": "2026-03-14T10:30:00.000000Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -301,12 +1489,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Update Product
 **Method:** `PUT`
-**URL:** `/api/products/{product}`
+**URL:** `/api/v1/products/{product}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -371,12 +1559,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### List Product Price-Plans
 **Method:** `GET`
-**URL:** `/api/products/{product}/price-plans`
+**URL:** `/api/v1/products/{product}/price-plans`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -411,12 +1599,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Create Product Price-Plans
 **Method:** `POST`
-**URL:** `/api/products/{product}/price-plans`
+**URL:** `/api/v1/products/{product}/price-plans`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -481,12 +1669,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Delete Product Price-Plans
 **Method:** `DELETE`
-**URL:** `/api/products/{product}/price-plans/{pricePlan}`
+**URL:** `/api/v1/products/{product}/price-plans/{pricePlan}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -529,12 +1717,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Get Product Price-Plans
 **Method:** `GET`
-**URL:** `/api/products/{product}/price-plans/{pricePlan}`
+**URL:** `/api/v1/products/{product}/price-plans/{pricePlan}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -577,12 +1765,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### Update Product Price-Plans
 **Method:** `PUT`
-**URL:** `/api/products/{product}/price-plans/{pricePlan}`
+**URL:** `/api/v1/products/{product}/price-plans/{pricePlan}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -649,12 +1837,12 @@ Authorization: Bearer org_live_9Z8Y7X6W5V4U3T2S1R0Q9P8O7N6M5L4K3J2I1H0G
 
 ### List All Invoices
 **Method:** `GET`
-**URL:** `/api/invoices`
+**URL:** `/api/v1/invoices`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -713,14 +1901,14 @@ The billing system supports three types of invoices, automatically determined by
 
 ### Create One-Time Invoice
 **Method:** `POST`
-**URL:** `/api/invoices`
+**URL:** `/api/v1/invoices`
 
 **Description:** One-time invoices are for products that are charged once without creating a subscription. Perfect for consulting services, one-off projects, or standalone purchases.
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -840,14 +2028,14 @@ The billing system supports three types of invoices, automatically determined by
 
 ### Create Multi-Product Invoice
 **Method:** `POST`
-**URL:** `/api/invoices`
+**URL:** `/api/v1/invoices`
 
 **Description:** Create a single invoice with multiple products of different types (one-time and subscription products can be combined).
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -993,14 +2181,14 @@ The billing system supports three types of invoices, automatically determined by
 
 ### Create Invoice with Payment Gateway
 **Method:** `POST`
-**URL:** `/api/invoices`
+**URL:** `/api/v1/invoices`
 
 **Description:** Generate payment links automatically when creating invoices. Supports Flutterwave (card/mobile money) and EcoBank control numbers (bank payments).
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -1268,12 +2456,12 @@ You can specify products using three different lookup methods:
 
 ### Get Invoices by Subscriptions
 **Method:** `POST`
-**URL:** `/api/invoices/by-subscriptions`
+**URL:** `/api/v1/invoices/by-subscriptions`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -1325,12 +2513,12 @@ You can specify products using three different lookup methods:
 
 ### Cancel Invoices
 **Method:** `POST`
-**URL:** `/api/invoices/{id}/cancel`
+**URL:** `/api/v1/invoices/{id}/cancel`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -1382,7 +2570,7 @@ You can specify products using three different lookup methods:
 
 ### Get Invoices by id
 **Method:** `GET`
-**URL:** `/api/invoices/{invoice_id}`
+**URL:** `/api/v1/invoices/{invoice_id}`
 
 **Description:** Retrieve detailed information about **ONE SPECIFIC INVOICE** by its ID. This endpoint returns a single invoice, not a list of all invoices.
 
@@ -1394,7 +2582,7 @@ You can specify products using three different lookup methods:
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **URL Path Parameters (NOT request body):**
@@ -1582,12 +2770,12 @@ curl -X GET "https://your-api-domain.com/api/invoices/123" \
 
 ### Get Invoices by product_id
 **Method:** `GET`
-**URL:** `/api/invoices/{product_id}/product`
+**URL:** `/api/v1/invoices/{product_id}/product`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -1634,12 +2822,12 @@ curl -X GET "https://your-api-domain.com/api/invoices/123" \
 
 ### Get Invoice Payment Gateways
 **Method:** `GET`
-**URL:** `/api/invoices/{id}/payment-gateways`
+**URL:** `/api/v1/invoices/{id}/payment-gateways`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -1689,7 +2877,7 @@ curl -X GET "https://your-api-domain.com/api/invoices/123" \
 
 ### Create Subscription Invoice
 **Method:** `POST`
-**URL:** `/api/invoices`
+**URL:** `/api/v1/invoices`
 
 **Description:** Subscription invoices automatically create a subscription record for recurring billing. The subscription remains in "pending" status until the invoice is paid, then becomes "active".
 
@@ -1701,7 +2889,7 @@ curl -X GET "https://your-api-domain.com/api/invoices/123" \
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -1867,12 +3055,12 @@ The second request returns the existing invoice rather than creating a duplicate
 **Description:** Returns subscriptions for a specific customer identified by their email address. This endpoint requires customer email for security and privacy protection.
 
 **Method:** `GET`  
-**URL:** `/api/subscriptions`
+**URL:** `/api/v1/subscriptions`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Query Parameters (sent in URL):**
@@ -2088,12 +3276,12 @@ curl -X GET "https://your-domain.com/api/subscriptions?customer_email=john@start
 
 ### Cancel Subscriptions
 **Method:** `POST`
-**URL:** `/api/subscriptions/{id}/cancel`
+**URL:** `/api/v1/subscriptions/{id}/cancel`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -2134,12 +3322,12 @@ curl -X GET "https://your-domain.com/api/subscriptions?customer_email=john@start
 **Description:** Upgrade an active subscription to a higher-tier plan within the same product. The system automatically calculates prorated charges based on actual billing cycle days, ensuring fair pricing across months with different lengths (28-31 days).
 
 **Method:** `POST`  
-**URL:** `/api/invoices/plan-upgrade`
+**URL:** `/api/v1/invoices/plan-upgrade`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -2364,12 +3552,12 @@ Amount to Charge = New Plan Charge - Unused Credit
 **Description:** Downgrade an active subscription to a lower-tier plan within the same product. The system calculates unused credit from the current plan and can apply it to the customer's wallet for future use.
 
 **Method:** `POST`  
-**URL:** `/api/invoices/plan-downgrade`
+**URL:** `/api/v1/invoices/plan-downgrade`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -2530,12 +3718,12 @@ Credit Amount = Unused Value - New Plan Cost
 
 #### Step 1: Record Product Usage
 **Method:** `POST`
-**URL:** `/api/product-usage`
+**URL:** `/api/v1/product-usage`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -2604,14 +3792,14 @@ Credit Amount = Unused Value - New Plan Cost
 
 #### Step 2: Get Usage Report
 **Method:** `GET`
-**URL:** `/api/product-usage/report/{customer_id}`
+**URL:** `/api/v1/product-usage/report/{customer_id}`
 
 **Description:** Retrieve accumulated usage data for a customer to calculate charges.
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -2682,14 +3870,14 @@ Credit Amount = Unused Value - New Plan Cost
 
 #### Step 3: Create Invoice for Usage
 **Method:** `POST`
-**URL:** `/api/invoices`
+**URL:** `/api/v1/invoices`
 
 **Description:** Create an invoice based on the usage data. Calculate the amount based on your pricing model (e.g., price per API call, per GB).
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -2785,12 +3973,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Record Product Usage
 **Method:** `POST`
-**URL:** `/api/product-usages`
+**URL:** `/api/v1/product-usages`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -2847,12 +4035,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Product Usage/Wallet balance
 **Method:** `GET`
-**URL:** `/api/product-usages/balance`
+**URL:** `/api/v1/product-usages/balance`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -2904,12 +4092,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Product Usage/Wallet Report
 **Method:** `GET`
-**URL:** `/api/product-usages/{customer_id}/report`
+**URL:** `/api/v1/product-usages/{customer_id}/report`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -2944,12 +4132,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Product Usage/Wallet History
 **Method:** `GET`
-**URL:** `/api/product-usages/{customer_id}/{product_id}/history`
+**URL:** `/api/v1/product-usages/{customer_id}/{product_id}/history`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -2986,7 +4174,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Handle UCN payment Webhooks
 **Method:** `POST`
-**URL:** `/api/webhooks/ecobank/notification`
+**URL:** `/api/v1/webhooks/ecobank/notification`
 
 **Required Headers:**
 | Key | Value |
@@ -3017,7 +4205,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Handle Flutterwave Webhooks
 **Method:** `POST`
-**URL:** `/api/webhooks/flutterwave`
+**URL:** `/api/v1/webhooks/flutterwave`
 
 **Required Headers:**
 | Key | Value |
@@ -3058,7 +4246,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Handle Stripe PaymantIntent Webhooks
 **Method:** `POST`
-**URL:** `/api/webhooks/stripe`
+**URL:** `/api/v1/webhooks/stripe`
 
 **Required Headers:**
 | Key | Value |
@@ -3099,12 +4287,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Payments by Date Range 
 **Method:** `GET`
-**URL:** `/api/payments`
+**URL:** `/api/v1/payments`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3156,12 +4344,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Payments by invoice 
 **Method:** `GET`
-**URL:** `/api/payments/by-invoice/{invoice_id}`
+**URL:** `/api/v1/payments/by-invoice/{invoice_id}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3197,12 +4385,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Tax Rates
 **Method:** `GET`
-**URL:** `/api/tax-rates`
+**URL:** `/api/v1/tax-rates`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3237,12 +4425,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Tax Rates
 **Method:** `POST`
-**URL:** `/api/tax-rates`
+**URL:** `/api/v1/tax-rates`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -3303,12 +4491,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Tax Rates
 **Method:** `DELETE`
-**URL:** `/api/tax-rates/{tax_rate}`
+**URL:** `/api/v1/tax-rates/{tax_rate}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3351,12 +4539,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Tax Rates
 **Method:** `GET`
-**URL:** `/api/tax-rates/{tax_rate}`
+**URL:** `/api/v1/tax-rates/{tax_rate}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3399,12 +4587,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Tax Rates
 **Method:** `PUT`
-**URL:** `/api/tax-rates/{tax_rate}`
+**URL:** `/api/v1/tax-rates/{tax_rate}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -3466,12 +4654,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Bank Accounts
 **Method:** `GET`
-**URL:** `/api/bank-accounts`
+**URL:** `/api/v1/bank-accounts`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3481,7 +4669,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-**Note:** `organization_id` is optional when using organization API keys.
+> **💡 Note:** The `organization_id` parameter is **optional**. If not provided, it will be automatically extracted from your access token.
 
 **Success Response:** `200 OK`
 ```json
@@ -3533,12 +4721,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Bank Accounts
 **Method:** `POST`
-**URL:** `/api/bank-accounts`
+**URL:** `/api/v1/bank-accounts`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -3548,12 +4736,11 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
   "name": "Business Checking Account",
   "account_number": "9876543210",
   "branch": "Downtown Branch",
-  "refer_bank_id": "54321",
-  "organization_id": "1"
+  "refer_bank_id": "54321"
 }
 ```
 
-**Note:** `organization_id` is optional when using organization API keys.
+> **💡 Note:** The `organization_id` parameter is **optional**. If not provided, it will be automatically extracted from your access token. You only need to include it if you want to explicitly specify it (must match your token's organization).
 
 **Success Response:** `201 Created`
 ```json
@@ -3615,12 +4802,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Bank Accounts
 **Method:** `DELETE`
-**URL:** `/api/bank-accounts/{bank_account}`
+**URL:** `/api/v1/bank-accounts/{bank_account}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Success Response:** `200 OK`
@@ -3663,12 +4850,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Bank Accounts
 **Method:** `GET`
-**URL:** `/api/bank-accounts/{bank_account}`
+**URL:** `/api/v1/bank-accounts/{bank_account}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Success Response:** `200 OK`
@@ -3716,12 +4903,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Bank Accounts
 **Method:** `PUT`
-**URL:** `/api/bank-accounts/{bank_account}`
+**URL:** `/api/v1/bank-accounts/{bank_account}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -3800,12 +4987,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Product Types
 **Method:** `GET`
-**URL:** `/api/product-types`
+**URL:** `/api/v1/product-types`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3840,12 +5027,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Product Types
 **Method:** `POST`
-**URL:** `/api/product-types`
+**URL:** `/api/v1/product-types`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -3894,12 +5081,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Product Types
 **Method:** `DELETE`
-**URL:** `/api/product-types/{product_type}`
+**URL:** `/api/v1/product-types/{product_type}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3942,12 +5129,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Product Types
 **Method:** `GET`
-**URL:** `/api/product-types/{product_type}`
+**URL:** `/api/v1/product-types/{product_type}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -3990,12 +5177,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Product Types
 **Method:** `PUT`
-**URL:** `/api/product-types/{product_type}`
+**URL:** `/api/v1/product-types/{product_type}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -4046,12 +5233,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Customers
 **Method:** `GET`
-**URL:** `/api/customers`
+**URL:** `/api/v1/customers`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4062,7 +5249,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-**Note:** `organization_id` is optional when using organization API keys. `username` filter is optional.
+> **💡 Note:** The `organization_id` parameter is **optional**. If not provided, it will be automatically extracted from your access token. The `username` filter is also optional.
 
 **Success Response:** `200 OK`
 ```json
@@ -4131,19 +5318,18 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Customers
 **Method:** `POST`
-**URL:** `/api/customers`
+**URL:** `/api/v1/customers`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
 **Request Body:**
 ```json
 {
-  "organization_id": "1",
   "name": "Alice Brown",
   "username": "alice_brown",
   "email": "alice@example.com",
@@ -4152,7 +5338,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-**Note:** `organization_id` is optional when using organization API keys. `status` defaults to "active" if not provided.
+> **💡 Note:** The `organization_id` parameter is **optional**. If not provided, it will be automatically extracted from your access token. The `status` field defaults to "active" if not provided.
 
 **Success Response:** `201 Created`
 ```json
@@ -4218,12 +5404,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ###  Find Customer by Email
 **Method:** `GET`
-**URL:** `/api/customers/by-email/{email}`
+**URL:** `/api/v1/customers/by-email/{email}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4266,12 +5452,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Find Customer by Phone
 **Method:** `GET`
-**URL:** `/api/customers/by-phone/{phone}`
+**URL:** `/api/v1/customers/by-phone/{phone}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4314,12 +5500,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Customers
 **Method:** `DELETE`
-**URL:** `/api/customers/{customer}`
+**URL:** `/api/v1/customers/{customer}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4362,12 +5548,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Customers
 **Method:** `GET`
-**URL:** `/api/customers/{customer}`
+**URL:** `/api/v1/customers/{customer}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4410,12 +5596,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Customers
 **Method:** `PUT`
-**URL:** `/api/customers/{customer}`
+**URL:** `/api/v1/customers/{customer}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -4484,12 +5670,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Getcustomersubscriptions Customers
 **Method:** `GET`
-**URL:** `/api/customers/{customer}/subscriptions`
+**URL:** `/api/v1/customers/{customer}/subscriptions`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4526,12 +5712,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Payment Gateways
 **Method:** `GET`
-**URL:** `/api/payment-gateways`
+**URL:** `/api/v1/payment-gateways`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4566,12 +5752,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Payment Gateways
 **Method:** `POST`
-**URL:** `/api/payment-gateways`
+**URL:** `/api/v1/payment-gateways`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -4636,12 +5822,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Payment Gateways
 **Method:** `DELETE`
-**URL:** `/api/payment-gateways/{payment_gateway}`
+**URL:** `/api/v1/payment-gateways/{payment_gateway}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4684,12 +5870,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Payment Gateways
 **Method:** `GET`
-**URL:** `/api/payment-gateways/{payment_gateway}`
+**URL:** `/api/v1/payment-gateways/{payment_gateway}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4732,12 +5918,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Payment Gateways
 **Method:** `PUT`
-**URL:** `/api/payment-gateways/{payment_gateway}`
+**URL:** `/api/v1/payment-gateways/{payment_gateway}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -4804,12 +5990,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Organizations
 **Method:** `GET`
-**URL:** `/api/organizations`
+**URL:** `/api/v1/organizations`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -4844,12 +6030,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Organizations
 **Method:** `POST`
-**URL:** `/api/organizations`
+**URL:** `/api/v1/organizations`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -4918,12 +6104,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Integratepaymentgateway Organizations
 **Method:** `POST`
-**URL:** `/api/organizations/integrate-payment-gateway`
+**URL:** `/api/v1/organizations/integrate-payment-gateway`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -4980,12 +6166,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Organizations
 **Method:** `DELETE`
-**URL:** `/api/organizations/{organization}`
+**URL:** `/api/v1/organizations/{organization}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -5028,12 +6214,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Organizations
 **Method:** `GET`
-**URL:** `/api/organizations/{organization}`
+**URL:** `/api/v1/organizations/{organization}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Request Body:**
@@ -5076,12 +6262,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Organizations
 **Method:** `PUT`
-**URL:** `/api/organizations/{organization}`
+**URL:** `/api/v1/organizations/{organization}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -5152,12 +6338,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### List Countries
 **Method:** `GET`
-**URL:** `/api/countries`
+**URL:** `/api/v1/countries`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Success Response:** `200 OK`
@@ -5210,12 +6396,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Create Countries
 **Method:** `POST`
-**URL:** `/api/countries`
+**URL:** `/api/v1/countries`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -5275,12 +6461,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Delete Countries
 **Method:** `DELETE`
-**URL:** `/api/countries/{country}`
+**URL:** `/api/v1/countries/{country}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Success Response:** `200 OK`
@@ -5323,12 +6509,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Get Countries
 **Method:** `GET`
-**URL:** `/api/countries/{country}`
+**URL:** `/api/v1/countries/{country}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Accept | application/json |
 
 **Success Response:** `200 OK`
@@ -5373,12 +6559,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ### Update Countries
 **Method:** `PUT`
-**URL:** `/api/countries/{country}`
+**URL:** `/api/v1/countries/{country}`
 
 **Required Headers:**
 | Key | Value |
 |-----|-------|
-| Authorization | Bearer {YOUR_API_KEY} |
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
 | Content-Type | application/json |
 | Accept | application/json |
 
@@ -5435,3 +6621,6 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
   "message": "Too Many Attempts."
 }
 ```
+
+
+

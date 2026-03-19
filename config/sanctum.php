@@ -45,11 +45,45 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | Token Expiration Best Practices (similar to Stripe):
+    | - User tokens (web/mobile): 30 days (43200 minutes)
+    | - API client credentials: 90 days (129600 minutes)
+    | - Short-lived tokens: 1 hour (60 minutes)
+    | - Long-lived tokens: 1 year (525600 minutes)
+    |
+    | Default: 10080 minutes (7 days) - Industry standard for API tokens
+    |
+    */
+
+    'expiration' => env('SANCTUM_EXPIRATION', 10080), // 7 days default
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Token Expiration
+    |--------------------------------------------------------------------------
+    |
+    | Expiration for user authentication tokens (login via email/password).
+    | These are typically used for web and mobile applications.
+    |
     | Default: 43200 minutes (30 days)
     |
     */
 
-    'expiration' => env('SANCTUM_EXPIRATION', 43200),
+    'user_token_expiration' => env('SANCTUM_USER_TOKEN_EXPIRATION', 43200),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Client Credentials Token Expiration
+    |--------------------------------------------------------------------------
+    |
+    | Expiration for OAuth client credentials tokens (client_id/client_secret).
+    | These are typically used for server-to-server API integrations.
+    |
+    | Default: 129600 minutes (90 days)
+    |
+    */
+
+    'client_token_expiration' => env('SANCTUM_CLIENT_TOKEN_EXPIRATION', 129600),
 
     /*
     |--------------------------------------------------------------------------

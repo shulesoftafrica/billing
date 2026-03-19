@@ -11,12 +11,25 @@ use Illuminate\Validation\Rule;
 class ProductController extends Controller
 {
     /**
+     * Helper method to find product by ID (numeric) or product_code (string)
+     */
+    private function findProduct(string $identifier)
+    {
+        return Product::where(function ($query) use ($identifier) {
+            if (is_numeric($identifier)) {
+                $query->where('id', $identifier);
+            }
+            $query->orWhere('product_code', $identifier);
+        })->first();
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'product_type' => 'integer|exists:product_types,id',
         ]);
         $product_type = $request->product_type ?? null;
@@ -72,10 +85,18 @@ class ProductController extends Controller
                 : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes));
 
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'product_type_id' => 'required|exists:product_types,id',
             'name' => [
                 'required',
+                'string',
+                'max:255',
+                Rule::unique('products')->where(function ($query) use ($request) {
+                    return $query->where('organization_id', $request->organization_id);
+                }),
+            ],
+            'product_code' => [
+                'nullable',
                 'string',
                 'max:255',
                 Rule::unique('products')->where(function ($query) use ($request) {
@@ -164,7 +185,8 @@ class ProductController extends Controller
      */
     public function show(string $id)
     {
-        $product = Product::with(['organization', 'productType', 'pricePlans'])->find($id);
+        // Find product by ID (if numeric) or by product_code (if string)
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
@@ -172,6 +194,9 @@ class ProductController extends Controller
                 'message' => 'Product not found'
             ], 404);
         }
+
+        // Load relationships
+        $product->load(['organization', 'productType', 'pricePlans']);
 
         return response()->json([
             'success' => true,
@@ -185,7 +210,8 @@ class ProductController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $product = Product::find($id);
+        // Find product by ID or product_code
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
@@ -195,7 +221,7 @@ class ProductController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'sometimes|required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'product_type_id' => 'sometimes|required|exists:product_types,id',
             'name' => [
                 'sometimes',
@@ -208,7 +234,18 @@ class ProductController extends Controller
                     return $query->where('organization_id', $organizationId);
                 })->ignore($product->id),
             ],
+            'product_code' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products')->where(function ($query) use ($request, $product) {
+                    $organizationId = $request->input('organization_id', $product->organization_id);
+
+                    return $query->where('organization_id', $organizationId);
+                })->ignore($product->id),
+            ],
             'description' => 'nullable|string',
+            'unit' => 'nullable|string|max:255',
             'status' => 'sometimes|required|in:active,inactive,archived',
         ]);
 
@@ -256,7 +293,8 @@ class ProductController extends Controller
      */
     public function destroy(string $id)
     {
-        $product = Product::find($id);
+        // Find product by ID or product_code
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
