@@ -31,10 +31,11 @@ class ProductController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'product_type' => 'integer|exists:product_types,id',
+            'active' => 'sometimes|boolean',
         ]);
         $product_type = $request->product_type ?? null;
         $name = $request->name ?? null;
-        $status = $request->status ?? null;
+        $active = $request->active ?? null;
 
         if ($validator->fails()) {
             return response()->json([
@@ -51,8 +52,8 @@ class ProductController extends Controller
         if ($name) {
             $productQuery->where('name', $name);
         }
-        if ($status) {
-            $productQuery->where('status', $status);
+        if ($active !== null) {
+            $productQuery->where('active', $active);
         }
         $products = $productQuery->get();
 
@@ -105,7 +106,7 @@ class ProductController extends Controller
             ],
             'description' => 'nullable|string',
             'unit' => 'nullable|string|max:255',
-            'status' => 'required|in:active,inactive,archived',
+            'active' => 'nullable|boolean',
             'price_plans' => $pricePlansRule,
             'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
             'price_plans.*.subscription_type' => $subscriptionTypeRule,
@@ -246,7 +247,7 @@ class ProductController extends Controller
             ],
             'description' => 'nullable|string',
             'unit' => 'nullable|string|max:255',
-            'status' => 'sometimes|required|in:active,inactive,archived',
+            'active' => 'sometimes|boolean',
         ]);
 
         if ($request->has('organization_id') && !$request->has('name')) {
