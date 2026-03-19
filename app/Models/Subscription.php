@@ -20,6 +20,11 @@ class Subscription extends Model
         'current_period_end',
         'previous_plan_id',
         'last_upgrade_proration',
+        'subscription_number',
+        'trial_ends_at',
+        'canceled_at',
+        'pause_starts_at',
+        'pause_ends_at',
     ];
 
     protected $casts = [
@@ -29,6 +34,10 @@ class Subscription extends Model
         'current_period_start' => 'date',
         'current_period_end' => 'date',
         'last_upgrade_proration' => 'decimal:2',
+        'trial_ends_at' => 'datetime',
+        'canceled_at' => 'datetime',
+        'pause_starts_at' => 'date',
+        'pause_ends_at' => 'date',
     ];
 
     public function customer(): BelongsTo

@@ -1379,9 +1379,26 @@ class SubscriptionService
                 ->lockForUpdate()
                 ->findOrFail($subscriptionId);
             
-            // Validate subscription is active
+            // If subscription is not active, create a new subscription instead of upgrading
             if ($subscription->status !== 'active') {
-                throw new \Exception('Only active subscriptions can be upgraded. Current status: ' . $subscription->status);
+                Log::info('Subscription not active, creating new subscription instead of upgrading', [
+                    'subscription_id' => $subscriptionId,
+                    'current_status' => $subscription->status,
+                    'new_price_plan_id' => $newPricePlanId,
+                ]);
+                
+                // Cancel the old subscription if it's pending or in trial
+                if (in_array($subscription->status, ['pending', 'trial', 'trialing'])) {
+                    $subscription->update(['status' => 'cancelled']);
+                }
+                
+                // Create new subscription with the desired plan
+                $invoice = $this->createSubscriptionsWithInvoice(
+                    $subscription->customer_id,
+                    [$newPricePlanId]
+                );
+                
+                return $invoice;
             }
             
             // Get new price plan
@@ -1442,9 +1459,45 @@ class SubscriptionService
                 ->lockForUpdate()
                 ->findOrFail($subscriptionId);
             
-            // Validate subscription is active
+            // If subscription is not active, create a new subscription instead of downgrading
             if ($subscription->status !== 'active') {
-                throw new \Exception('Only active subscriptions can be downgraded. Current status: ' . $subscription->status);
+                Log::info('Subscription not active, creating new subscription instead of downgrading', [
+                    'subscription_id' => $subscriptionId,
+                    'current_status' => $subscription->status,
+                    'new_price_plan_id' => $newPricePlanId,
+                ]);
+                
+                // Cancel the old subscription if it's pending or in trial
+                if (in_array($subscription->status, ['pending', 'trial', 'trialing'])) {
+                    $subscription->update(['status' => 'cancelled']);
+                }
+                
+                // Create new subscription with the desired plan
+                $invoice = $this->createSubscriptionsWithInvoice(
+                    $subscription->customer_id,
+                    [$newPricePlanId]
+                );
+                
+                // Get the newly created subscription
+                $newSubscription = Subscription::where('customer_id', $subscription->customer_id)
+                    ->where('price_plan_id', $newPricePlanId)
+                    ->where('status', 'pending')
+                    ->latest()
+                    ->first();
+                
+                return [
+                    'success' => true,
+                    'subscription' => $newSubscription->load(['customer', 'pricePlan']),
+                    'invoice' => $invoice,
+                    'credit_details' => [
+                        'credit_amount' => 0,
+                        'unused_days' => 0,
+                        'old_plan_daily_rate' => 0,
+                        'billing_cycle_days' => 0,
+                    ],
+                    'credit_applied' => false,
+                    'message' => 'New subscription created with selected plan',
+                ];
             }
             
             // Get new price plan
