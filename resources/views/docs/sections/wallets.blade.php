@@ -6,6 +6,7 @@
         <strong>📋 Workflow Overview:</strong><br>
         <ol>
             <li><strong>Setup Product:</strong> Create a usage product (product_type_id = 3) with a price plan (rate = price per unit)</li>
+            <li><strong>View Wallets:</strong> Get all wallet products to see available options and their price_plan_id</li>
             <li><strong>Customer Purchase:</strong> Create invoice using the price_plan_id (identifies product) and amount (total payment). System generates a wallet_id (UCN)</li>
             <li><strong>System Calculation:</strong> Quantity = amount ÷ rate (e.g., 50,000 TZS ÷ 50 TZS/SMS = 1,000 SMS)</li>
             <li><strong>Record Usage:</strong> Track consumption using the wallet_id (UCN) as customer uses the service (deducts from balance)</li>
@@ -94,7 +95,100 @@
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 class="section-heading">💳 Step 2: Create Wallet Top-Up Invoice</h3>
+    <h3 class="section-heading">� Step 2: Get All Wallets</h3>
+    <p>Retrieve all wallet products (product_type_id = 3) created for your organization. Use this to view available wallet types before creating invoices.</p>
+
+    <x-docs.endpoint
+        id="get-all-wallets"
+        method="GET"
+        url="/api/v1/wallets"
+        title="Get All Wallets"
+        description="List all wallet/usage products in your organization">
+        
+        <x-slot name="requestBody">
+            <x-docs.code-block language="json" label="query-parameters">
+{
+  "active": true  // Optional: Filter by active status
+}
+            </x-docs.code-block>
+            
+            <div class="notice-box notice-info">
+                <strong>💡 Tips:</strong> Use this endpoint to discover available wallet products and their price_plan_id values before creating invoices.
+            </div>
+        </x-slot>
+
+        <x-slot name="responses">
+            <div class="response-head">
+                <span class="response-title">Success Response</span>
+                <span class="status-badge status-2xx">200 OK</span>
+            </div>
+            <x-docs.code-block language="json">
+{
+  "success": true,
+  "message": "Wallets retrieved successfully",
+  "data": [
+    {
+      "id": 12,
+      "organization_id": 1,
+      "product_type_id": 3,
+      "name": "SMS Credits",
+      "product_code": "SMS-CREDITS",
+      "description": "Prepaid SMS credits for bulk messaging",
+      "unit": "SMS",
+      "active": true,
+      "created_at": "2026-03-20T10:30:00.000000Z",
+      "updated_at": "2026-03-20T10:30:00.000000Z",
+      "organization": {
+        "id": 1,
+        "name": "Acme Corporation"
+      },
+      "product_type": {
+        "id": 3,
+        "name": "Usage Product",
+        "description": "Usage-based or wallet product"
+      },
+      "price_plans": [
+        {
+          "id": 15,
+          "name": "SMS Credit Package",
+          "billing_type": "usage",
+          "billing_interval": null,
+          "amount": 0,
+          "rate": 50,
+          "currency_id": 1,
+          "active": true,
+          "created_at": "2026-03-20T10:30:00.000000Z"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "organization_id": 1,
+      "product_type_id": 3,
+      "name": "API Credits",
+      "product_code": "API-CREDITS",
+      "unit": "API_CALLS",
+      "active": true,
+      "price_plans": [
+        {
+          "id": 17,
+          "name": "API Credit Package",
+          "rate": 10,
+          "currency_id": 1
+        }
+      ]
+    }
+  ]
+}
+            </x-docs.code-block>
+
+            <div class="notice-box notice-success">
+                <strong>✅ Use Case:</strong> Before creating a wallet top-up invoice, call this endpoint to see available products and their price_plan_id values.
+            </div>
+        </x-slot>
+    </x-docs.endpoint>
+
+    <h3 class="section-heading">💳 Step 3: Create Wallet Top-Up Invoice</h3>
     <p>Create an invoice for customers to purchase wallet credits. The <strong>price_plan_id identifies the specific product</strong> (e.g., SMS vs API Calls vs Storage), and the system automatically calculates the quantity based on the amount paid.</p>
 
     <x-docs.endpoint
@@ -249,7 +343,7 @@
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 class="section-heading">📊 Step 3: Record Usage</h3>
+    <h3 class="section-heading">📊 Step 4: Record Usage</h3>
     <p>Track customer consumption by recording usage events. This deducts from their available balance.</p>
 
     <x-docs.endpoint
@@ -335,7 +429,7 @@
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 class="section-heading">💰 Step 4: Check Balance</h3>
+    <h3 class="section-heading">💰 Step 5: Check Balance</h3>
     <p>Get the current wallet balance using the wallet's unique control number (UCN).</p>
 
     <x-docs.endpoint
@@ -394,7 +488,7 @@ GET /api/v1/product-usages/UCN1234567890/balance
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 class="section-heading">📈 Step 5: Get Usage Report</h3>
+    <h3 class="section-heading">📈 Step 6: Get Usage Report</h3>
     <p>Retrieve comprehensive usage report for a customer across all products.</p>
 
     <x-docs.endpoint
@@ -454,7 +548,7 @@ GET /api/v1/product-usages/UCN1234567890/balance
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 class="section-heading">📜 Step 6: Get Usage History</h3>
+    <h3 class="section-heading">📜 Step 7: Get Usage History</h3>
     <p>View detailed transaction history showing all purchases and consumption.</p>
 
     <x-docs.endpoint
