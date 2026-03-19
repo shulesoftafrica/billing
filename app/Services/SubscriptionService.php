@@ -775,9 +775,9 @@ class SubscriptionService
     }
 
     /**
-     * Clear on-time product payment by validating total payments against invoiced amount
+     * Clear one-time and wallet product payment by validating total payments against invoiced amount
      * No subscription logic involved - purely handles payment allocation
-     * Processes all one-time products in the invoice
+     * Processes all one-time products (product_type_id = 1) and wallet products (product_type_id = 3) in the invoice
      *
      * @param int $invoice_id
      * @param int $customerId
@@ -792,21 +792,21 @@ class SubscriptionService
             // Get invoice with relationships to find one-time products
             $invoice = Invoice::with(['invoiceItems.pricePlan.product'])->where('status', '!=', 'cancelled')->findOrFail($invoice_id);
 
-            // Get all unique one-time products (product_type_id = 1) from invoice items
+            // Get all unique one-time products (product_type_id = 1) and wallet products (product_type_id = 3) from invoice items
             $oneTimeProducts = $invoice->invoiceItems
                 ->map(function ($item) {
                     return $item->pricePlan->product;
                 })
                 ->filter(function ($product) {
-                    return $product->product_type_id == 1;
+                    return $product->product_type_id == 1 || $product->product_type_id == 3;
                 })
                 ->unique('id')
                 ->values();
             if ($oneTimeProducts->isEmpty()) {
-                throw new \Exception('No one-time products found in invoice items');
+                throw new \Exception('No one-time products or wallet products found in invoice items');
             }
 
-            // Loop through each one-time product and clear payments
+            // Loop through each one-time/wallet product and clear payments
             foreach ($oneTimeProducts as $product) {
 
                 $productId = $product->id;
