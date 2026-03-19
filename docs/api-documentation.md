@@ -86,7 +86,6 @@ Use your user token from Step 1 to create API client credentials:
 **Request Body:**
 ```json
 {
-  "organization_id": 1,
   "name": "Production API Client",
   "environment": "live",
   "allowed_scopes": ["*"]
@@ -94,11 +93,12 @@ Use your user token from Step 1 to create API client credentials:
 ```
 
 **Parameters:**
-- `organization_id` (required): Your organization ID
 - `name` (required): Descriptive name for this client (e.g., "Production Server", "Mobile App")
 - `environment` (required): `test` for testing, `live` for production
 - `allowed_scopes` (optional): Array of scopes, use `["*"]` for full access
 - `expires_at` (optional): Expiration date in ISO 8601 format
+
+**🔒 Security Note:** The OAuth client is automatically created for your authenticated user's organization. You cannot create clients for other organizations.
 
 **Success Response:** `201 Created`
 ```json
@@ -207,7 +207,6 @@ curl -X POST https://api.yourbillingplatform.com/api/v1/oauth/clients \
   -H "Authorization: Bearer shulesoft_1|abc123xyz..." \
   -H "Content-Type: application/json" \
   -d '{
-    "organization_id": 1,
     "name": "Production API Client",
     "environment": "live",
     "allowed_scopes": ["*"]

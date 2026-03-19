@@ -1196,11 +1196,11 @@ Authorization: Bearer {YOUR_USER_TOKEN_FROM_STEP_1}
 Content-Type: application/json
 
 {
-  "organization_email": "your-org@example.com",
   "name": "Production API Client",
   "environment": "live",
   "allowed_scopes": ["*"]
 }</pre>
+                        <p class="text-muted small"><strong>🔒 Security:</strong> The client is automatically created for your organization. You cannot create clients for other organizations.</p>
                         <div class="alert">
                             <strong>⚠️ CRITICAL:</strong> Save your <code>client_id</code> and <code>client_secret</code> immediately! The <code>client_secret</code> is shown only once and cannot be retrieved again.
                         </div>

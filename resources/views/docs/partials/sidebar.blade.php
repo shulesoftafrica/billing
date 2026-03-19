@@ -202,17 +202,33 @@
         {{-- Wallets Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>💰 Wallets</span>
+                <span>💰 Wallets & Usage</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
-                <a href="#get-wallet-balance" class="nav-link">
-                    <span class="method-badge method-get">GET</span>
-                    <span>Get Wallet Balance</span>
+                <a href="#create-usage-product" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Create Usage Product</span>
                 </a>
-                <a href="#wallet-transactions" class="nav-link">
+                <a href="#create-wallet-invoice" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Create Wallet Invoice</span>
+                </a>
+                <a href="#record-usage" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Record Usage</span>
+                </a>
+                <a href="#get-usage-balance" class="nav-link">
                     <span class="method-badge method-get">GET</span>
-                    <span>Wallet Transactions</span>
+                    <span>Get Usage Balance</span>
+                </a>
+                <a href="#get-usage-report" class="nav-link">
+                    <span class="method-badge method-get">GET</span>
+                    <span>Get Usage Report</span>
+                </a>
+                <a href="#get-usage-history" class="nav-link">
+                    <span class="method-badge method-get">GET</span>
+                    <span>Get Usage History</span>
                 </a>
             </div>
         </div>

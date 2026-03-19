@@ -24,7 +24,7 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255',
             'password' => 'required|string|min:8|confirmed',
             'role' => 'nullable|string|in:admin,user,manager',
-            'sex' => 'nullable|string|in:male,female,other,m,f,M,F',
+            'sex' => 'nullable|string|in:male,female,other,m,f,o,M,F,O',
         ]);
 
         // Find organization by email
@@ -47,7 +47,7 @@ class AuthController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'] ?? 'user',
-            'sex' => $validated['sex'] ?? null,
+            'sex' => strtoupper(substr($validated['sex'] ?? 'O', 0, 1)), // Convert to single uppercase char (M/F/O)
         ]);
 
         // Get token expiration from config (30 days default for user tokens)

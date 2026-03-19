@@ -1044,7 +1044,12 @@ class InvoiceController extends Controller
                 'organization_id' => $invoice->customer->organization_id,
             ],
 
-            'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice, $controlNumbersMap) {
+            'price_plans' => $invoice->invoiceItems
+                ->filter(function ($item) {
+                    // Skip items with null pricePlan or null product
+                    return $item->pricePlan !== null && $item->pricePlan->product !== null;
+                })
+                ->map(function ($item) use ($invoice, $controlNumbersMap) {
                 $product = $item->pricePlan->product;
                 $customerId = $invoice->customer->id;
                 $mapKey = $this->controlNumbersMapKey($customerId, $product->id);
@@ -1098,7 +1103,10 @@ class InvoiceController extends Controller
             })->unique('id')->values(),
             'subscriptions' => $invoice->invoiceItems
                 ->filter(function ($item) {
-                    return $item->subscription !== null;
+                    // Skip items without subscription, pricePlan, or product
+                    return $item->subscription !== null 
+                        && $item->subscription->pricePlan !== null
+                        && $item->subscription->pricePlan->product !== null;
                 })
                 ->map(function ($item) {
                     $subscription = $item->subscription;

@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Validation\ValidationException;
 use App\Http\Middleware\HandleCors;
 use App\Http\Middleware\AppAccessTokenMiddleware;
 use App\Http\Middleware\MultiAuthMiddleware;
@@ -32,6 +33,21 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(HandleCors::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Force JSON responses for all API routes - no HTML redirects
+        $exceptions->shouldRenderJsonWhen(function (Request $request) {
+            return $request->is('api/*');
+        });
+
+        // Return JSON response for validation errors
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+        });
+
         // Return JSON response for unauthenticated API requests
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('api/*')) {

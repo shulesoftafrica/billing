@@ -11,6 +11,19 @@ use Illuminate\Validation\Rule;
 class ProductController extends Controller
 {
     /**
+     * Helper method to find product by ID (numeric) or product_code (string)
+     */
+    private function findProduct(string $identifier)
+    {
+        return Product::where(function ($query) use ($identifier) {
+            if (is_numeric($identifier)) {
+                $query->where('id', $identifier);
+            }
+            $query->orWhere('product_code', $identifier);
+        })->first();
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
@@ -172,11 +185,8 @@ class ProductController extends Controller
      */
     public function show(string $id)
     {
-        // Try to find by ID first, then by product_code
-        $product = Product::with(['organization', 'productType', 'pricePlans'])
-            ->where('id', $id)
-            ->orWhere('product_code', $id)
-            ->first();
+        // Find product by ID (if numeric) or by product_code (if string)
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
@@ -184,6 +194,9 @@ class ProductController extends Controller
                 'message' => 'Product not found'
             ], 404);
         }
+
+        // Load relationships
+        $product->load(['organization', 'productType', 'pricePlans']);
 
         return response()->json([
             'success' => true,
@@ -197,7 +210,8 @@ class ProductController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $product = Product::find($id);
+        // Find product by ID or product_code
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
@@ -279,7 +293,8 @@ class ProductController extends Controller
      */
     public function destroy(string $id)
     {
-        $product = Product::find($id);
+        // Find product by ID or product_code
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
