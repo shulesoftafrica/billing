@@ -3712,7 +3712,116 @@ Credit Amount = Unused Value - New Plan Cost
 
 ## Wallets
 
-### Get All Wallets
+**Wallet Workflow Overview:**
+1. **Create Wallet Product** - Define the wallet type (one-time setup)
+2. **Get All Wallets** - View all wallet products in your organization
+3. **Create Invoice** - Fund a wallet by creating an invoice (generates UCN/wallet_id)
+4. **Record Usage** - Track customer consumption using the wallet
+5. **Check Balance** - Get current balance using the wallet's UCN
+6. **View Reports** - Get usage history and reports
+
+---
+
+### Step 1: Create Wallet Product
+
+**Description:** Create a new wallet product definition. This is a one-time setup that defines the type of wallet. Price plans are optional during creation.
+
+**Method:** `POST`
+**URL:** `/api/v1/products`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body (Without Price Plans - Recommended):**
+```json
+{
+  "product_type_id": 3,
+  "name": "ZAN Credits",
+  "product_code": "ZAN-CREDITS",
+  "description": "Prepaid Meta credits for ZAN messaging",
+  "unit": "ZAN-CREDITS",
+  "active": true
+}
+```
+
+**Request Body (With Price Plans - Optional):**
+```json
+{
+  "product_type_id": 3,
+  "name": "ZAN Credits",
+  "product_code": "ZAN-CREDITS",
+  "description": "Prepaid Meta credits for ZAN messaging",
+  "unit": "ZAN-CREDITS",
+  "active": true,
+  "price_plans": [
+    {
+      "name": "ZAN Credit Package",
+      "currency_id": 1,
+      "rate": 215
+    }
+  ]
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Product created successfully",
+  "data": {
+    "id": 12,
+    "organization_id": 1,
+    "product_type_id": 3,
+    "name": "ZAN Credits",
+    "product_code": "ZAN-CREDITS",
+    "description": "Prepaid Meta credits for ZAN messaging",
+    "unit": "ZAN-CREDITS",
+    "active": true,
+    "created_at": "2026-03-20T10:30:00.000000Z",
+    "updated_at": "2026-03-20T10:30:00.000000Z",
+    "organization": {
+      "id": 1,
+      "name": "Acme Corporation"
+    },
+    "product_type": {
+      "id": 3,
+      "name": "Usage Product",
+      "description": "Usage-based or wallet product"
+    },
+    "price_plans": []
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "name": ["The name has already been taken for this organization."],
+    "product_type_id": ["The selected product type id is invalid."]
+  }
+}
+```
+
+---
+
+### Step 2: Get All Wallets
 
 **Description:** Retrieve all wallet products (product_type_id = 3) for your organization. Wallets are usage-based products that customers can top up and consume.
 
@@ -3805,12 +3914,12 @@ Credit Amount = Unused Value - New Plan Cost
 
 ---
 
-### Create Wallet Product
+### Step 3: Create Wallet Top-Up Invoice
 
-**Description:** Create a new wallet product. Wallets can be created with or without price plans. Price plans are typically added when creating invoices to fund the wallet.
+**Description:** Fund a wallet by creating an invoice. When the invoice is paid, the customer receives a UCN (Universal Control Number) which serves as their wallet_id for tracking usage and balance.
 
 **Method:** `POST`
-**URL:** `/api/v1/products`
+**URL:** `/api/v1/invoices`
 
 **Required Headers:**
 | Key | Value |
@@ -3819,96 +3928,72 @@ Credit Amount = Unused Value - New Plan Cost
 | Content-Type | application/json |
 | Accept | application/json |
 
-**Request Body (Without Price Plans):**
+**Request Body:**
 ```json
 {
-  "product_type_id": 3,
-  "name": "ZAN Credits",
-  "product_code": "ZAN-CREDITS",
-  "description": "Prepaid Meta credits for ZAN messaging",
-  "unit": "ZAN-CREDITS",
-  "active": true
+  "organization_id": 1,
+  "customer": {
+    "name": "Tech Startup Inc",
+    "email": "billing@techstartup.com",
+    "phone": "+255734567890"
+  },
+  "products": [
+    {
+      "price_plan_id": 32,
+      "amount": 50000
+    }
+  ],
+  "description": "SMS Credits Top-Up - 1000 SMS @ TZS 50 each",
+  "currency": "TZS"
 }
 ```
 
-**Request Body (With Price Plans):**
-```json
-{
-  "product_type_id": 3,
-  "name": "ZAN Credits",
-  "product_code": "ZAN-CREDITS",
-  "description": "Prepaid Meta credits for ZAN messaging",
-  "unit": "ZAN-CREDITS",
-  "active": true,
-  "price_plans": [
-    {
-      "name": "ZAN Credit Package",
-      "currency_id": 1,
-      "rate": 215
-    }
-  ]
-}
-```
+**Note:** The `price_plan_id` should reference a price plan associated with your wallet product (product_type_id = 3).
 
 **Success Response:** `201 Created`
 ```json
 {
   "success": true,
-  "message": "Product created successfully",
+  "message": "Invoice created successfully",
   "data": {
-    "id": 12,
-    "organization_id": 1,
-    "product_type_id": 3,
-    "name": "ZAN Credits",
-    "product_code": "ZAN-CREDITS",
-    "description": "Prepaid Meta credits for ZAN messaging",
-    "unit": "ZAN-CREDITS",
-    "active": true,
-    "created_at": "2026-03-20T10:30:00.000000Z",
-    "updated_at": "2026-03-20T10:30:00.000000Z",
-    "organization": {
-      "id": 1,
-      "name": "Acme Corporation"
-    },
-    "product_type": {
-      "id": 3,
-      "name": "Usage Product",
-      "description": "Usage-based or wallet product"
-    },
-    "price_plans": []
+    "invoice": {
+      "id": 5,
+      "invoice_number": "INV2026031900002",
+      "customer_id": 10,
+      "currency": "TZS",
+      "status": "issued",
+      "subtotal": 50000.00,
+      "tax_total": 0.00,
+      "total": 50000.00,
+      "due_date": "2026-03-19",
+      "issued_at": "2026-03-19T21:55:39.000000Z",
+      "customer": {
+        "id": 10,
+        "name": "Tech Startup Inc",
+        "email": "billing@techstartup.com",
+        "phone": "+255734567890"
+      },
+      "payment_details": [
+        {
+          "gateway_id": 2,
+          "gateway_name": "Universal Control Number",
+          "control_number": "992101234567",
+          "wallet_id": "992101234567",
+          "expires_at": "2026-03-26T21:55:39.000000Z"
+        }
+      ]
+    }
   }
 }
 ```
 
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": {
-    "name": ["The name has already been taken for this organization."],
-    "product_type_id": ["The selected product type id is invalid."]
-  }
-}
-```
+**Important:** The `control_number` returned in `payment_details` is the **wallet_id** used for tracking usage and checking balance.
 
 ---
 
-### Record Product Usage
+### Step 4: Record Product Usage
 
-**Description:** Usage-based billing is a two-step process: first record usage throughout the billing period, then create invoices based on accumulated usage.
-
-#### Step 1: Record Product Usage
+**Description:** Record customer usage/consumption from their wallet. Each usage is deducted from the wallet balance.
 **Method:** `POST`
 **URL:** `/api/v1/product-usage`
 
@@ -3982,9 +4067,95 @@ Credit Amount = Unused Value - New Plan Cost
 }
 ```
 
-#### Step 2: Get Usage Report
+---
+
+### Step 5: Check Wallet Balance
+
+**Description:** Get the current wallet balance using the wallet's unique control number (UCN/wallet_id) received from the invoice payment.
+
 **Method:** `GET`
-**URL:** `/api/v1/product-usage/report/{customer_id}`
+**URL:** `/api/v1/product-usages/{wallet_id}/balance`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| wallet_id | string | The UCN/control_number from the wallet top-up invoice |
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Usage balance retrieved successfully",
+  "data": {
+    "wallet_id": "992101234567",
+    "customer": {
+      "id": 10,
+      "name": "Tech Startup Inc",
+      "email": "billing@techstartup.com",
+      "phone": "+255734567890"
+    },
+    "product": {
+      "id": 12,
+      "name": "ZAN Credits",
+      "description": "Prepaid Meta credits for ZAN messaging",
+      "unit": "ZAN-CREDITS"
+    },
+    "usage": {
+      "total_purchased": 1000,
+      "total_used": 350,
+      "balance": 650
+    }
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`404 Not Found`
+```json
+{
+  "success": false,
+  "message": "Wallet not found"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Invalid wallet: missing customer or product association"
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+---
+
+### Step 6: Get Usage Report by Customer
+
+**Description:** Retrieve comprehensive usage report for a customer across all products.
+
+**Method:** `GET`
+**URL:** `/api/v1/product-usages/{customer_id}/report`
 
 **Description:** Retrieve accumulated usage data for a customer to calculate charges.
 
@@ -4060,107 +4231,6 @@ Credit Amount = Unused Value - New Plan Cost
 }
 ```
 
-#### Step 3: Create Invoice for Usage
-**Method:** `POST`
-**URL:** `/api/v1/invoices`
-
-**Description:** Create an invoice based on the usage data. Calculate the amount based on your pricing model (e.g., price per API call, per GB).
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
-| Content-Type | application/json |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{
-  "organization_id": 1,
-  "customer": {
-    "name": "Tech Startup Inc",
-    "email": "billing@techstartup.com",
-    "phone": "+255734567890"
-  },
-  "products": [
-    {
-      "price_plan_id": 15,
-      "amount": 45000
-    }
-  ],
-  "description": "API Usage - 45,000 calls @ TZS 1 per call",
-  "currency": "TZS",
-  "status": "issued"
-}
-```
-
-**Success Response:** `201 Created`
-```json
-{
-  "success": true,
-  "message": "Invoice created successfully",
-  "data": {
-    "invoice": {
-      "id": 125,
-      "invoice_number": "INV-2026-00125",
-      "customer_id": 45,
-      "currency": "TZS",
-      "status": "issued",
-      "description": "API Usage - 45,000 calls @ TZS 1 per call",
-      "subtotal": 45000,
-      "tax_total": 0,
-      "total": 45000,
-      "issued_at": "2026-02-26T12:30:00.000000Z",
-      "items": [
-        {
-          "id": 458,
-          "price_plan_id": 15,
-          "product_name": "API Usage Charges",
-          "quantity": 1,
-          "unit_price": 45000,
-          "total": 45000,
-          "metadata": {
-            "usage_period": "2026-02-01 to 2026-02-28",
-            "total_calls": 45000,
-            "rate_per_call": 1
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
-**Usage-Based Billing Pattern:**
-Record usage throughout the billing period → Retrieve usage report → Calculate charges → Create invoice
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "success": false,
-  "errors": {
-    "products.0.amount": ["The products.0.amount must be at least 0."]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
 ---
 
 ### Record Product Usage
@@ -4225,104 +4295,12 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-### Get Product Usage/Wallet balance
-**Method:** `GET`
-**URL:** `/api/v1/product-usages/balance`
+---
 
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
-| Accept | application/json |
+### Step 7: Get Usage History
 
-**Request Body:**
-```json
-{
-  "customer_id": "sample",
-  "product_id": "sample"
-}
-```
+**Description:** View detailed transaction history showing all purchases and consumption for a specific product and customer.
 
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`422 Unprocessable Entity`
-```json
-{
-  "errors": {
-    "customer_id": [
-      "The customer id field is invalid."
-    ],
-    "product_id": [
-      "The product id field is invalid."
-    ]
-  }
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Get Product Usage/Wallet Report
-**Method:** `GET`
-**URL:** `/api/v1/product-usages/{customer_id}/report`
-
-**Required Headers:**
-| Key | Value |
-|-----|-------|
-| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
-| Accept | application/json |
-
-**Request Body:**
-```json
-{}
-```
-
-**Success Response:** `200 OK`
-```json
-{
-  "success": true,
-  "data": {}
-}
-```
-
-**Error Responses:**
-
-`401 Unauthorized`
-```json
-{
-  "message": "Unauthenticated",
-  "error": "invalid_access_token"
-}
-```
-
-`429 Too Many Requests`
-```json
-{
-  "message": "Too Many Attempts."
-}
-```
-
-### Get Product Usage/Wallet History
 **Method:** `GET`
 **URL:** `/api/v1/product-usages/{customer_id}/{product_id}/history`
 
