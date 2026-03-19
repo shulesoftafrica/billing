@@ -108,10 +108,10 @@ class ProductController extends Controller
             'unit' => 'nullable|string|max:255',
             'active' => 'nullable|boolean',
             'price_plans' => $pricePlansRule,
-            'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
+            'price_plans.*.name' => 'required|string|max:255',
             'price_plans.*.subscription_type' => $subscriptionTypeRule,
-            'price_plans.*.amount' => 'required_if:price_plans,!=null|numeric|min:0',
-            'price_plans.*.currency_id' => 'required_if:price_plans,!=null|integer|exists:currencies,id',
+            'price_plans.*.amount' => 'required|numeric|min:0',
+            'price_plans.*.currency_id' => 'required|integer|exists:currencies,id',
             'price_plans.*.rate' => 'nullable|integer|min:1',
         ]);
 
@@ -162,6 +162,11 @@ class ProductController extends Controller
             } else {
                 // Create provided price plans
                 foreach ($pricePlans as $plan) {
+                    // Ensure amount is set (required field)
+                    if (!isset($plan['amount'])) {
+                        $plan['amount'] = 0;
+                    }
+                    
                     // Map product_type_id to billing_type
                     if ($productTypeId == 1) {
                         $plan['billing_type'] = 'one_time';
