@@ -416,44 +416,53 @@ class InvoiceController extends Controller
 
             DB::commit();
 
+            // Process payment gateway references synchronously to include URLs in response
             if ($totalGatewayJobs > 0) {
                 foreach ($gatewayJobs as $jobData) {
                     $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
+                    $product = Product::find($jobData['product_id']);
+                    $orgGateway = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
+                        ->find($jobData['organization_gateway_id']);
+
+                    if (!$product || !$orgGateway) {
+                        Log::warning('Skipping payment reference due to missing product/gateway', [
+                            'invoice_id' => $invoice->id,
+                            'product_id' => $jobData['product_id'],
+                            'organization_gateway_id' => $jobData['organization_gateway_id'],
+                        ]);
+                        continue;
+                    }
+
+                    $mockRequest = Request::create('/', 'POST', [
+                        'success_url' => $successUrl,
+                        'tx_ref' => $request->input('tx_ref'),
+                        'redirect_url' => $request->input('redirect_url'),
+                        'customizations' => $request->input('customizations', []),
+                        'meta' => $request->input('meta', []),
+                    ]);
 
                     if ($jobData['gateway_name'] === 'universal control number') {
-                        CreateEcobankReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
+                        $this->createControlNumber(
+                            $orgGateway->merchants->first(),
+                            $product,
+                            $customer,
+                            $orgGateway
                         );
                         continue;
                     }
 
                     if ($jobData['gateway_name'] === 'flutterwave') {
-                        CreateFlutterwaveReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
-                        );
+                        $this->createFlutterWaveReference($invoice, $product, $customer, $mockRequest, $orgGateway);
                         continue;
                     }
 
                     if ($jobData['gateway_name'] === 'stripe') {
-                        CreateStripeReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
-                        );
+                        $this->createStripeReference($invoice, $product, $customer, $mockRequest, $orgGateway);
                     }
                 }
             }
 
+            // Reload invoice with all relationships including newly created payment references
             $invoice->load([
                 'customer',
                 'payments',
@@ -1701,7 +1710,7 @@ class InvoiceController extends Controller
             $subscription = Subscription::with(['customer', 'pricePlan'])
                 ->find($request->input('subscription_id'));
 
-            // Dispatch payment gateway jobs
+            // Process payment gateway references synchronously
             $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
             $cancelUrl = $request->input('cancel_url') ?: config('app.url') . '/payment/cancel';
 
@@ -1716,39 +1725,33 @@ class InvoiceController extends Controller
                     ->where('status', 'active')
                     ->get();
 
+                $mockRequest = Request::create('/', 'POST', [
+                    'success_url' => $successUrl,
+                    'redirect_url' => $successUrl,
+                    'cancel_url' => $cancelUrl,
+                    'customizations' => $request->input('customizations', []),
+                    'meta' => $request->input('meta', []),
+                ]);
+
                 foreach ($organizationGateways as $orgGateway) {
                     $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
 
-                        if ($gatewayName === 'universal control number') {
-                            CreateEcobankReferenceJob::dispatch(
-                                $invoice->id,
-                                $product->id,
-                                $customer->id,
-                                $orgGateway->id,
-                                $successUrl
-                            );
-                        } elseif ($gatewayName === 'flutterwave') {
-                            CreateFlutterwaveReferenceJob::dispatch(
-                                $invoice->id,
-                                $product->id,
-                                $customer->id,
-                                $orgGateway->id,
-                                $successUrl,
-                                $cancelUrl
-                            );
-                        } elseif ($gatewayName === 'stripe') {
-                            CreateStripeReferenceJob::dispatch(
-                                $invoice->id,
-                                $product->id,
-                                $customer->id,
-                                $orgGateway->id,
-                                $successUrl
-                            );
-                        }
+                    if ($gatewayName === 'universal control number') {
+                        $this->createControlNumber(
+                            $orgGateway->merchants->first(),
+                            $product,
+                            $customer,
+                            $orgGateway
+                        );
+                    } elseif ($gatewayName === 'flutterwave') {
+                        $this->createFlutterWaveReference($invoice, $product, $customer, $mockRequest, $orgGateway);
+                    } elseif ($gatewayName === 'stripe') {
+                        $this->createStripeReference($invoice, $product, $customer, $mockRequest, $orgGateway);
+                    }
                 }
             }
 
-            // Reload invoice with all relationships for payment details
+            // Reload invoice with all relationships including newly created payment references
             $invoice->load([
                 'customer',
                 'payments',

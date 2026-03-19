@@ -9,6 +9,7 @@ use App\Models\PricePlan;
 use App\Jobs\Payments\CreateEcobankReferenceJob;
 use App\Jobs\Payments\CreateFlutterwaveReferenceJob;
 use App\Jobs\Payments\CreateStripeReferenceJob;
+use App\Http\Controllers\Api\InvoiceController;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -72,7 +73,7 @@ class SubscriptionController extends Controller
                 PricePlan::whereIn('id', $planIds)->pluck('product_id')
             )->get();
 
-            // Dispatch jobs to generate control numbers and payment links
+            // Process payment gateway references synchronously
             $gatewayJobs = [];
             foreach ($products as $product) {
                 foreach ($organizationGateways as $orgGateway) {
@@ -92,39 +93,42 @@ class SubscriptionController extends Controller
                 }
             }
 
+            // Create payment references synchronously to include URLs in response
+            $invoiceController = app(InvoiceController::class);
             if (count($gatewayJobs) > 0) {
                 foreach ($gatewayJobs as $jobData) {
                     $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
+                    $product = Product::find($jobData['product_id']);
+                    $orgGateway = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
+                        ->find($jobData['organization_gateway_id']);
+
+                    if (!$product || !$orgGateway) {
+                        continue;
+                    }
+
+                    $mockRequest = Request::create('/', 'POST', [
+                        'success_url' => $successUrl,
+                        'redirect_url' => $successUrl,
+                        'customizations' => $request->input('customizations', []),
+                        'meta' => $request->input('meta', []),
+                    ]);
 
                     if ($jobData['gateway_name'] === 'universal control number') {
-                        CreateEcobankReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
+                        $invoiceController->createControlNumber(
+                            $orgGateway->merchants->first(),
+                            $product,
+                            $customer,
+                            $orgGateway
                         );
                     } elseif ($jobData['gateway_name'] === 'flutterwave') {
-                        CreateFlutterwaveReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
-                        );
+                        $invoiceController->createFlutterWaveReference($invoice, $product, $customer, $mockRequest, $orgGateway);
                     } elseif ($jobData['gateway_name'] === 'stripe') {
-                        CreateStripeReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
-                        );
+                        $invoiceController->createStripeReference($invoice, $product, $customer, $mockRequest, $orgGateway);
                     }
                 }
             }
 
-            // Load full relationships for comprehensive response
+            // Load full relationships for comprehensive response including newly created payment references
             $invoice->load([
                 'customer',
                 'invoiceItems.pricePlan.product',
