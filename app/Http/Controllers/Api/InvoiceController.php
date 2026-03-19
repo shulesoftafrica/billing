@@ -239,8 +239,9 @@ class InvoiceController extends Controller
                 $shouldCreateInvoiceItem = true;
                 $subscription = null;
 
-                // Check if product is not a one-time product (product_type_id != 1)
-                if ($product->product_type_id != 1) {
+                // Check if product is not a one-time product (product_type_id != 1) and not a wallet product (product_type_id != 3)
+                // Wallet products (top-ups) should always create new invoices regardless of pending subscriptions
+                if ($product->product_type_id != 1 && $product->product_type_id != 3) {
                     // Check if subscription already exists with pending status
                     $existingSubscription = Subscription::where('customer_id', $customer->id)
                         ->where('price_plan_id', $pricePlan->id)
@@ -274,13 +275,15 @@ class InvoiceController extends Controller
                 if ($shouldCreateInvoiceItem) {
                     $invoiceItems[] = [
                         'price_plan_id' => $pricePlan->id,
-                        'subscription_id' => ($product->product_type_id != 1) ? ($subscription->id ?? null) : null,
+                        // Only recurring products (product_type_id == 2) should have subscription_id
+                        // One-time (1) and wallet (3) products don't need subscriptions
+                        'subscription_id' => ($product->product_type_id == 2) ? ($subscription->id ?? null) : null,
                         'quantity' => 1,
                         'unit_price' => $productData['amount'],
                         'total' => $productData['amount'],
                     ];
-                    // filter onetime product
-                    if ($product->product_type_id == 1) {
+                    // filter onetime product and wallet product  
+                    if ($product->product_type_id == 1 || $product->product_type_id == 3) {
                         $oneTimeInvoiceItems[$pricePlan->id] = [
                             'amount' =>  $productData['amount']
                         ];
