@@ -110,6 +110,9 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
     // Customer subscriptions routes
     Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
 
+    // Wallets routes
+    Route::get('wallets', [ProductController::class, 'wallets']);
+
     // Product usage routes (Wallets)
     Route::post('product-usages', [ProductUsageController::class, 'store']);
     Route::get('product-usages/{wallet_id}/balance', [ProductUsageController::class, 'getBalance']);

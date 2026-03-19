@@ -3712,7 +3712,199 @@ Credit Amount = Unused Value - New Plan Cost
 
 ## Wallets
 
-### Create Wallet
+### Get All Wallets
+
+**Description:** Retrieve all wallet products (product_type_id = 3) for your organization. Wallets are usage-based products that customers can top up and consume.
+
+**Method:** `GET`
+**URL:** `/api/v1/wallets`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Query Parameters (Optional):**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| active | boolean | Filter by active status (true/false) |
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Wallets retrieved successfully",
+  "data": [
+    {
+      "id": 12,
+      "organization_id": 1,
+      "product_type_id": 3,
+      "name": "ZAN Credits",
+      "product_code": "ZAN-CREDITS",
+      "description": "Prepaid Meta credits for ZAN messaging",
+      "unit": "ZAN-CREDITS",
+      "active": true,
+      "created_at": "2026-03-20T10:30:00.000000Z",
+      "updated_at": "2026-03-20T10:30:00.000000Z",
+      "organization": {
+        "id": 1,
+        "name": "Acme Corporation"
+      },
+      "product_type": {
+        "id": 3,
+        "name": "Usage Product",
+        "description": "Usage-based or wallet product"
+      },
+      "price_plans": [
+        {
+          "id": 29,
+          "name": "ZAN Credit Package",
+          "billing_type": "usage",
+          "billing_interval": null,
+          "amount": 0,
+          "rate": 215,
+          "currency_id": 1,
+          "active": true,
+          "created_at": "2026-03-20T10:30:00.000000Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "active": ["The active field must be true or false."]
+  }
+}
+```
+
+`429 Too Many Requests`
+```json
+{
+  "message": "Too Many Attempts."
+}
+```
+
+---
+
+### Create Wallet Product
+
+**Description:** Create a new wallet product. Wallets can be created with or without price plans. Price plans are typically added when creating invoices to fund the wallet.
+
+**Method:** `POST`
+**URL:** `/api/v1/products`
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**Request Body (Without Price Plans):**
+```json
+{
+  "product_type_id": 3,
+  "name": "ZAN Credits",
+  "product_code": "ZAN-CREDITS",
+  "description": "Prepaid Meta credits for ZAN messaging",
+  "unit": "ZAN-CREDITS",
+  "active": true
+}
+```
+
+**Request Body (With Price Plans):**
+```json
+{
+  "product_type_id": 3,
+  "name": "ZAN Credits",
+  "product_code": "ZAN-CREDITS",
+  "description": "Prepaid Meta credits for ZAN messaging",
+  "unit": "ZAN-CREDITS",
+  "active": true,
+  "price_plans": [
+    {
+      "name": "ZAN Credit Package",
+      "currency_id": 1,
+      "rate": 215
+    }
+  ]
+}
+```
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Product created successfully",
+  "data": {
+    "id": 12,
+    "organization_id": 1,
+    "product_type_id": 3,
+    "name": "ZAN Credits",
+    "product_code": "ZAN-CREDITS",
+    "description": "Prepaid Meta credits for ZAN messaging",
+    "unit": "ZAN-CREDITS",
+    "active": true,
+    "created_at": "2026-03-20T10:30:00.000000Z",
+    "updated_at": "2026-03-20T10:30:00.000000Z",
+    "organization": {
+      "id": 1,
+      "name": "Acme Corporation"
+    },
+    "product_type": {
+      "id": 3,
+      "name": "Usage Product",
+      "description": "Usage-based or wallet product"
+    },
+    "price_plans": []
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "name": ["The name has already been taken for this organization."],
+    "product_type_id": ["The selected product type id is invalid."]
+  }
+}
+```
+
+---
+
+### Record Product Usage
 
 **Description:** Usage-based billing is a two-step process: first record usage throughout the billing period, then create invoices based on accumulated usage.
 

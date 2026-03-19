@@ -329,6 +329,43 @@ class ProductController extends Controller
     }
 
     /**
+     * Get all wallet products (product_type_id = 3) for the authenticated organization
+     */
+    public function wallets(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
+            'active' => 'sometimes|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Get wallet products (product_type_id = 3)
+        $walletsQuery = Product::with(['organization', 'productType', 'pricePlans'])
+            ->where('organization_id', $request->organization_id)
+            ->where('product_type_id', 3); // 3 = Usage/Wallet type
+
+        // Optional filter by active status
+        if ($request->has('active')) {
+            $walletsQuery->where('active', $request->active);
+        }
+
+        $wallets = $walletsQuery->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Wallets retrieved successfully',
+            'data' => $wallets
+        ], 200);
+    }
+
+    /**
      * Remove the specified resource from storage.
      */
     public function destroy(string $id)
