@@ -85,6 +85,9 @@ class ProductController extends Controller
                 ? 'nullable|in:' . implode(',', $validSubscriptionTypes)
                 : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes));
 
+        // Amount is optional for product_type_id = 3 (usage/wallet products), required for others
+        $amountRule = $productTypeId == 3 ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
+
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'product_type_id' => 'required|exists:product_types,id',
@@ -110,9 +113,10 @@ class ProductController extends Controller
             'price_plans' => $pricePlansRule,
             'price_plans.*.name' => 'required|string|max:255',
             'price_plans.*.subscription_type' => $subscriptionTypeRule,
-            'price_plans.*.amount' => 'required|numeric|min:0',
+            'price_plans.*.amount' => $amountRule,
             'price_plans.*.currency_id' => 'required|integer|exists:currencies,id',
             'price_plans.*.rate' => 'nullable|integer|min:1',
+            'price_plans.*.active' => 'nullable|boolean',
         ]);
 
         // Additional validation: subscription_type not allowed for product_type_id = 1
@@ -158,6 +162,7 @@ class ProductController extends Controller
                     'subscription_type' => null,
                     'amount' => 0,
                     'currency_id' => $defaultCurrencyId,
+                    'active' => true,
                 ]);
             } else {
                 // Create provided price plans
@@ -165,6 +170,11 @@ class ProductController extends Controller
                     // Ensure amount is set (required field)
                     if (!isset($plan['amount'])) {
                         $plan['amount'] = 0;
+                    }
+                    
+                    // Ensure active is set (default to true)
+                    if (!isset($plan['active'])) {
+                        $plan['active'] = true;
                     }
                     
                     // Map product_type_id to billing_type

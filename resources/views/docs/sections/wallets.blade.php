@@ -2,9 +2,9 @@
     <h2>💰 Wallets & Usage-Based Billing</h2>
     <p>Manage usage-based products with wallet/credit systems. This section covers pay-per-use billing for services like API calls, SMS credits, storage, bandwidth, and other consumable resources.</p>
 
-    <div class="alert alert-info" style="background: #e8f4fd; border-left: 4px solid #2196F3; padding: 15px; margin: 20px 0; border-radius: 4px;">
+    <div class="alert alert-info">
         <strong>📋 Workflow Overview:</strong><br>
-        <ol style="margin: 10px 0 0 20px; line-height: 1.8;">
+        <ol>
             <li><strong>Setup Product:</strong> Create a usage product (product_type_id = 3) with a price plan (rate = price per unit)</li>
             <li><strong>Customer Purchase:</strong> Create invoice using the price_plan_id (identifies product) and amount (total payment). System generates a wallet_id (UCN)</li>
             <li><strong>System Calculation:</strong> Quantity = amount ÷ rate (e.g., 50,000 TZS ÷ 50 TZS/SMS = 1,000 SMS)</li>
@@ -13,9 +13,9 @@
         </ol>
     </div>
 
-    <div class="alert alert-success" style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0; border-radius: 4px;">
+    <div class="alert alert-success">
         <strong>🎯 Key Concept - Product Identification:</strong><br>
-        <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+        <ul>
             <li>Each <code>price_plan_id</code> is linked to a specific product (SMS, API Calls, Storage, etc.)</li>
             <li>Different products have different price plans with different rates</li>
             <li>Example: price_plan_id 15 = SMS product (50 TZS/SMS), price_plan_id 17 = API product (10 TZS/call)</li>
@@ -23,7 +23,7 @@
         </ul>
     </div>
 
-    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">📦 Step 1: Create Usage Product</h3>
+    <h3 class="section-heading">📦 Step 1: Create Usage Product</h3>
     <p>First, create a product with <code>product_type_id = 3</code> (Usage Product) to enable wallet/usage-based billing.</p>
 
     <x-docs.endpoint
@@ -53,7 +53,7 @@
 }
             </x-docs.code-block>
             
-            <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px;">
+            <div class="notice-box notice-warning">
                 <strong>⚠️ Important:</strong> Set <code>product_type_id = 3</code> to enable usage-based billing. This allows the system to track purchases and consumption separately.
             </div>
         </x-slot>
@@ -94,7 +94,7 @@
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">💳 Step 2: Create Wallet Top-Up Invoice</h3>
+    <h3 class="section-heading">💳 Step 2: Create Wallet Top-Up Invoice</h3>
     <p>Create an invoice for customers to purchase wallet credits. The <strong>price_plan_id identifies the specific product</strong> (e.g., SMS vs API Calls vs Storage), and the system automatically calculates the quantity based on the amount paid.</p>
 
     <x-docs.endpoint
@@ -125,7 +125,7 @@
 }
             </x-docs.code-block>
 
-            <div style="margin-top: 15px; padding: 12px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px;">
+            <div class="notice-box notice-warning">
                 <strong>🔑 How Product Selection Works:</strong>
                 <ul style="margin: 8px 0 0 20px; line-height: 1.7;">
                     <li><code>price_plan_id: 15</code> identifies the <strong>specific usage product</strong> (e.g., SMS Credits product)</li>
@@ -134,7 +134,7 @@
                 </ul>
             </div>
 
-            <div style="margin-top: 15px; padding: 12px; background: #e8f5e9; border-left: 3px solid #4caf50; border-radius: 4px;">
+            <div class="notice-box notice-success">
                 <strong>📊 Calculation Example:</strong>
                 <ul style="margin: 8px 0 0 20px; line-height: 1.7;">
                     <li><strong>Price Plan ID 15</strong> → SMS Credits product (rate: TZS 50 per SMS)</li>
@@ -183,10 +183,10 @@
                 </tr>
             </x-docs.parameter-table>
 
-            <div style="margin-top: 15px; padding: 12px; background: #e3f2fd; border-left: 3px solid #2196F3; border-radius: 4px;">
+            <div class="notice-box notice-info">
                 <strong>💡 Multiple Products Example:</strong><br>
                 To purchase credits for <strong>different products</strong>, include multiple items in the products array:
-                <pre style="background: #fff; padding: 10px; border-radius: 4px; margin-top: 8px; overflow-x: auto;"><code>{
+                <pre style="background: var(--surface); padding: 10px; border-radius: 4px; margin-top: 8px; overflow-x: auto; color: var(--text);"><code>{
   "products": [
     {
       "price_plan_id": 15,  // SMS Credits (rate: 50 TZS/SMS)
@@ -243,13 +243,13 @@
 }
             </x-docs.code-block>
 
-            <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px;">
+            <div class="notice-box notice-warning">
                 <strong>⚠️ Next Step:</strong> After payment is received, the system automatically creates a <code>ProductPurchase</code> record that adds the credits to the customer's wallet balance.
             </div>
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">📊 Step 3: Record Usage</h3>
+    <h3 class="section-heading">📊 Step 3: Record Usage</h3>
     <p>Track customer consumption by recording usage events. This deducts from their available balance.</p>
 
     <x-docs.endpoint
@@ -335,7 +335,7 @@
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">💰 Step 4: Check Balance</h3>
+    <h3 class="section-heading">💰 Step 4: Check Balance</h3>
     <p>Get the current wallet balance using the wallet's unique control number (UCN).</p>
 
     <x-docs.endpoint
@@ -394,7 +394,7 @@ GET /api/v1/product-usages/UCN1234567890/balance
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">📈 Step 5: Get Usage Report</h3>
+    <h3 class="section-heading">📈 Step 5: Get Usage Report</h3>
     <p>Retrieve comprehensive usage report for a customer across all products.</p>
 
     <x-docs.endpoint
@@ -454,7 +454,7 @@ GET /api/v1/product-usages/UCN1234567890/balance
         </x-slot>
     </x-docs.endpoint>
 
-    <h3 style="margin-top: 40px; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">📜 Step 6: Get Usage History</h3>
+    <h3 class="section-heading">📜 Step 6: Get Usage History</h3>
     <p>View detailed transaction history showing all purchases and consumption.</p>
 
     <x-docs.endpoint
@@ -501,9 +501,9 @@ GET /api/v1/product-usages/UCN1234567890/balance
         </x-slot>
     </x-docs.endpoint>
 
-    <div class="alert alert-success" style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 20px; margin: 40px 0; border-radius: 4px;">
-        <h4 style="margin-top: 0; color: #2e7d32;">✅ Complete Workflow Example</h4>
-        <pre style="background: #fff; padding: 15px; border-radius: 4px; overflow-x: auto; line-height: 1.6;"><code># 1. Create usage product (product_type_id = 3)
+    <div class="alert alert-success">
+        <h4 style="margin-top: 0;">✅ Complete Workflow Example</h4>
+        <pre style="background: var(--surface); padding: 15px; border-radius: 4px; overflow-x: auto; line-height: 1.6; color: var(--text);"><code># 1. Create usage product (product_type_id = 3)
 POST /api/v1/products
 
 # 2. Customer buys 1000 SMS credits (generates wallet_id/UCN)
@@ -522,9 +522,9 @@ POST /api/v1/invoices
 </code></pre>
     </div>
 
-    <div class="alert alert-info" style="background: #e3f2fd; border-left: 4px solid #2196F3; padding: 20px; margin: 20px 0 40px 0; border-radius: 4px;">
-        <h4 style="margin-top: 0; color: #1565c0;">📌 Key Concepts</h4>
-        <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+    <div class="alert alert-info">
+        <h4 style="margin-top: 0;">📌 Key Concepts</h4>
+        <ul>
             <li><strong>Price Plan → Product Mapping:</strong> Each price_plan_id is linked to ONE specific product
                 <ul style="margin-top: 5px;">
                     <li>price_plan_id 15 → SMS Credits (rate: 50 TZS/SMS)</li>

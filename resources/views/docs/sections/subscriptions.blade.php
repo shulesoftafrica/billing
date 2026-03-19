@@ -517,9 +517,9 @@ Credit Amount = Unused Value - New Plan Cost</pre>
         </x-slot>
     </x-docs.endpoint>
 
-    <div class="alert alert-warning" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 20px; margin: 30px 0;">
-        <h4 style="margin-top: 0; color: #e65100;">⚠️ Important Business Rules</h4>
-        <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+    <div class="alert alert-warning">
+        <h4>⚠️ Important Business Rules</h4>
+        <ul>
             <li><strong>Subscription Status:</strong> Only <code>active</code> subscriptions can be upgraded or downgraded</li>
             <li><strong>Same Product:</strong> New plan must belong to the <strong>same product</strong> as current plan</li>
             <li><strong>Price Validation:</strong>
