@@ -1591,6 +1591,7 @@ class SubscriptionService
             'tax_total' => 0,
             'total' => $prorationDetails['amount_to_charge'],
             'proration_credit' => $prorationDetails['unused_credit'],
+            'due_date' => now()->toDateString(),
             'metadata' => json_encode([
                 'upgrade_details' => $prorationDetails['calculation_details'],
                 'proration' => [

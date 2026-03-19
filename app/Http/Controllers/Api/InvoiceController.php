@@ -190,8 +190,9 @@ class InvoiceController extends Controller
             $description = $request->description ?? 'Invoice for products';
             $currency = strtoupper((string) $request->currency);
             $status = $request->status ?? 'issued';
-            $date = $request->date ?? null;
-            $dueDate = $request->due_date ?? null;
+            $date = $request->date ?? now()->format('Y-m-d');
+            // Default due_date to today for wallet top-ups and prepaid invoices, or 7 days from now for others
+            $dueDate = $request->due_date ?? now()->format('Y-m-d');
             $requestedTaxRateIds = collect($request->input('tax_rate_ids', []))
                 ->filter(fn($id) => $id !== null)
                 ->map(fn($id) => (int) $id)
