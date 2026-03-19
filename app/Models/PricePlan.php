@@ -11,6 +11,7 @@ class PricePlan extends Model
         'name',
         'billing_type',
         'billing_interval',
+        'subscription_type',
         'amount',
         'currency_id',
         'metadata',
@@ -18,6 +19,8 @@ class PricePlan extends Model
         'feature_code',
         'trial_period_days',
         'setup_fee',
+        'active',
+        'rate',
     ];
 
     protected $casts = [
@@ -25,6 +28,8 @@ class PricePlan extends Model
         'setup_fee' => 'decimal:2',
         'metadata' => 'array',
         'trial_period_days' => 'integer',
+        'active' => 'boolean',
+        'rate' => 'integer',
     ];
 
     protected $appends = ['currency', 'rate', 'subscription_type'];
