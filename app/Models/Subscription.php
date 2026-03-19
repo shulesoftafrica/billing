@@ -14,12 +14,19 @@ class Subscription extends Model
         'start_date',
         'end_date',
         'next_billing_date',
+        'current_period_start',
+        'current_period_end',
+        'previous_plan_id',
+        'last_upgrade_proration',
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
         'next_billing_date' => 'date',
+        'current_period_start' => 'date',
+        'current_period_end' => 'date',
+        'last_upgrade_proration' => 'decimal:2',
     ];
 
     public function customer(): BelongsTo

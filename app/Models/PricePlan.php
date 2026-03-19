@@ -14,7 +14,6 @@ class PricePlan extends Model
         'amount',
         'currency_id',
         'metadata',
-        'active',
         'plan_code',
         'feature_code',
         'trial_period_days',
@@ -22,7 +21,6 @@ class PricePlan extends Model
     ];
 
     protected $casts = [
-        'active' => 'boolean',
         'amount' => 'decimal:2',
         'setup_fee' => 'decimal:2',
         'metadata' => 'array',
@@ -30,6 +28,40 @@ class PricePlan extends Model
     ];
 
     protected $appends = ['currency', 'rate', 'subscription_type'];
+
+    /**
+     * Get the currency code for the price plan.
+     * Returns the currency code from the related Currency model.
+     */
+    public function getCurrencyAttribute()
+    {
+        // If currency relationship is loaded, return its code
+        if ($this->relationLoaded('currency') && $this->currency) {
+            return $this->currency->code;
+        }
+
+        // Otherwise, load the relationship and return the code
+        $currency = $this->currency()->first();
+        return $currency ? $currency->code : 'TZS'; // Default fallback
+    }
+
+    /**
+     * Get the rate attribute.
+     * Returns the rate value from the database column.
+     */
+    public function getRateAttribute()
+    {
+        return $this->attributes['rate'] ?? 1;
+    }
+
+    /**
+     * Get the subscription type attribute.
+     * Returns the billing_interval as subscription_type for backward compatibility.
+     */
+    public function getSubscriptionTypeAttribute()
+    {
+        return $this->attributes['billing_interval'] ?? $this->attributes['subscription_type'] ?? null;
+    }
 
     public function product()
     {
@@ -39,37 +71,5 @@ class PricePlan extends Model
     public function currency()
     {
         return $this->belongsTo(Currency::class);
-    }
-
-    /**
-     * Get the currency code.
-     */
-    public function getCurrencyAttribute()
-    {
-        if ($this->relationLoaded('currency')) {
-            $currencyModel = $this->getRelation('currency');
-            return $currencyModel ? str_pad($currencyModel->code, 5) : null;
-        }
-        return null;
-    }
-
-    /**
-     * Get the currency exchange rate.
-     */
-    public function getRateAttribute()
-    {
-        if ($this->relationLoaded('currency')) {
-            $currencyModel = $this->getRelation('currency');
-            return $currencyModel ? $currencyModel->exchange_rate : 1;
-        }
-        return 1;
-    }
-
-    /**
-     * Get the subscription type (alias for billing_interval).
-     */
-    public function getSubscriptionTypeAttribute()
-    {
-        return $this->billing_interval;
     }
 }

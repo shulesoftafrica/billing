@@ -131,7 +131,7 @@ class OrganizationController extends Controller
     public function integratePaymentGateway(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'payment_gateway_id' => 'required|exists:payment_gateways,id',
             'endpoint' => 'required|url|max:255',
         ]);

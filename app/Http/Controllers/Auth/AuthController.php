@@ -19,7 +19,7 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_email' => 'required|email|exists:organizations,email',
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255',
             'password' => 'required|string|min:8|confirmed',
@@ -27,8 +27,11 @@ class AuthController extends Controller
             'sex' => 'nullable|string|in:male,female,other,m,f,M,F',
         ]);
 
+        // Find organization by email
+        $organization = \App\Models\Organization::where('email', $validated['organization_email'])->firstOrFail();
+
         // Check for unique email within organization
-        $existingUser = User::where('organization_id', $validated['organization_id'])
+        $existingUser = User::where('organization_id', $organization->id)
                             ->where('email', $validated['email'])
                             ->first();
 
@@ -39,7 +42,7 @@ class AuthController extends Controller
         }
 
         $user = User::create([
-            'organization_id' => $validated['organization_id'],
+            'organization_id' => $organization->id,
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
@@ -47,11 +50,15 @@ class AuthController extends Controller
             'sex' => $validated['sex'] ?? null,
         ]);
 
-        // Create token with 30-day expiration
+        // Get token expiration from config (30 days default for user tokens)
+        $expirationMinutes = config('sanctum.user_token_expiration', 43200);
+        $expiresAt = now()->addMinutes($expirationMinutes);
+
+        // Create token with expiration
         $token = $user->createToken(
             'auth_token',
             ['*'],
-            now()->addDays(30)
+            $expiresAt
         )->plainTextToken;
 
         // Log IP and User Agent
@@ -61,7 +68,8 @@ class AuthController extends Controller
             'message' => 'User registered successfully',
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'expires_in' => 43200, // 30 days in minutes
+            'expires_in' => $expirationMinutes * 60, // Convert to seconds
+            'expires_at' => $expiresAt->toIso8601String(),
             'user' => [
                 'id' => $user->id,
                 'organization_id' => $user->organization_id,
@@ -96,11 +104,15 @@ class AuthController extends Controller
         // Token Rotation: Revoke all previous tokens for security
         $user->tokens()->delete();
 
-        // Create token with 30-day expiration
+        // Get token expiration from config (30 days default for user tokens)
+        $expirationMinutes = config('sanctum.user_token_expiration', 43200);
+        $expiresAt = now()->addMinutes($expirationMinutes);
+
+        // Create token with expiration
         $token = $user->createToken(
             'auth_token',
             ['*'],
-            now()->addDays(30)
+            $expiresAt
         )->plainTextToken;
 
         // Log IP and User Agent
@@ -110,7 +122,8 @@ class AuthController extends Controller
             'message' => 'Login successful',
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'expires_in' => 43200, // 30 days in minutes
+            'expires_in' => $expirationMinutes * 60, // Convert to seconds
+            'expires_at' => $expiresAt->toIso8601String(),
             'user' => [
                 'id' => $user->id,
                 'organization_id' => $user->organization_id,
@@ -203,5 +216,111 @@ class AuthController extends Controller
                 'user_agent' => $request->userAgent(),
             ]);
         }
+    }
+
+    /**
+     * Generate a new personal access token for the authenticated user.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function generateToken(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'expires_in_days' => 'nullable|integer|min:1|max:365',
+            'abilities' => 'nullable|array',
+            'abilities.*' => 'string',
+        ]);
+
+        $user = $request->user();
+        
+        // Calculate expiration
+        $expirationDays = $validated['expires_in_days'] ?? 30;
+        $expiresAt = now()->addDays($expirationDays);
+        
+        // Create token
+        $tokenResult = $user->createToken(
+            $validated['name'],
+            $validated['abilities'] ?? ['*'],
+            $expiresAt
+        );
+
+        // Update with audit info
+        $tokenResult->accessToken->update([
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Personal access token created successfully',
+            'data' => [
+                'token' => $tokenResult->plainTextToken,
+                'token_id' => $tokenResult->accessToken->id,
+                'name' => $tokenResult->accessToken->name,
+                'expires_at' => $tokenResult->accessToken->expires_at->toIso8601String(),
+                'abilities' => $tokenResult->accessToken->abilities,
+            ],
+            'warning' => 'Store this token securely. It will not be shown again.',
+        ], 201);
+    }
+
+    /**
+     * List all tokens for the authenticated user.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function listTokens(Request $request)
+    {
+        $user = $request->user();
+        
+        $tokens = $user->tokens()->latest('created_at')->get()->map(function ($token) {
+            return [
+                'id' => $token->id,
+                'name' => $token->name,
+                'abilities' => $token->abilities,
+                'last_used_at' => $token->last_used_at?->toIso8601String(),
+                'expires_at' => $token->expires_at?->toIso8601String(),
+                'created_at' => $token->created_at->toIso8601String(),
+                'is_expired' => $token->expires_at?->isPast() ?? false,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $tokens,
+        ], 200);
+    }
+
+    /**
+     * Revoke a specific token by ID.
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function revokeToken(Request $request, int $id)
+    {
+        $user = $request->user();
+        
+        $token = $user->tokens()->where('id', $id)->first();
+
+        if (!$token) {
+            return response()->json([
+                'error' => 'Token not found',
+                'message' => 'The specified token does not exist or does not belong to you',
+            ], 404);
+        }
+
+        $tokenName = $token->name;
+        $token->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token revoked successfully',
+            'token_name' => $tokenName,
+        ], 200);
     }
 }

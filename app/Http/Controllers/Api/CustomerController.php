@@ -15,7 +15,7 @@ class CustomerController extends Controller
     public function index(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'username' => 'nullable|string|max:255',
         ]);
 
@@ -49,7 +49,7 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'name' => 'required|string|max:255',
             'username' => 'nullable|string|max:255|unique:customers,username,NULL,id,organization_id,' . $request->organization_id,
             'email' => 'nullable|string|email|max:255|unique:customers,email,NULL,id,organization_id,' . $request->organization_id,
@@ -119,7 +119,7 @@ class CustomerController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'organization_id' => 'sometimes|required|exists:organizations,id',
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'name' => 'sometimes|required|string|max:255',
             'username' => 'nullable|string|max:255|unique:customers,username,' . $id . ',id,organization_id,' . $customer->organization_id,
             'email' => 'nullable|string|email|max:255|unique:customers,email,' . $id . ',id,organization_id,' . $customer->organization_id,

@@ -60,7 +60,7 @@ class EnsureOrganizationScope
         }
 
         // Automatically inject organization_id for create/update operations if not present
-        if (in_array($request->method(), ['POST', 'PUT', 'PATCH']) && !$request->has('organization_id')) {
+        if (in_array($request->method(), ['POST', 'PUT', 'PATCH', 'GET']) && !$request->has('organization_id')) {
             $request->merge(['organization_id' => $userOrgId]);
         }
 
