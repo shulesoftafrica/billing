@@ -27,7 +27,6 @@ class PricePlan extends Model
         'trial_period_days' => 'integer',
     ];
 
-    protected $appends = ['currency', 'rate', 'subscription_type'];
 
     public function product()
     {
