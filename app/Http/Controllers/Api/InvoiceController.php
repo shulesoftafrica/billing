@@ -225,6 +225,7 @@ class InvoiceController extends Controller
             $subscriptionData = [];
             $totalAmount = 0;
             $oneTimeInvoiceItems = [];
+            $existingInvoiceToReturn = null;
 
             foreach ($productsData as $productData) {
                 // Get price plan and its product
@@ -236,27 +237,77 @@ class InvoiceController extends Controller
                     throw new \Exception('Product does not belong to the specified organization');
                 }
 
-                $shouldCreateInvoiceItem = true;
                 $subscription = null;
 
                 // Check if product is not a one-time product (product_type_id != 1) and not a wallet product (product_type_id != 3)
                 // Wallet products (top-ups) should always create new invoices regardless of pending subscriptions
                 if ($product->product_type_id != 1 && $product->product_type_id != 3) {
-                    // Check if subscription already exists with pending status
+                    // Check if ANY subscription already exists with pending status for this product
                     $existingSubscription = Subscription::where('customer_id', $customer->id)
-                        ->where('price_plan_id', $pricePlan->id)
+                        ->whereHas('pricePlan', function($q) use ($product) {
+                            $q->where('product_id', $product->id);
+                        })
                         ->where('status', 'pending')
+                        ->with('pricePlan')
                         ->first();
 
                     if ($existingSubscription) {
-                        $invoice = Invoice::where('customer_id', $customer->id)
-                            ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
-                            ->where('status', '!=', 'cancelled')
-                            ->first();
-                        // Subscription already exists - skip invoice item creation for this product
-                        $shouldCreateInvoiceItem = false;
+                        // Check if it's the SAME price plan or DIFFERENT
+                        if ($existingSubscription->price_plan_id == $pricePlan->id) {
+                            // SAME plan - return existing invoice
+                            $existingInvoice = Invoice::where('customer_id', $customer->id)
+                                ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
+                                ->where('status', '!=', 'cancelled')
+                                ->first();
+                            
+                            if ($existingInvoice) {
+                                $existingInvoiceToReturn = $existingInvoice;
+                                Log::info('Found existing pending subscription with same plan', [
+                                    'customer_id' => $customer->id,
+                                    'price_plan_id' => $pricePlan->id,
+                                    'subscription_id' => $existingSubscription->id,
+                                    'invoice_id' => $existingInvoice->id
+                                ]);
+                                continue; // Skip to next product
+                            }
+                        } else {
+                            // DIFFERENT plan (upgrade/downgrade) - cancel old subscription
+                            Log::info('Cancelling old pending subscription for upgrade/downgrade', [
+                                'customer_id' => $customer->id,
+                                'old_price_plan_id' => $existingSubscription->price_plan_id,
+                                'new_price_plan_id' => $pricePlan->id,
+                                'subscription_id' => $existingSubscription->id
+                            ]);
+                            
+                            // Cancel the old subscription
+                            $existingSubscription->update(['status' => 'cancelled']);
+                            
+                            // Cancel the old invoice if it exists
+                            $oldInvoice = Invoice::where('customer_id', $customer->id)
+                                ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
+                                ->where('status', '!=', 'cancelled')
+                                ->first();
+                            
+                            if ($oldInvoice) {
+                                $oldInvoice->update(['status' => 'cancelled']);
+                                Log::info('Cancelled old invoice', ['invoice_id' => $oldInvoice->id]);
+                            }
+                            
+                            // Create new subscription for the new plan
+                            $subscription = Subscription::create([
+                                'customer_id' => $customer->id,
+                                'price_plan_id' => $pricePlan->id,
+                                'status' => 'pending',
+                                'start_date' => null,
+                                'next_billing_date' => null,
+                            ]);
+                            $subscriptionData[$subscription->id] = [
+                                'id' => $subscription->id,
+                                'amount' => $productData['amount'],
+                            ];
+                        }
                     } else {
-                        // Create subscription record for recurring products
+                        // No existing subscription - create new one
                         $subscription = Subscription::create([
                             'customer_id' => $customer->id,
                             'price_plan_id' => $pricePlan->id,
@@ -271,8 +322,8 @@ class InvoiceController extends Controller
                     }
                 }
 
-                // Prepare invoice item data only if subscription doesn't already exist
-                if ($shouldCreateInvoiceItem) {
+                // Prepare invoice item data (skip only if we're returning existing invoice)
+                if (!$existingInvoiceToReturn || $existingInvoiceToReturn->customer_id != $customer->id) {
                     $invoiceItems[] = [
                         'price_plan_id' => $pricePlan->id,
                         // Only recurring products (product_type_id == 2) should have subscription_id
@@ -293,90 +344,76 @@ class InvoiceController extends Controller
                 }
             }
 
-            // If no invoice items to create, return response without creating invoice
-            if (empty($invoiceItems)) {
+            // If we found an existing invoice for the same pending subscription, return it
+            if ($existingInvoiceToReturn && empty($invoiceItems)) {
                 DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'All products have pending subscriptions - no invoice created',
-                    'data' => [
-                        'invoice' => null,
-                        'subscriptions' => $subscriptions,
-                        'payment_gateways' => [],
-                    ]
-                ], 201);
-            }
-
-            if (!$shouldCreateInvoiceItem) {
-                DB::commit();
-                $invoice->load([
+                $existingInvoiceToReturn->load([
                     'customer',
                     'payments',
                     'invoiceTaxes.taxRate',
                     'invoiceItems.pricePlan.product',
                     'invoiceItems.subscription.pricePlan.product',
                 ]);
-                $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
-                $data = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+                $controlNumbersMap = $this->buildControlNumbersMap(collect([$existingInvoiceToReturn]));
+                $data = $this->formatInvoiceDetailResponse($existingInvoiceToReturn, $controlNumbersMap);
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'All products have pending subscriptions - no invoice created',
+                    'message' => 'Pending subscription already exists - returning existing invoice',
                     'data' => $data
                 ], 200);
-            } else {
+            }
 
-                $taxRates = $this->resolveActiveTaxRates($requestedTaxRateIds);
-                $taxBreakdown = $this->calculateTaxBreakdown($totalAmount, $taxRates);
-                $taxTotal = collect($taxBreakdown)->sum('amount');
-                $grandTotal = round($totalAmount + $taxTotal, 2);
+            // Create new invoice for new subscriptions or upgrades/downgrades
+            $taxRates = $this->resolveActiveTaxRates($requestedTaxRateIds);
+            $taxBreakdown = $this->calculateTaxBreakdown($totalAmount, $taxRates);
+            $taxTotal = collect($taxBreakdown)->sum('amount');
+            $grandTotal = round($totalAmount + $taxTotal, 2);
 
-                // Create invoice
-                $invoice = Invoice::create([
-                    'customer_id' => $customer->id,
-                    'invoice_number' => $this->generateInvoiceNumber(),
-                    'currency' => $currency,
-                    'status' => $status,
-                    'description' => $description,
-                    'subtotal' => $totalAmount,
-                    'tax_total' => $taxTotal,
-                    'total' => $grandTotal,
-                    'date' => $date,
-                    'due_date' => $dueDate,
-                    'issued_at' => Carbon::now(),
-                ]);
+            // Create invoice
+            $invoice = Invoice::create([
+                'customer_id' => $customer->id,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'currency' => $currency,
+                'status' => $status,
+                'description' => $description,
+                'subtotal' => $totalAmount,
+                'tax_total' => $taxTotal,
+                'total' => $grandTotal,
+                'date' => $date,
+                'due_date' => $dueDate,
+                'issued_at' => Carbon::now(),
+            ]);
 
-                // Create invoice items only if invoice was newly created
-                foreach ($invoiceItems as $itemData) {
-                    $itemData['invoice_id'] = $invoice->id;
-                    InvoiceItem::create($itemData);
-                }
+            // Create invoice items only if invoice was newly created
+            foreach ($invoiceItems as $itemData) {
+                $itemData['invoice_id'] = $invoice->id;
+                InvoiceItem::create($itemData);
+            }
 
-                if (!empty($taxBreakdown)) {
-                    $invoice->invoiceTaxes()->createMany(
-                        collect($taxBreakdown)->map(function ($taxRow) {
-                            return [
-                                'tax_rate_id' => $taxRow['tax_rate_id'],
-                                'amount' => $taxRow['amount'],
-                            ];
-                        })->all()
-                    );
-                }
+            if (!empty($taxBreakdown)) {
+                $invoice->invoiceTaxes()->createMany(
+                    collect($taxBreakdown)->map(function ($taxRow) {
+                        return [
+                            'tax_rate_id' => $taxRow['tax_rate_id'],
+                            'amount' => $taxRow['amount'],
+                        ];
+                    })->all()
+                );
+            }
 
-                $subscriptionService = new SubscriptionService();
-                if (!empty($subscriptionData)) {
-                    $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
-                    if (!$subscriptions->isEmpty()) {
-                        foreach ($subscriptions as $subscription) {
-                            $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
-                        }
+            $subscriptionService = new SubscriptionService();
+            if (!empty($subscriptionData)) {
+                $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
+                if (!$subscriptions->isEmpty()) {
+                    foreach ($subscriptions as $subscription) {
+                        $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
                     }
                 }
-                if (!empty($oneTimeInvoiceItems)) {
-                    foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
-                        $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
-                    }
+            }
+            if (!empty($oneTimeInvoiceItems)) {
+                foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
+                    $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
                 }
             }
 
