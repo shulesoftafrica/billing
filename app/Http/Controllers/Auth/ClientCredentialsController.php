@@ -32,6 +32,7 @@ class ClientCredentialsController extends Controller
         // SECURITY: Always use the authenticated user's organization
         // Users can ONLY create OAuth clients for their own organization
         $user = $request->user();
+   
         $organization = $user->organization;
 
         if (!$organization) {
