@@ -27,7 +27,7 @@ return new class extends Migration
         
         // Price Plans table - billing type and amount checks
         // NOTE: Using 'billing_type' column instead of 'subscription_type'
-        DB::statement('ALTER TABLE price_plans ADD CONSTRAINT billing_type_check CHECK (billing_type IN (\'one_time\',\'recurring\'))');
+        DB::statement('ALTER TABLE price_plans ADD CONSTRAINT billing_type_check CHECK (subscription_type IN (\'one_time\',\'recurring\'))');
         DB::statement('ALTER TABLE price_plans ADD CONSTRAINT pp_amount_check CHECK (amount >= 0)');
         
         // Subscriptions table - status check
