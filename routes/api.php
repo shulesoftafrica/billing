@@ -103,14 +103,19 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
 
     // Subscription routes
     Route::get('subscriptions', [SubscriptionController::class, 'index']);
+    Route::get('subscriptions/{id}', [SubscriptionController::class, 'show']);
+    Route::post('subscriptions', [SubscriptionController::class, 'store']);
     Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
 
     // Customer subscriptions routes
     Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
 
+    // Wallets routes
+    Route::get('wallets', [ProductController::class, 'wallets']);
+
     // Product usage routes (Wallets)
     Route::post('product-usages', [ProductUsageController::class, 'store']);
-    Route::get('product-usages/balance', [ProductUsageController::class, 'getBalance']);
+    Route::get('product-usages/{wallet_id}/balance', [ProductUsageController::class, 'getBalance']);
     Route::get('product-usages/{customer_id}/report', [ProductUsageController::class, 'getUsageReportByCustomer']);
     Route::get('product-usages/{customer_id}/{product_id}/history', [ProductUsageController::class, 'getHistory']);
 
@@ -166,6 +171,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // Subscription routes
     Route::get('subscriptions', [SubscriptionController::class, 'index']);
+    Route::get('subscriptions/{id}', [SubscriptionController::class, 'show']);
+    Route::post('subscriptions', [SubscriptionController::class, 'store']);
     Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
 
     // Customer subscriptions routes
@@ -173,7 +180,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // Product usage routes
     Route::post('product-usages', [ProductUsageController::class, 'store']);
-    Route::get('product-usages/balance', [ProductUsageController::class, 'getBalance']);
+    Route::get('product-usages/{wallet_id}/balance', [ProductUsageController::class, 'getBalance']);
     Route::get('product-usages/{customer_id}/report', [ProductUsageController::class, 'getUsageReportByCustomer']);
     Route::get('product-usages/{customer_id}/{product_id}/history', [ProductUsageController::class, 'getHistory']);
 

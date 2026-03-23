@@ -78,6 +78,14 @@
                     <span class="method-badge method-get">GET</span>
                     <span>Get Subscription</span>
                 </a>
+                <a href="#upgrade-subscription" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Upgrade Subscription</span>
+                </a>
+                <a href="#downgrade-subscription" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Downgrade Subscription</span>
+                </a>
                 <a href="#cancel-subscription" class="nav-link">
                     <span class="method-badge method-post">POST</span>
                     <span>Cancel Subscription</span>

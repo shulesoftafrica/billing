@@ -118,7 +118,7 @@ class StripeWebhookController extends Controller
             ->first();
 
         if (!$gateway) {
-            throw new \Exception('Flutterwave gateway not configured');
+            throw new \Exception('Stripe gateway not configured');
         }
 
         $gatewayReference = $intent->id;
@@ -140,7 +140,7 @@ class StripeWebhookController extends Controller
             'customer_id' => $customerId,
             'amount' => $stripeAmount,
             'status' => 'pending',
-            'payment_method' => $charge['payment_type'] ?? 'card',
+            'payment_method' => $intent->payment_method_types[0] ?? 'card',
             'payment_reference' => $gatewayReference,
             'gateway_response' => $intent,
             'paid_at' => now(),

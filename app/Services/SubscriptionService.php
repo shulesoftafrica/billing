@@ -775,9 +775,9 @@ class SubscriptionService
     }
 
     /**
-     * Clear on-time product payment by validating total payments against invoiced amount
+     * Clear one-time and wallet product payment by validating total payments against invoiced amount
      * No subscription logic involved - purely handles payment allocation
-     * Processes all one-time products in the invoice
+     * Processes all one-time products (product_type_id = 1) and wallet products (product_type_id = 3) in the invoice
      *
      * @param int $invoice_id
      * @param int $customerId
@@ -792,21 +792,21 @@ class SubscriptionService
             // Get invoice with relationships to find one-time products
             $invoice = Invoice::with(['invoiceItems.pricePlan.product'])->where('status', '!=', 'cancelled')->findOrFail($invoice_id);
 
-            // Get all unique one-time products (product_type_id = 1) from invoice items
+            // Get all unique one-time products (product_type_id = 1) and wallet products (product_type_id = 3) from invoice items
             $oneTimeProducts = $invoice->invoiceItems
                 ->map(function ($item) {
                     return $item->pricePlan->product;
                 })
                 ->filter(function ($product) {
-                    return $product->product_type_id == 1;
+                    return $product->product_type_id == 1 || $product->product_type_id == 3;
                 })
                 ->unique('id')
                 ->values();
             if ($oneTimeProducts->isEmpty()) {
-                throw new \Exception('No one-time products found in invoice items');
+                throw new \Exception('No one-time products or wallet products found in invoice items');
             }
 
-            // Loop through each one-time product and clear payments
+            // Loop through each one-time/wallet product and clear payments
             foreach ($oneTimeProducts as $product) {
 
                 $productId = $product->id;
@@ -1379,9 +1379,26 @@ class SubscriptionService
                 ->lockForUpdate()
                 ->findOrFail($subscriptionId);
             
-            // Validate subscription is active
+            // If subscription is not active, create a new subscription instead of upgrading
             if ($subscription->status !== 'active') {
-                throw new \Exception('Only active subscriptions can be upgraded. Current status: ' . $subscription->status);
+                Log::info('Subscription not active, creating new subscription instead of upgrading', [
+                    'subscription_id' => $subscriptionId,
+                    'current_status' => $subscription->status,
+                    'new_price_plan_id' => $newPricePlanId,
+                ]);
+                
+                // Cancel the old subscription if it's pending or in trial
+                if (in_array($subscription->status, ['pending', 'trial', 'trialing'])) {
+                    $subscription->update(['status' => 'cancelled']);
+                }
+                
+                // Create new subscription with the desired plan
+                $invoice = $this->createSubscriptionsWithInvoice(
+                    $subscription->customer_id,
+                    [$newPricePlanId]
+                );
+                
+                return $invoice;
             }
             
             // Get new price plan
@@ -1442,9 +1459,45 @@ class SubscriptionService
                 ->lockForUpdate()
                 ->findOrFail($subscriptionId);
             
-            // Validate subscription is active
+            // If subscription is not active, create a new subscription instead of downgrading
             if ($subscription->status !== 'active') {
-                throw new \Exception('Only active subscriptions can be downgraded. Current status: ' . $subscription->status);
+                Log::info('Subscription not active, creating new subscription instead of downgrading', [
+                    'subscription_id' => $subscriptionId,
+                    'current_status' => $subscription->status,
+                    'new_price_plan_id' => $newPricePlanId,
+                ]);
+                
+                // Cancel the old subscription if it's pending or in trial
+                if (in_array($subscription->status, ['pending', 'trial', 'trialing'])) {
+                    $subscription->update(['status' => 'cancelled']);
+                }
+                
+                // Create new subscription with the desired plan
+                $invoice = $this->createSubscriptionsWithInvoice(
+                    $subscription->customer_id,
+                    [$newPricePlanId]
+                );
+                
+                // Get the newly created subscription
+                $newSubscription = Subscription::where('customer_id', $subscription->customer_id)
+                    ->where('price_plan_id', $newPricePlanId)
+                    ->where('status', 'pending')
+                    ->latest()
+                    ->first();
+                
+                return [
+                    'success' => true,
+                    'subscription' => $newSubscription->load(['customer', 'pricePlan']),
+                    'invoice' => $invoice,
+                    'credit_details' => [
+                        'credit_amount' => 0,
+                        'unused_days' => 0,
+                        'old_plan_daily_rate' => 0,
+                        'billing_cycle_days' => 0,
+                    ],
+                    'credit_applied' => false,
+                    'message' => 'New subscription created with selected plan',
+                ];
             }
             
             // Get new price plan
@@ -1538,6 +1591,7 @@ class SubscriptionService
             'tax_total' => 0,
             'total' => $prorationDetails['amount_to_charge'],
             'proration_credit' => $prorationDetails['unused_credit'],
+            'due_date' => now()->toDateString(),
             'metadata' => json_encode([
                 'upgrade_details' => $prorationDetails['calculation_details'],
                 'proration' => [
