@@ -600,6 +600,8 @@ class InvoiceController extends Controller
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 90); // 90 second timeout for UCN creation
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30); // 30 second connection timeout
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Authorization: Bearer ' . $token,
                 'Content-Type: application/json',
@@ -698,6 +700,8 @@ class InvoiceController extends Controller
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 60); // 60 second timeout for token generation
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30); // 30 second connection timeout
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
                 'Accept: application/json',
