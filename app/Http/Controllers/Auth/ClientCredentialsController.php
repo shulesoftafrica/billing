@@ -22,7 +22,6 @@ class ClientCredentialsController extends Controller
     public function createClient(Request $request)
     {
         $validated = $request->validate([
-            'organization_email' => 'required|email|exists:organizations,email',
             'name' => 'required|string|max:255',
             'environment' => 'required|in:test,live',
             'allowed_scopes' => 'nullable|array',
@@ -30,15 +29,16 @@ class ClientCredentialsController extends Controller
             'expires_at' => 'nullable|date|after:now',
         ]);
 
-        // Find organization by email
-        $organization = Organization::where('email', $validated['organization_email'])->firstOrFail();
+        // SECURITY: Always use the authenticated user's organization
+        // Users can ONLY create OAuth clients for their own organization
+        $user = $request->user();
+        $organization = $user->organization;
 
-        // Verify user has access to this organization
-        if ($request->user() && $request->user()->organization_id !== $organization->id) {
+        if (!$organization) {
             return response()->json([
-                'error' => 'Forbidden',
-                'message' => 'You do not have permission to create clients for this organization',
-            ], 403);
+                'error' => 'Bad Request',
+                'message' => 'User is not associated with any organization.',
+            ], 400);
         }
 
         // Generate credentials
@@ -246,7 +246,8 @@ class ClientCredentialsController extends Controller
                 'name' => 'API Service Account',
                 'email' => $serviceEmail,
                 'password' => bcrypt(bin2hex(random_bytes(32))), // Random password (not used)
-                'role' => 'service',
+                'role' => 'admin', // Service account with full access (allowed roles: admin, finance, support)
+                'sex' => 'O', // Service account (O = Other)
             ]);
         }
 

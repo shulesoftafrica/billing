@@ -1069,6 +1069,263 @@
                 padding: 16px;
             }
         }
+
+        /* Alert Boxes */
+        .alert {
+            border-radius: 12px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+
+        .alert-warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            color: #663c00;
+        }
+
+        .alert-warning h4 {
+            margin-top: 0;
+            color: #e65100;
+        }
+
+        .alert-warning ul {
+            margin: 10px 0 0 20px;
+            line-height: 1.8;
+        }
+
+        .alert-warning strong {
+            color: #663c00;
+        }
+
+        .alert-warning code {
+            background: rgba(255, 152, 0, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+        }
+
+        /* Dark mode alert styles */
+        [data-theme="dark"] .alert-warning {
+            background: rgba(210, 153, 34, 0.15);
+            border-left-color: #d29922;
+            color: #e6c384;
+        }
+
+        [data-theme="dark"] .alert-warning h4 {
+            color: #f0b72f;
+        }
+
+        [data-theme="dark"] .alert-warning strong {
+            color: #f0b72f;
+        }
+
+        [data-theme="dark"] .alert-warning code {
+            background: rgba(210, 153, 34, 0.25);
+            color: #f0b72f;
+        }
+
+        /* Alert Info (Blue) */
+        .alert-info {
+            background: #e8f4fd;
+            border-left: 4px solid #2196F3;
+            color: #0d47a1;
+        }
+
+        .alert-info strong {
+            color: #0d47a1;
+        }
+
+        .alert-info code {
+            background: rgba(33, 150, 243, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+            color: #1565c0;
+        }
+
+        .alert-info ol, .alert-info ul {
+            margin: 10px 0 0 20px;
+            line-height: 1.8;
+        }
+
+        /* Dark mode info alert */
+        [data-theme="dark"] .alert-info {
+            background: rgba(88, 166, 255, 0.15);
+            border-left-color: #58a6ff;
+            color: #79c0ff;
+        }
+
+        [data-theme="dark"] .alert-info strong {
+            color: #58a6ff;
+        }
+
+        [data-theme="dark"] .alert-info code {
+            background: rgba(88, 166, 255, 0.25);
+            color: #58a6ff;
+        }
+
+        /* Alert Success (Green) */
+        .alert-success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            color: #1b5e20;
+        }
+
+        .alert-success strong {
+            color: #1b5e20;
+        }
+
+        .alert-success code {
+            background: rgba(76, 175, 80, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+            color: #2e7d32;
+        }
+
+        .alert-success ol, .alert-success ul {
+            margin: 10px 0 0 20px;
+            line-height: 1.8;
+        }
+
+        /* Dark mode success alert */
+        [data-theme="dark"] .alert-success {
+            background: rgba(46, 160, 67, 0.15);
+            border-left-color: #3fb950;
+            color: #7ee787;
+        }
+
+        [data-theme="dark"] .alert-success strong {
+            color: #3fb950;
+        }
+
+        [data-theme="dark"] .alert-success code {
+            background: rgba(46, 160, 67, 0.25);
+            color: #3fb950;
+        }
+
+        /* Inline notice boxes */
+        .notice-box {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 4px;
+        }
+
+        .notice-warning {
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            color: #856404;
+        }
+
+        .notice-warning strong {
+            color: #856404;
+        }
+
+        .notice-warning code {
+            background: rgba(255, 193, 7, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+        }
+
+        .notice-info {
+            background: #e3f2fd;
+            border-left: 3px solid #2196F3;
+            color: #0d47a1;
+        }
+
+        .notice-info strong {
+            color: #0d47a1;
+        }
+
+        .notice-info code {
+            background: rgba(33, 150, 243, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+        }
+
+        .notice-success {
+            background: #e8f5e9;
+            border-left: 3px solid #4caf50;
+            color: #1b5e20;
+        }
+
+        .notice-success strong {
+            color: #1b5e20;
+        }
+
+        .notice-success code {
+            background: rgba(76, 175, 80, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85em;
+        }
+
+        /* Dark mode notice boxes */
+        [data-theme="dark"] .notice-warning {
+            background: rgba(210, 153, 34, 0.15);
+            border-left-color: #d29922;
+            color: #e6c384;
+        }
+
+        [data-theme="dark"] .notice-warning strong {
+            color: #f0b72f;
+        }
+
+        [data-theme="dark"] .notice-warning code {
+            background: rgba(210, 153, 34, 0.25);
+            color: #f0b72f;
+        }
+
+        [data-theme="dark"] .notice-info {
+            background: rgba(88, 166, 255, 0.15);
+            border-left-color: #58a6ff;
+            color: #79c0ff;
+        }
+
+        [data-theme="dark"] .notice-info strong {
+            color: #58a6ff;
+        }
+
+        [data-theme="dark"] .notice-info code {
+            background: rgba(88, 166, 255, 0.25);
+            color: #58a6ff;
+        }
+
+        [data-theme="dark"] .notice-success {
+            background: rgba(46, 160, 67, 0.15);
+            border-left-color: #3fb950;
+            color: #7ee787;
+        }
+
+        [data-theme="dark"] .notice-success strong {
+            color: #3fb950;
+        }
+
+        [data-theme="dark"] .notice-success code {
+            background: rgba(46, 160, 67, 0.25);
+            color: #3fb950;
+        }
+
+        /* Section headings */
+        .section-heading {
+            margin-top: 40px;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+
+        [data-theme="dark"] .section-heading {
+            color: #e6edf3;
+            border-bottom-color: #30363d;
+        }
     </style>
 </head>
 <body>
@@ -1196,11 +1453,11 @@ Authorization: Bearer {YOUR_USER_TOKEN_FROM_STEP_1}
 Content-Type: application/json
 
 {
-  "organization_email": "your-org@example.com",
   "name": "Production API Client",
   "environment": "live",
   "allowed_scopes": ["*"]
 }</pre>
+                        <p class="text-muted small"><strong>🔒 Security:</strong> The client is automatically created for your organization. You cannot create clients for other organizations.</p>
                         <div class="alert">
                             <strong>⚠️ CRITICAL:</strong> Save your <code>client_id</code> and <code>client_secret</code> immediately! The <code>client_secret</code> is shown only once and cannot be retrieved again.
                         </div>

@@ -15,8 +15,8 @@ return new class extends Migration
         // Organizations table - status check
         DB::statement('ALTER TABLE organizations ADD CONSTRAINT org_status_check CHECK (status IN (\'active\', \'inactive\', \'suspended\'))');
         
-        // Users table - sex check
-        DB::statement('ALTER TABLE users ADD CONSTRAINT user_sex_check CHECK (sex IN (\'M\', \'F\', \'O\'))');
+        // Users table - sex check (allow NULL since column is nullable, include O for Other)
+        DB::statement('ALTER TABLE users ADD CONSTRAINT users_sex_check CHECK (sex IS NULL OR sex IN (\'M\', \'F\', \'O\'))');
         
         // Customers table - status check
         DB::statement('ALTER TABLE customers ADD CONSTRAINT customer_status_check CHECK (status IN (\'active\', \'inactive\', \'suspended\'))');
@@ -72,7 +72,7 @@ return new class extends Migration
         // Drop all check constraints
         $constraints = [
             'organizations' => 'org_status_check',
-            'users' => 'user_sex_check',
+            'users' => 'users_sex_check', // Updated to match new constraint name
             'customers' => 'customer_status_check',
             // 'products' => 'product_status_check', // Skipped - not created because products uses 'active' column
             'price_plans' => ['billing_type_check', 'pp_amount_check'], // Changed from subscription_type_check to billing_type_check

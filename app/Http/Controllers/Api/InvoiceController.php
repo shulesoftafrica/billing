@@ -190,8 +190,9 @@ class InvoiceController extends Controller
             $description = $request->description ?? 'Invoice for products';
             $currency = strtoupper((string) $request->currency);
             $status = $request->status ?? 'issued';
-            $date = $request->date ?? null;
-            $dueDate = $request->due_date ?? null;
+            $date = $request->date ?? now()->format('Y-m-d');
+            // Default due_date to today for wallet top-ups and prepaid invoices, or 7 days from now for others
+            $dueDate = $request->due_date ?? now()->format('Y-m-d');
             $requestedTaxRateIds = collect($request->input('tax_rate_ids', []))
                 ->filter(fn($id) => $id !== null)
                 ->map(fn($id) => (int) $id)
@@ -224,6 +225,7 @@ class InvoiceController extends Controller
             $subscriptionData = [];
             $totalAmount = 0;
             $oneTimeInvoiceItems = [];
+            $existingInvoiceToReturn = null;
 
             foreach ($productsData as $productData) {
                 // Get price plan and its product
@@ -235,26 +237,77 @@ class InvoiceController extends Controller
                     throw new \Exception('Product does not belong to the specified organization');
                 }
 
-                $shouldCreateInvoiceItem = true;
                 $subscription = null;
 
-                // Check if product is not a one-time product (product_type_id != 1)
-                if ($product->product_type_id != 1) {
-                    // Check if subscription already exists with pending status
+                // Check if product is not a one-time product (product_type_id != 1) and not a wallet product (product_type_id != 3)
+                // Wallet products (top-ups) should always create new invoices regardless of pending subscriptions
+                if ($product->product_type_id != 1 && $product->product_type_id != 3) {
+                    // Check if ANY subscription already exists with pending status for this product
                     $existingSubscription = Subscription::where('customer_id', $customer->id)
-                        ->where('price_plan_id', $pricePlan->id)
+                        ->whereHas('pricePlan', function($q) use ($product) {
+                            $q->where('product_id', $product->id);
+                        })
                         ->where('status', 'pending')
+                        ->with('pricePlan')
                         ->first();
 
                     if ($existingSubscription) {
-                        $invoice = Invoice::where('customer_id', $customer->id)
-                            ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
-                            ->where('status', '!=', 'cancelled')
-                            ->first();
-                        // Subscription already exists - skip invoice item creation for this product
-                        $shouldCreateInvoiceItem = false;
+                        // Check if it's the SAME price plan or DIFFERENT
+                        if ($existingSubscription->price_plan_id == $pricePlan->id) {
+                            // SAME plan - return existing invoice
+                            $existingInvoice = Invoice::where('customer_id', $customer->id)
+                                ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
+                                ->where('status', '!=', 'cancelled')
+                                ->first();
+                            
+                            if ($existingInvoice) {
+                                $existingInvoiceToReturn = $existingInvoice;
+                                Log::info('Found existing pending subscription with same plan', [
+                                    'customer_id' => $customer->id,
+                                    'price_plan_id' => $pricePlan->id,
+                                    'subscription_id' => $existingSubscription->id,
+                                    'invoice_id' => $existingInvoice->id
+                                ]);
+                                continue; // Skip to next product
+                            }
+                        } else {
+                            // DIFFERENT plan (upgrade/downgrade) - cancel old subscription
+                            Log::info('Cancelling old pending subscription for upgrade/downgrade', [
+                                'customer_id' => $customer->id,
+                                'old_price_plan_id' => $existingSubscription->price_plan_id,
+                                'new_price_plan_id' => $pricePlan->id,
+                                'subscription_id' => $existingSubscription->id
+                            ]);
+                            
+                            // Cancel the old subscription
+                            $existingSubscription->update(['status' => 'cancelled']);
+                            
+                            // Cancel the old invoice if it exists
+                            $oldInvoice = Invoice::where('customer_id', $customer->id)
+                                ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
+                                ->where('status', '!=', 'cancelled')
+                                ->first();
+                            
+                            if ($oldInvoice) {
+                                $oldInvoice->update(['status' => 'cancelled']);
+                                Log::info('Cancelled old invoice', ['invoice_id' => $oldInvoice->id]);
+                            }
+                            
+                            // Create new subscription for the new plan
+                            $subscription = Subscription::create([
+                                'customer_id' => $customer->id,
+                                'price_plan_id' => $pricePlan->id,
+                                'status' => 'pending',
+                                'start_date' => null,
+                                'next_billing_date' => null,
+                            ]);
+                            $subscriptionData[$subscription->id] = [
+                                'id' => $subscription->id,
+                                'amount' => $productData['amount'],
+                            ];
+                        }
                     } else {
-                        // Create subscription record for recurring products
+                        // No existing subscription - create new one
                         $subscription = Subscription::create([
                             'customer_id' => $customer->id,
                             'price_plan_id' => $pricePlan->id,
@@ -269,17 +322,19 @@ class InvoiceController extends Controller
                     }
                 }
 
-                // Prepare invoice item data only if subscription doesn't already exist
-                if ($shouldCreateInvoiceItem) {
+                // Prepare invoice item data (skip only if we're returning existing invoice)
+                if (!$existingInvoiceToReturn || $existingInvoiceToReturn->customer_id != $customer->id) {
                     $invoiceItems[] = [
                         'price_plan_id' => $pricePlan->id,
-                        'subscription_id' => ($product->product_type_id != 1) ? ($subscription->id ?? null) : null,
+                        // Only recurring products (product_type_id == 2) should have subscription_id
+                        // One-time (1) and wallet (3) products don't need subscriptions
+                        'subscription_id' => ($product->product_type_id == 2) ? ($subscription->id ?? null) : null,
                         'quantity' => 1,
                         'unit_price' => $productData['amount'],
                         'total' => $productData['amount'],
                     ];
-                    // filter onetime product
-                    if ($product->product_type_id == 1) {
+                    // filter onetime product and wallet product  
+                    if ($product->product_type_id == 1 || $product->product_type_id == 3) {
                         $oneTimeInvoiceItems[$pricePlan->id] = [
                             'amount' =>  $productData['amount']
                         ];
@@ -289,90 +344,76 @@ class InvoiceController extends Controller
                 }
             }
 
-            // If no invoice items to create, return response without creating invoice
-            if (empty($invoiceItems)) {
+            // If we found an existing invoice for the same pending subscription, return it
+            if ($existingInvoiceToReturn && empty($invoiceItems)) {
                 DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'All products have pending subscriptions - no invoice created',
-                    'data' => [
-                        'invoice' => null,
-                        'subscriptions' => $subscriptions,
-                        'payment_gateways' => [],
-                    ]
-                ], 201);
-            }
-
-            if (!$shouldCreateInvoiceItem) {
-                DB::commit();
-                $invoice->load([
+                $existingInvoiceToReturn->load([
                     'customer',
                     'payments',
                     'invoiceTaxes.taxRate',
                     'invoiceItems.pricePlan.product',
                     'invoiceItems.subscription.pricePlan.product',
                 ]);
-                $controlNumbersMap = $this->buildControlNumbersMap(collect([$invoice]));
-                $data = $this->formatInvoiceDetailResponse($invoice, $controlNumbersMap);
+                $controlNumbersMap = $this->buildControlNumbersMap(collect([$existingInvoiceToReturn]));
+                $data = $this->formatInvoiceDetailResponse($existingInvoiceToReturn, $controlNumbersMap);
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'All products have pending subscriptions - no invoice created',
+                    'message' => 'Pending subscription already exists - returning existing invoice',
                     'data' => $data
                 ], 200);
-            } else {
+            }
 
-                $taxRates = $this->resolveActiveTaxRates($requestedTaxRateIds);
-                $taxBreakdown = $this->calculateTaxBreakdown($totalAmount, $taxRates);
-                $taxTotal = collect($taxBreakdown)->sum('amount');
-                $grandTotal = round($totalAmount + $taxTotal, 2);
+            // Create new invoice for new subscriptions or upgrades/downgrades
+            $taxRates = $this->resolveActiveTaxRates($requestedTaxRateIds);
+            $taxBreakdown = $this->calculateTaxBreakdown($totalAmount, $taxRates);
+            $taxTotal = collect($taxBreakdown)->sum('amount');
+            $grandTotal = round($totalAmount + $taxTotal, 2);
 
-                // Create invoice
-                $invoice = Invoice::create([
-                    'customer_id' => $customer->id,
-                    'invoice_number' => $this->generateInvoiceNumber(),
-                    'currency' => $currency,
-                    'status' => $status,
-                    'description' => $description,
-                    'subtotal' => $totalAmount,
-                    'tax_total' => $taxTotal,
-                    'total' => $grandTotal,
-                    'date' => $date,
-                    'due_date' => $dueDate,
-                    'issued_at' => Carbon::now(),
-                ]);
+            // Create invoice
+            $invoice = Invoice::create([
+                'customer_id' => $customer->id,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'currency' => $currency,
+                'status' => $status,
+                'description' => $description,
+                'subtotal' => $totalAmount,
+                'tax_total' => $taxTotal,
+                'total' => $grandTotal,
+                'date' => $date,
+                'due_date' => $dueDate,
+                'issued_at' => Carbon::now(),
+            ]);
 
-                // Create invoice items only if invoice was newly created
-                foreach ($invoiceItems as $itemData) {
-                    $itemData['invoice_id'] = $invoice->id;
-                    InvoiceItem::create($itemData);
-                }
+            // Create invoice items only if invoice was newly created
+            foreach ($invoiceItems as $itemData) {
+                $itemData['invoice_id'] = $invoice->id;
+                InvoiceItem::create($itemData);
+            }
 
-                if (!empty($taxBreakdown)) {
-                    $invoice->invoiceTaxes()->createMany(
-                        collect($taxBreakdown)->map(function ($taxRow) {
-                            return [
-                                'tax_rate_id' => $taxRow['tax_rate_id'],
-                                'amount' => $taxRow['amount'],
-                            ];
-                        })->all()
-                    );
-                }
+            if (!empty($taxBreakdown)) {
+                $invoice->invoiceTaxes()->createMany(
+                    collect($taxBreakdown)->map(function ($taxRow) {
+                        return [
+                            'tax_rate_id' => $taxRow['tax_rate_id'],
+                            'amount' => $taxRow['amount'],
+                        ];
+                    })->all()
+                );
+            }
 
-                $subscriptionService = new SubscriptionService();
-                if (!empty($subscriptionData)) {
-                    $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
-                    if (!$subscriptions->isEmpty()) {
-                        foreach ($subscriptions as $subscription) {
-                            $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
-                        }
+            $subscriptionService = new SubscriptionService();
+            if (!empty($subscriptionData)) {
+                $subscriptions = Subscription::whereIn('id', collect($subscriptionData)->pluck('id'))->get();
+                if (!$subscriptions->isEmpty()) {
+                    foreach ($subscriptions as $subscription) {
+                        $subscriptionService->enableSubscription($invoice->id, $subscription, $subscriptionData[$subscription->id]['amount']);
                     }
                 }
-                if (!empty($oneTimeInvoiceItems)) {
-                    foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
-                        $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
-                    }
+            }
+            if (!empty($oneTimeInvoiceItems)) {
+                foreach ($oneTimeInvoiceItems as $key => $oneTimeInvoiceItem) {
+                    $subscriptionService->clearOnTimeProductPayment($invoice->id, $customer->id, $oneTimeInvoiceItem['amount']);
                 }
             }
 
@@ -416,44 +457,53 @@ class InvoiceController extends Controller
 
             DB::commit();
 
+            // Process payment gateway references synchronously to include URLs in response
             if ($totalGatewayJobs > 0) {
                 foreach ($gatewayJobs as $jobData) {
                     $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
+                    $product = Product::find($jobData['product_id']);
+                    $orgGateway = OrganizationPaymentGatewayIntegration::with(['paymentGateway', 'merchants'])
+                        ->find($jobData['organization_gateway_id']);
+
+                    if (!$product || !$orgGateway) {
+                        Log::warning('Skipping payment reference due to missing product/gateway', [
+                            'invoice_id' => $invoice->id,
+                            'product_id' => $jobData['product_id'],
+                            'organization_gateway_id' => $jobData['organization_gateway_id'],
+                        ]);
+                        continue;
+                    }
+
+                    $mockRequest = Request::create('/', 'POST', [
+                        'success_url' => $successUrl,
+                        'tx_ref' => $request->input('tx_ref'),
+                        'redirect_url' => $request->input('redirect_url'),
+                        'customizations' => $request->input('customizations', []),
+                        'meta' => $request->input('meta', []),
+                    ]);
 
                     if ($jobData['gateway_name'] === 'universal control number') {
-                        CreateEcobankReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
+                        $this->createControlNumber(
+                            $orgGateway->merchants->first(),
+                            $product,
+                            $customer,
+                            $orgGateway
                         );
                         continue;
                     }
 
                     if ($jobData['gateway_name'] === 'flutterwave') {
-                        CreateFlutterwaveReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
-                        );
+                        $this->createFlutterWaveReference($invoice, $product, $customer, $mockRequest, $orgGateway);
                         continue;
                     }
 
                     if ($jobData['gateway_name'] === 'stripe') {
-                        CreateStripeReferenceJob::dispatch(
-                            $invoice->id,
-                            $jobData['product_id'],
-                            $customer->id,
-                            $jobData['organization_gateway_id'],
-                            $successUrl
-                        );
+                        $this->createStripeReference($invoice, $product, $customer, $mockRequest, $orgGateway);
                     }
                 }
             }
 
+            // Reload invoice with all relationships including newly created payment references
             $invoice->load([
                 'customer',
                 'payments',
@@ -1044,7 +1094,12 @@ class InvoiceController extends Controller
                 'organization_id' => $invoice->customer->organization_id,
             ],
 
-            'price_plans' => $invoice->invoiceItems->map(function ($item) use ($invoice, $controlNumbersMap) {
+            'price_plans' => $invoice->invoiceItems
+                ->filter(function ($item) {
+                    // Skip items with null pricePlan or null product
+                    return $item->pricePlan !== null && $item->pricePlan->product !== null;
+                })
+                ->map(function ($item) use ($invoice, $controlNumbersMap) {
                 $product = $item->pricePlan->product;
                 $customerId = $invoice->customer->id;
                 $mapKey = $this->controlNumbersMapKey($customerId, $product->id);
@@ -1098,7 +1153,10 @@ class InvoiceController extends Controller
             })->unique('id')->values(),
             'subscriptions' => $invoice->invoiceItems
                 ->filter(function ($item) {
-                    return $item->subscription !== null;
+                    // Skip items without subscription, pricePlan, or product
+                    return $item->subscription !== null 
+                        && $item->subscription->pricePlan !== null
+                        && $item->subscription->pricePlan->product !== null;
                 })
                 ->map(function ($item) {
                     $subscription = $item->subscription;
@@ -1693,7 +1751,7 @@ class InvoiceController extends Controller
             $subscription = Subscription::with(['customer', 'pricePlan'])
                 ->find($request->input('subscription_id'));
 
-            // Dispatch payment gateway jobs
+            // Process payment gateway references synchronously
             $successUrl = $request->input('success_url') ?: config('app.url') . '/payment/callback';
             $cancelUrl = $request->input('cancel_url') ?: config('app.url') . '/payment/cancel';
 
@@ -1708,39 +1766,33 @@ class InvoiceController extends Controller
                     ->where('status', 'active')
                     ->get();
 
+                $mockRequest = Request::create('/', 'POST', [
+                    'success_url' => $successUrl,
+                    'redirect_url' => $successUrl,
+                    'cancel_url' => $cancelUrl,
+                    'customizations' => $request->input('customizations', []),
+                    'meta' => $request->input('meta', []),
+                ]);
+
                 foreach ($organizationGateways as $orgGateway) {
                     $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
 
-                        if ($gatewayName === 'universal control number') {
-                            CreateEcobankReferenceJob::dispatch(
-                                $invoice->id,
-                                $product->id,
-                                $customer->id,
-                                $orgGateway->id,
-                                $successUrl
-                            );
-                        } elseif ($gatewayName === 'flutterwave') {
-                            CreateFlutterwaveReferenceJob::dispatch(
-                                $invoice->id,
-                                $product->id,
-                                $customer->id,
-                                $orgGateway->id,
-                                $successUrl,
-                                $cancelUrl
-                            );
-                        } elseif ($gatewayName === 'stripe') {
-                            CreateStripeReferenceJob::dispatch(
-                                $invoice->id,
-                                $product->id,
-                                $customer->id,
-                                $orgGateway->id,
-                                $successUrl
-                            );
-                        }
+                    if ($gatewayName === 'universal control number') {
+                        $this->createControlNumber(
+                            $orgGateway->merchants->first(),
+                            $product,
+                            $customer,
+                            $orgGateway
+                        );
+                    } elseif ($gatewayName === 'flutterwave') {
+                        $this->createFlutterWaveReference($invoice, $product, $customer, $mockRequest, $orgGateway);
+                    } elseif ($gatewayName === 'stripe') {
+                        $this->createStripeReference($invoice, $product, $customer, $mockRequest, $orgGateway);
+                    }
                 }
             }
 
-            // Reload invoice with all relationships for payment details
+            // Reload invoice with all relationships including newly created payment references
             $invoice->load([
                 'customer',
                 'payments',

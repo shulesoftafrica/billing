@@ -51,12 +51,13 @@ Authorization: Bearer {YOUR_USER_TOKEN_FROM_STEP_1}
 Content-Type: application/json
 
 {
-  "organization_email": "your-org@example.com",
   "name": "Production API Client",
   "environment": "live",
   "allowed_scopes": ["*"]
 }
             </x-docs.code-block>
+            
+            <p class="text-muted small"><strong>🔒 Security:</strong> The client is automatically created for your organization. You cannot create clients for other organizations.</p>
             
             <div class="alert">
                 <strong>⚠️ CRITICAL:</strong> Save your <code>client_id</code> and <code>client_secret</code> immediately! The <code>client_secret</code> is shown only once and cannot be retrieved again.
@@ -65,13 +66,20 @@ Content-Type: application/json
             <p><strong>Response:</strong></p>
             <x-docs.code-block language="json">
 {
-  "message": "OAuth client created successfully",
-  "client": {
-    "client_id": "org_live_client_abc123xyz...",
-    "client_secret": "org_live_secret_xyz789def...",
-    "environment": "live",
-    "allowed_scopes": ["*"]
-  }
+    "message": "OAuth client created successfully",
+    "client": {
+        "id": 1,
+        "name": "Production API Client",
+        "client_id": "org_live_client_ZE9HizNKnNzcQ9ZGOlfSieWlvDimu3jH",
+        "client_secret": "org_live_secret_GCNpI1J6wbPh3LS0IoUVS8WhqXjH0Ob2m4elud5x",
+        "environment": "live",
+        "allowed_scopes": [
+            "*"
+        ],
+        "expires_at": null,
+        "created_at": "2026-03-18T20:38:10.000000Z"
+    },
+    "warning": "Store the client_secret securely. It will not be shown again."
 }
             </x-docs.code-block>
         </div>

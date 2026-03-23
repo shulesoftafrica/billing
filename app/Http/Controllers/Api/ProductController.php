@@ -11,6 +11,19 @@ use Illuminate\Validation\Rule;
 class ProductController extends Controller
 {
     /**
+     * Helper method to find product by ID (numeric) or product_code (string)
+     */
+    private function findProduct(string $identifier)
+    {
+        return Product::where(function ($query) use ($identifier) {
+            if (is_numeric($identifier)) {
+                $query->where('id', $identifier);
+            }
+            $query->orWhere('product_code', $identifier);
+        })->first();
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
@@ -18,10 +31,11 @@ class ProductController extends Controller
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'product_type' => 'integer|exists:product_types,id',
+            'active' => 'sometimes|boolean',
         ]);
         $product_type = $request->product_type ?? null;
         $name = $request->name ?? null;
-        $status = $request->status ?? null;
+        $active = $request->active ?? null;
 
         if ($validator->fails()) {
             return response()->json([
@@ -38,8 +52,8 @@ class ProductController extends Controller
         if ($name) {
             $productQuery->where('name', $name);
         }
-        if ($status) {
-            $productQuery->where('status', $status);
+        if ($active !== null) {
+            $productQuery->where('active', $active);
         }
         $products = $productQuery->get();
 
@@ -58,10 +72,12 @@ class ProductController extends Controller
         // Determine rules based on product_type_id
         $productTypeId = $request->input('product_type_id');
 
-        // For product_type_id = 1: price_plans optional (max 1), subscription_type not allowed
-        // For product_type_id = 3: price_plans mandatory, subscription_type optional
-        // For other product_type_id: price_plans mandatory, array with min 1, subscription_type required
-        $pricePlansRule = $productTypeId == 1 ? 'nullable|array|max:1' : 'required|array|min:1';
+        // For product_type_id = 1 (one-time): price_plans optional (max 1)
+        // For product_type_id = 3 (usage/wallet): price_plans optional - pricing defined at invoice creation
+        // For product_type_id = 2 (subscription): price_plans mandatory
+        $pricePlansRule = ($productTypeId == 1 || $productTypeId == 3) 
+            ? 'nullable|array' 
+            : 'required|array|min:1';
 
         // Valid subscription types
         $validSubscriptionTypes = ['daily', 'weekly', 'monthly', 'quarterly', 'semi_annually', 'yearly'];
@@ -70,6 +86,9 @@ class ProductController extends Controller
             : ($productTypeId == 3
                 ? 'nullable|in:' . implode(',', $validSubscriptionTypes)
                 : 'required_if:price_plans,!=null|in:' . implode(',', $validSubscriptionTypes));
+
+        // Amount is optional for product_type_id = 3 (usage/wallet products)
+        $amountRule = $productTypeId == 3 ? 'nullable|numeric|min:0' : 'required|numeric|min:0';
 
         $validator = Validator::make($request->all(), [
             'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
@@ -92,13 +111,14 @@ class ProductController extends Controller
             ],
             'description' => 'nullable|string',
             'unit' => 'nullable|string|max:255',
-            'status' => 'required|in:active,inactive,archived',
+            'active' => 'nullable|boolean',
             'price_plans' => $pricePlansRule,
-            'price_plans.*.name' => 'required_if:price_plans,!=null|string|max:255',
+            'price_plans.*.name' => 'required|string|max:255',
             'price_plans.*.subscription_type' => $subscriptionTypeRule,
-            'price_plans.*.amount' => 'required_if:price_plans,!=null|numeric|min:0',
-            'price_plans.*.currency' => 'required_if:price_plans,!=null|string|min:2|max:5',
+            'price_plans.*.amount' => $amountRule,
+            'price_plans.*.currency_id' => 'required|integer|exists:currencies,id',
             'price_plans.*.rate' => 'nullable|integer|min:1',
+            'price_plans.*.active' => 'nullable|boolean',
         ]);
 
         // Additional validation: subscription_type not allowed for product_type_id = 1
@@ -134,19 +154,52 @@ class ProductController extends Controller
             // Handle price plans
             if ($productTypeId == 1 && empty($pricePlans)) {
                 // Create default price plan for product_type_id = 1 when no price plans provided
+                // Get default currency_id (use first currency or id=1)
+                $defaultCurrencyId = \DB::table('currencies')->value('id') ?? 1;
+                
                 $product->pricePlans()->create([
                     'name' => $validatedData['name'],
+                    'billing_type' => 'one_time',
+                    'billing_interval' => null,
                     'subscription_type' => null,
                     'amount' => 0,
-                    'currency' => 'TZS', // Default currency
+                    'currency_id' => $defaultCurrencyId,
+                    'active' => true,
                 ]);
+            } elseif ($productTypeId == 3 && empty($pricePlans)) {
+                // For wallet products (type 3), price plans are optional
+                // Price plans will be created when funding the wallet via invoice
+                // Skip creating any default price plans
             } else {
                 // Create provided price plans
                 foreach ($pricePlans as $plan) {
-                    // Set default rate if not provided for product_type_id = 3
-                    if ($productTypeId == 3 && !isset($plan['rate'])) {
-                        $plan['rate'] = 1;
+                    // Ensure amount is set (required field)
+                    if (!isset($plan['amount'])) {
+                        $plan['amount'] = 0;
                     }
+                    
+                    // Ensure active is set (default to true)
+                    if (!isset($plan['active'])) {
+                        $plan['active'] = true;
+                    }
+                    
+                    // Map product_type_id to billing_type
+                    if ($productTypeId == 1) {
+                        $plan['billing_type'] = 'one_time';
+                        $plan['billing_interval'] = null;
+                    } elseif ($productTypeId == 2) {
+                        $plan['billing_type'] = 'recurring';
+                        // Map subscription_type to billing_interval
+                        $plan['billing_interval'] = $plan['subscription_type'] ?? null;
+                    } elseif ($productTypeId == 3) {
+                        $plan['billing_type'] = 'usage';
+                        $plan['billing_interval'] = null;
+                        // Set default rate if not provided for product_type_id = 3
+                        if (!isset($plan['rate'])) {
+                            $plan['rate'] = 1;
+                        }
+                    }
+                    
                     $product->pricePlans()->create($plan);
                 }
             }
@@ -172,11 +225,8 @@ class ProductController extends Controller
      */
     public function show(string $id)
     {
-        // Try to find by ID first, then by product_code
-        $product = Product::with(['organization', 'productType', 'pricePlans'])
-            ->where('id', $id)
-            ->orWhere('product_code', $id)
-            ->first();
+        // Find product by ID (if numeric) or by product_code (if string)
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
@@ -184,6 +234,9 @@ class ProductController extends Controller
                 'message' => 'Product not found'
             ], 404);
         }
+
+        // Load relationships
+        $product->load(['organization', 'productType', 'pricePlans']);
 
         return response()->json([
             'success' => true,
@@ -197,7 +250,8 @@ class ProductController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $product = Product::find($id);
+        // Find product by ID or product_code
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
@@ -232,7 +286,7 @@ class ProductController extends Controller
             ],
             'description' => 'nullable|string',
             'unit' => 'nullable|string|max:255',
-            'status' => 'sometimes|required|in:active,inactive,archived',
+            'active' => 'sometimes|boolean',
         ]);
 
         if ($request->has('organization_id') && !$request->has('name')) {
@@ -275,11 +329,49 @@ class ProductController extends Controller
     }
 
     /**
+     * Get all wallet products (product_type_id = 3) for the authenticated organization
+     */
+    public function wallets(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
+            'active' => 'sometimes|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Get wallet products (product_type_id = 3)
+        $walletsQuery = Product::with(['organization', 'productType', 'pricePlans'])
+            ->where('organization_id', $request->organization_id)
+            ->where('product_type_id', 3); // 3 = Usage/Wallet type
+
+        // Optional filter by active status
+        if ($request->has('active')) {
+            $walletsQuery->where('active', $request->active);
+        }
+
+        $wallets = $walletsQuery->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Wallets retrieved successfully',
+            'data' => $wallets
+        ], 200);
+    }
+
+    /**
      * Remove the specified resource from storage.
      */
     public function destroy(string $id)
     {
-        $product = Product::find($id);
+        // Find product by ID or product_code
+        $product = $this->findProduct($id);
 
         if (!$product) {
             return response()->json([
