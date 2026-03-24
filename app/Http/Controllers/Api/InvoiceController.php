@@ -1118,33 +1118,8 @@ class InvoiceController extends Controller
             ];
         })->values();
 
-        return [
-            'id' => $invoice->id,
-            'invoice_number' => $invoice->invoice_number,
-            'status' => $invoice->status,
-            'currency' => $invoice->currency,
-            'description' => $invoice->description,
-            'subtotal' => $invoice->subtotal,
-            'tax_breakdown' => $taxBreakdown,
-            'tax_total' => $invoice->tax_total,
-            'grand_total' => $grandTotal,
-            'invoiced_amount' => $grandTotal,
-            'paid_amount' => $paid,
-            'outstanding_amount' => $balance,
-            'date' => $invoice->date,
-            'due_date' => $invoice->due_date,
-            'issued_at' => $invoice->issued_at,
-            'created_at' => $invoice->created_at,
-            'updated_at' => $invoice->updated_at,
-            'customer' => [
-                'id' => $invoice->customer->id,
-                'name' => $invoice->customer->name,
-                'email' => $invoice->customer->email,
-                'phone' => $invoice->customer->phone,
-                'organization_id' => $invoice->customer->organization_id,
-            ],
-
-            'price_plans' => $invoice->invoiceItems
+        // Build price_plans data first to extract control numbers
+        $pricePlansData = $invoice->invoiceItems
                 ->filter(function ($item) {
                     // Skip items with null pricePlan or null product
                     return $item->pricePlan !== null && $item->pricePlan->product !== null;
@@ -1200,7 +1175,58 @@ class InvoiceController extends Controller
                     'product_name' => $product->name,
                     'payment_gateways' => $paymentGateways->toArray()
                 ];
-            })->unique('id')->values(),
+            })->unique('id')->values();
+
+        // Extract all control numbers for backward compatibility
+        $allControlNumbers = $pricePlansData->flatMap(function ($pricePlan) {
+            return collect($pricePlan['payment_gateways'])->map(function ($gateway) use ($pricePlan) {
+                return [
+                    'gateway_name' => $gateway['gateway_name'],
+                    'reference' => $gateway['references'],
+                    'payment_link' => $gateway['payment_link'] ?? null,
+                    'client_secret' => $gateway['client_secret'] ?? null,
+                    'product_id' => $pricePlan['product_id'],
+                    'product_name' => $pricePlan['product_name'],
+                ];
+            });
+        })->values()->toArray();
+
+        // Extract primary UCN (first control number reference)
+        $primaryUcn = $allControlNumbers[0]['reference'] ?? null;
+
+        return [
+            'id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'status' => $invoice->status,
+            'currency' => $invoice->currency,
+            'description' => $invoice->description,
+            'subtotal' => $invoice->subtotal,
+            'tax_breakdown' => $taxBreakdown,
+            'tax_total' => $invoice->tax_total,
+            'grand_total' => $grandTotal,
+            'invoiced_amount' => $grandTotal,
+            'paid_amount' => $paid,
+            'outstanding_amount' => $balance,
+            'date' => $invoice->date,
+            'due_date' => $invoice->due_date,
+            'issued_at' => $invoice->issued_at,
+            'created_at' => $invoice->created_at,
+            'updated_at' => $invoice->updated_at,
+            
+            // Backward compatibility fields for external applications
+            'ucn' => $primaryUcn,
+            'control_number' => $primaryUcn,
+            'control_numbers' => $allControlNumbers,
+            
+            'customer' => [
+                'id' => $invoice->customer->id,
+                'name' => $invoice->customer->name,
+                'email' => $invoice->customer->email,
+                'phone' => $invoice->customer->phone,
+                'organization_id' => $invoice->customer->organization_id,
+            ],
+
+            'price_plans' => $pricePlansData->toArray(),
             'subscriptions' => $invoice->invoiceItems
                 ->filter(function ($item) {
                     // Skip items without subscription, pricePlan, or product
@@ -1638,13 +1664,32 @@ class InvoiceController extends Controller
 
             $paymentIntentService = app(PaymentIntentService::class);
 
+            // Convert TZS to USD for Stripe (Stripe doesn't support TZS)
+            $originalCurrency = strtolower((string) ($invoice->currency ?: 'TZS'));
+            $originalAmount = round($invoice->total);
+            $stripeCurrency = $originalCurrency;
+            $amountForStripe = $originalAmount;
 
-            $stripeAmount = StripeAmountHelper::toStripeAmount(round($invoice->total), (string) ($invoice->currency ?: 'TZS'));
+            if ($originalCurrency === 'tzs') {
+                // Convert TZS to USD (approximate rate: 1 USD = 2,550 TZS)
+                $amountForStripe = round($originalAmount / 2550, 2);
+                $stripeCurrency = 'usd';
+                
+                Log::info('Converting TZS to USD for Stripe', [
+                    'invoice_id' => $invoice->id,
+                    'original_amount' => $originalAmount,
+                    'original_currency' => 'TZS',
+                    'converted_amount' => $amountForStripe,
+                    'converted_currency' => 'USD',
+                ]);
+            }
+
+            $stripeAmount = StripeAmountHelper::toStripeAmount($amountForStripe, $stripeCurrency);
             if ($stripeAmount <= 0 || (StripeAmountHelper::countDigits($stripeAmount)) > 8) {
                 Log::warning('Calculated Stripe amount is invalid', [
                     'invoice_id' => $invoice->id,
                     'calculated_amount' => $stripeAmount,
-                    'currency' => $invoice->currency,
+                    'currency' => $stripeCurrency,
                 ]);
                 return [
                     'success' => false,
@@ -1652,11 +1697,10 @@ class InvoiceController extends Controller
                 ];
             }
 
-            $currency = strtolower((string) ($invoice->currency ?: 'TZS'));
             $orderId = $invoice->invoice_number . '-' . $product->id;
             $intent = $paymentIntentService->create([
                 'amount' => $stripeAmount,
-                'currency' => $currency,
+                'currency' => $stripeCurrency,
                 'description' => 'Invoice ' . $invoice->invoice_number . ' payment',
                 'receipt_email' => $customer->email,
                 'metadata' => [
@@ -1666,6 +1710,8 @@ class InvoiceController extends Controller
                     'invoice_number' => (string) $invoice->invoice_number,
                     'organization_id' => (string) $customer->organization_id,
                     'product_id' => (string) $product->id,
+                    'original_currency' => strtoupper($originalCurrency),
+                    'original_amount' => (string) $originalAmount,
                 ],
             ]);
 
