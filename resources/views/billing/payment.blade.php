@@ -12,17 +12,17 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --ink:       #0e0f0c;
-            --paper:     #f5f2eb;
-            --cream:     #ede9df;
-            --warm:      #e8e3d8;
-            --accent:    #1a3a2a;
-            --accent2:   #c8873a;
-            --muted:     #7a776e;
-            --soft:      #b0ada5;
-            --border:    #d8d4c8;
-            --success:   #1a3a2a;
-            --error:     #8b2020;
+            --ink:       #1a1a1a;
+            --paper:     #f8f9fa;
+            --cream:     #ffffff;
+            --warm:      #f1f3f5;
+            --accent:    #495057;
+            --accent2:   #6c757d;
+            --muted:     #6c757d;
+            --soft:      #adb5bd;
+            --border:    #dee2e6;
+            --success:   #495057;
+            --error:     #dc3545;
             --radius:    14px;
         }
 
@@ -37,8 +37,8 @@
             display: flex;
             flex-direction: column;
             background-image:
-                radial-gradient(ellipse at 20% 0%, rgba(200,135,58,0.08) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 100%, rgba(26,58,42,0.06) 0%, transparent 50%);
+                radial-gradient(ellipse at 20% 0%, rgba(108,117,125,0.03) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 100%, rgba(73,80,87,0.03) 0%, transparent 50%);
         }
 
         .page-header {
@@ -47,7 +47,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(245,242,235,0.8);
+            background: rgba(255,255,255,0.9);
             backdrop-filter: blur(10px);
             position: sticky;
             top: 0;
@@ -147,9 +147,9 @@
             font-weight: 600;
             padding: 4px 10px;
             border-radius: 20px;
-            background: rgba(200,135,58,0.12);
-            color: var(--accent2);
-            border: 1px solid rgba(200,135,58,0.25);
+            background: rgba(255,193,7,0.15);
+            color: #856404;
+            border: 1px solid rgba(255,193,7,0.3);
             letter-spacing: 0.04em;
         }
 
@@ -287,7 +287,7 @@
 
         .pay-btn:hover:not(:disabled) {
             transform: translateY(-1px);
-            box-shadow: 0 8px 28px rgba(26,58,42,0.3);
+            box-shadow: 0 8px 28px rgba(73,80,87,0.25);
         }
 
         .pay-btn:active:not(:disabled) { transform: translateY(0); }
@@ -339,8 +339,8 @@
 
         .success-icon {
             width: 72px; height: 72px;
-            background: rgba(26,58,42,0.1);
-            border: 1px solid rgba(26,58,42,0.2);
+            background: rgba(40,167,69,0.1);
+            border: 1px solid rgba(40,167,69,0.2);
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             margin-bottom: 24px;
@@ -352,8 +352,8 @@
             to   { transform: scale(1);   opacity: 1; }
         }
 
-        .success-icon svg { width: 30px; height: 30px; }
-        .success-title { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 400; margin-bottom: 10px; color: var(--accent); }
+        .success-icon svg { width: 30px; height: 30px; stroke: #28a745; }
+        .success-title { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 400; margin-bottom: 10px; color: #28a745; }
         .success-msg { font-size: 14px; color: var(--muted); line-height: 1.7; max-width: 280px; }
 
         .page-footer {
@@ -380,7 +380,7 @@
 @endphp
 
 <header class="page-header">
-    <div class="logo">{{ config('app.name', 'BillFlow') }}</div>
+    <div class="logo">Payment Portal</div>
     <div class="secure-tag">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -394,8 +394,8 @@
         <div>
             <div class="section-label">Billed to</div>
             <div class="customer-card">
-                <div class="customer-name">{{ $customer->name }}</div>
-                <div class="customer-email">{{ $customer->email }}</div>
+                <div class="customer-name">{{ $invoice->customer->name ?? $customer->name ?? 'N/A' }}</div>
+                <div class="customer-email">{{ $invoice->customer->email ?? $customer->email ?? 'N/A' }}</div>
             </div>
         </div>
 
@@ -480,21 +480,21 @@
 
         <div class="success-overlay" id="success-state">
             <div class="success-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#1a3a2a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#28a745" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
             </div>
             <div class="success-title">Payment successful</div>
             <div class="success-msg">
                 Thank you! Your payment for invoice <strong>{{ $invoice->invoice_number }}</strong>
-                has been received. A receipt has been sent to {{ $customer->email }}.
+                has been received. A receipt has been sent to {{ $invoice->customer->email ?? $customer->email ?? 'your email' }}.
             </div>
         </div>
     </div>
 </main>
 
 <footer class="page-footer">
-    <svg width="40" viewBox="0 0 60 25" fill="none"><text x="0" y="20" font-family="Arial" font-weight="800" font-size="22" fill="#b0ada5">stripe</text></svg>
+    <svg width="40" viewBox="0 0 60 25" fill="none"><text x="0" y="20" font-family="Arial" font-weight="800" font-size="22" fill="#adb5bd">stripe</text></svg>
     · SSL encrypted · PCI compliant
 </footer>
 
