@@ -132,7 +132,14 @@ class StripeWebhookController extends Controller
                 'message' => 'Duplicate transaction',
             ], 409);
         }
-        $stripeAmount = StripeAmountHelper::fromStripeAmount($intent->amount_received, $intent->currency);
+        $originalAmount = $metadata['original_amount'] ?? null;
+        $originalCurrency = $metadata['original_currency'] ?? null;
+
+        if ($originalAmount === null || $originalCurrency === null) {
+            throw new \Exception('Original amount or currency not found in payment metadata');
+        }
+
+        $stripeAmount =  $originalAmount; // StripeAmountHelper::fromStripeAmount((int) $originalAmount, (string) $originalCurrency); // since we used original amount no need to convert it back to cents
         $payment = Payment::create([
             'invoice_id' => $invoice->id,
             'gateway_reference' => $gatewayReference,
