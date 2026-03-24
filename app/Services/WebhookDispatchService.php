@@ -111,7 +111,7 @@ class WebhookDispatchService
     /**
      * Dispatch webhook event to all active webhooks for a product
      */
-    public function dispatchToProduct(Product $product, string $eventType, array $payload): void
+    public function dispatchToProduct(Product $product, string $eventType, array $payload): array
     {
         $webhooks = $product->getActiveWebhooksForEvent($eventType);
 
@@ -121,7 +121,11 @@ class WebhookDispatchService
                 'product_name' => $product->name,
                 'event_type' => $eventType,
             ]);
-            return;
+            return [
+                'dispatched' => 0,
+                'successful' => 0,
+                'failed' => 0,
+            ];
         }
 
         Log::info('[WEBHOOK DISPATCH] Dispatching to multiple webhooks', [
@@ -130,10 +134,20 @@ class WebhookDispatchService
             'webhook_count' => $webhooks->count(),
         ]);
 
+        $successful = 0;
+        $failed = 0;
+
         foreach ($webhooks as $webhook) {
             try {
-                $this->dispatch($webhook, $payload);
+                $delivery = $this->dispatch($webhook, $payload);
+                
+                if ($delivery->status === 'sent') {
+                    $successful++;
+                } else {
+                    $failed++;
+                }
             } catch (\Exception $e) {
+                $failed++;
                 Log::error('[WEBHOOK DISPATCH] Failed to dispatch webhook', [
                     'webhook_id' => $webhook->id,
                     'error' => $e->getMessage(),
@@ -141,6 +155,12 @@ class WebhookDispatchService
                 // Continue with other webhooks even if one fails
             }
         }
+
+        return [
+            'dispatched' => $webhooks->count(),
+            'successful' => $successful,
+            'failed' => $failed,
+        ];
     }
 
     /**
@@ -189,4 +209,119 @@ class WebhookDispatchService
 
         return $retried;
     }
+
+    /**
+     * Retry a specific webhook delivery
+     */
+    public function retryDelivery(WebhookDelivery $delivery): array
+    {
+        if (!$delivery->customWebhook) {
+            throw new \Exception('Webhook configuration not found');
+        }
+
+        $payload = json_decode($delivery->payload, true);
+        
+        if (!$payload) {
+            throw new \Exception('Invalid payload JSON');
+        }
+
+        Log::info('[WEBHOOK RETRY] Manually retrying delivery', [
+            'delivery_id' => $delivery->id,
+            'webhook_id' => $delivery->custom_webhook_id,
+            'webhook_name' => $delivery->customWebhook->name,
+            'current_attempts' => $delivery->attempts,
+        ]);
+
+        $startTime = microtime(true);
+        
+        try {
+            // Generate signature
+            $signature = $delivery->customWebhook->generateSignature($payload);
+
+            // Prepare headers
+            $defaultHeaders = [
+                'X-Webhook-Signature' => $signature,
+                'X-Event-Type' => $payload['event'],
+                'X-Webhook-ID' => (string) $delivery->customWebhook->id,
+                'X-Delivery-ID' => (string) $delivery->id,
+                'X-Retry-Attempt' => (string) ($delivery->attempts + 1),
+                'User-Agent' => 'BillingPlatform-Webhook/1.0',
+                'Content-Type' => 'application/json',
+            ];
+
+            $headers = array_merge($defaultHeaders, $delivery->customWebhook->headers ?? []);
+
+            // Send HTTP request
+            $httpClient = Http::timeout($delivery->customWebhook->timeout);
+            
+            if (!$delivery->customWebhook->verify_ssl) {
+                $httpClient = $httpClient->withoutVerifying();
+            }
+
+            $response = $httpClient
+                ->withHeaders($headers)
+                ->{strtolower($delivery->customWebhook->http_method)}($delivery->customWebhook->url, $payload);
+
+            $durationMs = round((microtime(true) - $startTime) * 1000);
+
+            if ($response->successful()) {
+                $delivery->markAsSent(
+                    $response->status(),
+                    $response->body(),
+                    $durationMs
+                );
+
+                $delivery->customWebhook->update(['last_triggered_at' => now()]);
+
+                Log::info('✅ [WEBHOOK RETRY] Delivery successful', [
+                    'delivery_id' => $delivery->id,
+                    'status_code' => $response->status(),
+                    'duration_ms' => $durationMs,
+                ]);
+
+                return [
+                    'success' => true,
+                    'http_status' => $response->status(),
+                    'response_time' => $durationMs,
+                    'message' => 'Webhook delivered successfully',
+                ];
+            } else {
+                $delivery->markAsFailed(
+                    "HTTP {$response->status()}: " . $response->body(),
+                    $response->status(),
+                    $durationMs
+                );
+
+                Log::warning('⚠️ [WEBHOOK RETRY] Delivery failed', [
+                    'delivery_id' => $delivery->id,
+                    'status_code' => $response->status(),
+                    'duration_ms' => $durationMs,
+                ]);
+
+                return [
+                    'success' => false,
+                    'http_status' => $response->status(),
+                    'response_time' => $durationMs,
+                    'error_message' => "HTTP {$response->status()}: " . substr($response->body(), 0, 200),
+                ];
+            }
+        } catch (\Exception $e) {
+            $durationMs = round((microtime(true) - $startTime) * 1000);
+            
+            $delivery->markAsFailed($e->getMessage(), null, $durationMs);
+
+            Log::error('🔴 [WEBHOOK RETRY] Exception occurred', [
+                'delivery_id' => $delivery->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'http_status' => null,
+                'response_time' => $durationMs,
+                'error_message' => $e->getMessage(),
+            ];
+        }
+    }
 }
+
