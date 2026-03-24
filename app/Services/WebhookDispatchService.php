@@ -229,7 +229,7 @@ class WebhookDispatchService
             'delivery_id' => $delivery->id,
             'webhook_id' => $delivery->custom_webhook_id,
             'webhook_name' => $delivery->customWebhook->name,
-            'current_attempts' => $delivery->attempts,
+            'current_attempts' => $delivery->attempt_count,
         ]);
 
         $startTime = microtime(true);
@@ -244,7 +244,7 @@ class WebhookDispatchService
                 'X-Event-Type' => $payload['event'],
                 'X-Webhook-ID' => (string) $delivery->customWebhook->id,
                 'X-Delivery-ID' => (string) $delivery->id,
-                'X-Retry-Attempt' => (string) ($delivery->attempts + 1),
+                'X-Retry-Attempt' => (string) ($delivery->attempt_count + 1),
                 'User-Agent' => 'BillingPlatform-Webhook/1.0',
                 'Content-Type' => 'application/json',
             ];

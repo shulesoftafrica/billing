@@ -113,7 +113,7 @@ class DispatchWebhookCommand extends Command
         $this->info("URL: {$delivery->webhook->url}");
         $this->info("Event: {$delivery->event_type}");
         $this->info("Status: {$delivery->status}");
-        $this->info("Attempts: {$delivery->attempts}");
+        $this->info("Attempts: {$delivery->attempt_count}");
 
         if (!$this->confirm('Do you want to resend this webhook?', true)) {
             $this->info('Cancelled');
@@ -149,7 +149,7 @@ class DispatchWebhookCommand extends Command
         $productId = $this->option('product');
         
         $query = WebhookDelivery::where('status', 'failed')
-            ->where('attempts', '<', 3)
+            ->where('attempt_count', '<', 3)
             ->whereNotNull('next_retry_at')
             ->where('next_retry_at', '<=', now());
 
