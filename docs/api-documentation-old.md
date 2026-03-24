@@ -3274,9 +3274,15 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 
 ## Webhooks
 
-### Handle UCN payment Webhooks
-**Method:** `POST`
-**URL:** `/api/webhooks/ecobank/notification`
+> **⚠️ DEPRECATED:** This is legacy documentation. Please refer to [api-documentation.md](./api-documentation.md) for the complete, up-to-date webhook documentation including Custom Webhooks Management.
+
+### Incoming Webhooks (Payment Gateway Notifications)
+
+These endpoints receive webhook notifications **FROM** payment gateways. Configure these URLs in your payment gateway dashboard.
+
+### Handle UCN payment Webhook
+**Method:** `POST`  
+**URL:** `/api/v1/webhooks/ecobank/notification` *(Legacy: `/api/webhooks/ecobank/notification`)*
 
 **Required Headers:**
 | Key | Value |
@@ -3284,7 +3290,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 | Content-Type | application/json |
 | Accept | application/json |
 
-**Request Body:**
+**Request Body:** (Gateway-specific)
 ```json
 {}
 ```
@@ -3305,9 +3311,11 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-### Handle Flutterwave Webhooks
-**Method:** `POST`
-**URL:** `/api/webhooks/flutterwave`
+---
+
+### Handle Flutterwave Webhook
+**Method:** `POST`  
+**URL:** `/api/v1/webhooks/flutterwave` *(Legacy: `/api/webhooks/flutterwave`)*
 
 **Required Headers:**
 | Key | Value |
@@ -3316,7 +3324,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 | flutterwave-signature | {base64_hmac_sha256} |
 | Accept | application/json |
 
-**Request Body:**
+**Request Body:** (Gateway-specific)
 ```json
 {}
 ```
@@ -3346,9 +3354,11 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-### Handle Stripe PaymantIntent Webhooks
-**Method:** `POST`
-**URL:** `/api/webhooks/stripe`
+---
+
+### Handle Stripe PaymentIntent Webhook
+**Method:** `POST`  
+**URL:** `/api/v1/webhooks/stripe` *(Legacy: `/api/webhooks/stripe`)*
 
 **Required Headers:**
 | Key | Value |
@@ -3357,7 +3367,7 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 | Stripe-Signature | t={timestamp},v1={signature} |
 | Accept | application/json |
 
-**Request Body:**
+**Request Body:** (Gateway-specific)
 ```json
 {}
 ```
@@ -3378,12 +3388,17 @@ Record usage throughout the billing period → Retrieve usage report → Calcula
 }
 ```
 
-`500 Internal Server Error`
+`401 Unauthorized`
 ```json
 {
-  "error": "Invalid webhook signature"
+  "success": false,
+  "message": "Invalid webhook signature"
 }
 ```
+
+---
+
+> **📚 For Custom Webhooks:** To configure webhook endpoints in YOUR application to receive event notifications FROM this billing platform, see the **Custom Webhooks Management** section in [api-documentation.md](./api-documentation.md).
 
 ## Reconciliation
 

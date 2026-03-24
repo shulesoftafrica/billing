@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\TaxRateController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\Api\CustomWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -99,6 +100,16 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
         Route::get('price-plans/{pricePlan}', [PricePlanController::class, 'show']);
         Route::put('price-plans/{pricePlan}', [PricePlanController::class, 'update']);
         Route::delete('price-plans/{pricePlan}', [PricePlanController::class, 'destroy']);
+        
+        // Custom webhooks nested under products
+        Route::get('webhooks', [CustomWebhookController::class, 'index']);
+        Route::post('webhooks', [CustomWebhookController::class, 'store']);
+        Route::get('webhooks/{webhook}', [CustomWebhookController::class, 'show']);
+        Route::put('webhooks/{webhook}', [CustomWebhookController::class, 'update']);
+        Route::delete('webhooks/{webhook}', [CustomWebhookController::class, 'destroy']);
+        Route::post('webhooks/{webhook}/test', [CustomWebhookController::class, 'test']);
+        Route::get('webhooks/{webhook}/deliveries', [CustomWebhookController::class, 'deliveries']);
+        Route::post('webhooks/{webhook}/regenerate-secret', [CustomWebhookController::class, 'regenerateSecret']);
     });
 
     // Subscription routes
@@ -167,6 +178,16 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('price-plans/{pricePlan}', [PricePlanController::class, 'show']);
         Route::put('price-plans/{pricePlan}', [PricePlanController::class, 'update']);
         Route::delete('price-plans/{pricePlan}', [PricePlanController::class, 'destroy']);
+        
+        // Custom webhooks nested under products
+        Route::get('webhooks', [CustomWebhookController::class, 'index']);
+        Route::post('webhooks', [CustomWebhookController::class, 'store']);
+        Route::get('webhooks/{webhook}', [CustomWebhookController::class, 'show']);
+        Route::put('webhooks/{webhook}', [CustomWebhookController::class, 'update']);
+        Route::delete('webhooks/{webhook}', [CustomWebhookController::class, 'destroy']);
+        Route::post('webhooks/{webhook}/test', [CustomWebhookController::class, 'test']);
+        Route::get('webhooks/{webhook}/deliveries', [CustomWebhookController::class, 'deliveries']);
+        Route::post('webhooks/{webhook}/regenerate-secret', [CustomWebhookController::class, 'regenerateSecret']);
     });
 
     // Subscription routes

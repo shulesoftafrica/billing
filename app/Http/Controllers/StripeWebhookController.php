@@ -7,9 +7,12 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Models\Product;
+use App\Models\WebhookLog;
 use App\Services\Stripe\StripeAmountHelper;
 use App\Services\SubscriptionService;
 use App\Services\WebhookPaymentProcessingService;
+use App\Services\PayloadBuilderService;
+use App\Services\WebhookDispatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -22,11 +25,41 @@ class StripeWebhookController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
+        $startTime = microtime(true);
+        $requestId = uniqid('stripe_wh_', true);
+
+        // Create webhook log in database with status 'in_progress'
+        $webhookLog = WebhookLog::create([
+            'request_id' => $requestId,
+            'webhook_type' => 'stripe',
+            'status' => 'in_progress',
+            'payload' => $request->all(),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        // Log incoming webhook request
+        Log::info('🔵 [STRIPE WEBHOOK] Request received', [
+            'request_id' => $requestId,
+            'url' => $request->fullUrl(),
+            'method' => $request->method(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'has_signature' => $request->hasHeader('Stripe-Signature'),
+            'content_length' => strlen($request->getContent()),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+
         if (app()->environment('local')) {
 
             // Skip signature verification locally
             $payload = $request->getContent();
             $event = json_decode($payload);
+            
+            Log::debug('[STRIPE WEBHOOK] Signature verification skipped (local environment)', [
+                'request_id' => $requestId,
+                'event_type' => $event->type ?? 'unknown',
+            ]);
         } else {
             try {
                 $event = Webhook::constructEvent(
@@ -34,9 +67,26 @@ class StripeWebhookController extends Controller
                     (string) $request->header('Stripe-Signature'),
                     (string) config('services.stripe.webhook_secret')
                 );
+                
+                Log::info('[STRIPE WEBHOOK] Signature verified successfully', [
+                    'request_id' => $requestId,
+                    'event_type' => $event->type,
+                    'event_id' => $event->id ?? null,
+                ]);
             } catch (UnexpectedValueException | SignatureVerificationException $e) {
-                Log::warning('Invalid Stripe webhook signature', [
-                    'message' => $e->getMessage(),
+                $duration = round((microtime(true) - $startTime) * 1000, 2);
+                
+                // Update webhook log to error status
+                $webhookLog->markAsError(
+                    'Invalid webhook signature: ' . $e->getMessage(),
+                    400,
+                    $duration
+                );
+                
+                Log::warning('🔴 [STRIPE WEBHOOK] Invalid signature - Request rejected', [
+                    'request_id' => $requestId,
+                    'error' => $e->getMessage(),
+                    'duration_ms' => $duration,
                 ]);
 
                 return response()->json([
@@ -44,17 +94,64 @@ class StripeWebhookController extends Controller
                 ], 400);
             }
         }
+        
+        // Update webhook log with event type
+        $webhookLog->update(['event_type' => $event->type ?? 'unknown']);
+        
+        // Log event details before processing
+        Log::info('[STRIPE WEBHOOK] Processing event', [
+            'request_id' => $requestId,
+            'event_type' => $event->type ?? 'unknown',
+            'event_id' => $event->id ?? null,
+            'livemode' => $event->livemode ?? null,
+        ]);
+        
         // $this->processEvent($event->type, $event->data->object);
-        app()->terminating(function () use ($event): void { // process the event after the response is sent to avoid timeouts
-            $this->processEvent($event->type, $event->data->object);
+        app()->terminating(function () use ($event, $requestId, $startTime, $webhookLog): void { // process the event after the response is sent to avoid timeouts
+            try {
+                    $this->processEvent($event->type, $event->data->object, $requestId);
+                
+                $duration = round((microtime(true) - $startTime) * 1000, 2);
+                
+                // Mark webhook as completed
+                $webhookLog->markAsCompleted(
+                    ['message' => 'Event processed successfully'],
+                    200,
+                    $duration
+                );
+                
+                Log::info('✅ [STRIPE WEBHOOK] Processing completed', [
+                    'request_id' => $requestId,
+                    'event_type' => $event->type ?? 'unknown',
+                    'duration_ms' => $duration,
+                ]);
+            } catch (\Exception $e) {
+                $duration = round((microtime(true) - $startTime) * 1000, 2);
+                
+                // Mark webhook as error
+                $webhookLog->markAsError($e->getMessage(), 500, $duration);
+                
+                Log::error('🔴 [STRIPE WEBHOOK] Processing failed', [
+                    'request_id' => $requestId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                    'duration_ms' => $duration,
+                ]);
+            }
         });
+
+        $duration = round((microtime(true) - $startTime) * 1000, 2);
+        Log::info('✅ [STRIPE WEBHOOK] Response sent (background processing scheduled)', [
+            'request_id' => $requestId,
+            'duration_ms' => $duration,
+        ]);
 
         return response()->json([
             'success' => true,
         ], 200);
     }
 
-    private function processEvent(string $eventType, mixed $object): void
+    private function processEvent(string $eventType, mixed $object, string $requestId = null): void
     {
         if (!$object instanceof PaymentIntent) {
             Log::info('Ignoring Stripe event without PaymentIntent payload', [
@@ -154,6 +251,17 @@ class StripeWebhookController extends Controller
         ]);
         $webhookerController = app(WebhookPaymentProcessingService::class);
         $webhookerController->processByProductAndCustomer($product, $customer, $payment);
+        
+        // Dispatch custom webhooks
+        try {
+            $payloadBuilder = app(PayloadBuilderService::class);
+            $webhookDispatcher = app(WebhookDispatchService::class);
+            $payload = $payloadBuilder->buildPaymentSuccessPayload($payment);
+            $webhookDispatcher->dispatchToProduct($product, 'payment.success', $payload);
+        } catch (\Exception $e) {
+            Log::warning('Failed to dispatch custom webhooks', ['error' => $e->getMessage()]);
+        }
+        
         return response()->json(['success' => true], 200);
     }
 

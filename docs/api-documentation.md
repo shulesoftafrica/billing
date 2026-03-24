@@ -4342,9 +4342,25 @@ Credit Amount = Unused Value - New Plan Cost
 
 ## Webhooks
 
-### Handle UCN payment Webhooks
-**Method:** `POST`
+The billing platform supports two types of webhooks:
+
+### 1. Incoming Webhooks (Payment Gateway Notifications)
+These endpoints receive webhook notifications **FROM** payment gateways (Stripe, Flutterwave, UCN) when payments are processed. These are **system endpoints** - you don't need to call these; the payment gateways will.
+
+### 2. Custom Webhooks (Outgoing Event Notifications)
+Configure webhook endpoints in **YOUR** application to receive real-time notifications **FROM** this billing platform when billing events occur. See the [Custom Webhooks Management](#custom-webhooks-management) section below.
+
+---
+
+## Incoming Webhooks (Gateway Notifications)
+
+> **Note:** These endpoints are called by payment gateways, not by you. Configure these URLs in your payment gateway dashboard (Stripe, Flutterwave, UCN) to receive payment notifications.
+
+### Handle UCN Payment Webhook
+**Method:** `POST`  
 **URL:** `/api/v1/webhooks/ecobank/notification`
+
+**Description:** Receives payment notifications from UCN/Ecobank payment gateway.
 
 **Required Headers:**
 | Key | Value |
@@ -4352,15 +4368,21 @@ Credit Amount = Unused Value - New Plan Cost
 | Content-Type | application/json |
 | Accept | application/json |
 
-**Request Body:**
+**Request Body:** (Gateway-specific payload)
 ```json
-{}
+{
+  "transactionId": "TXN123456",
+  "amount": "50000.00",
+  "currency": "TZS",
+  "status": "success"
+}
 ```
 
 **Success Response:** `200 OK`
 ```json
 {
-  "responseCode": "000"
+  "responseCode": "000",
+  "responseDescription": "Payment processed successfully"
 }
 ```
 
@@ -4373,9 +4395,13 @@ Credit Amount = Unused Value - New Plan Cost
 }
 ```
 
-### Handle Flutterwave Webhooks
-**Method:** `POST`
+---
+
+### Handle Flutterwave Webhook
+**Method:** `POST`  
 **URL:** `/api/v1/webhooks/flutterwave`
+
+**Description:** Receives payment notifications from Flutterwave payment gateway.
 
 **Required Headers:**
 | Key | Value |
@@ -4384,9 +4410,17 @@ Credit Amount = Unused Value - New Plan Cost
 | flutterwave-signature | {base64_hmac_sha256} |
 | Accept | application/json |
 
-**Request Body:**
+**Request Body:** (Gateway-specific payload)
 ```json
-{}
+{
+  "event": "charge.completed",
+  "data": {
+    "id": 12345,
+    "amount": 500,
+    "currency": "TZS",
+    "status": "successful"
+  }
+}
 ```
 
 **Success Response:** `200 OK`
@@ -4414,9 +4448,13 @@ Credit Amount = Unused Value - New Plan Cost
 }
 ```
 
-### Handle Stripe PaymantIntent Webhooks
-**Method:** `POST`
+---
+
+### Handle Stripe PaymentIntent Webhook
+**Method:** `POST`  
 **URL:** `/api/v1/webhooks/stripe`
+
+**Description:** Receives payment notifications from Stripe payment gateway.
 
 **Required Headers:**
 | Key | Value |
@@ -4425,9 +4463,19 @@ Credit Amount = Unused Value - New Plan Cost
 | Stripe-Signature | t={timestamp},v1={signature} |
 | Accept | application/json |
 
-**Request Body:**
+**Request Body:** (Gateway-specific payload)
 ```json
-{}
+{
+  "type": "payment_intent.succeeded",
+  "data": {
+    "object": {
+      "id": "pi_123456",
+      "amount": 50000,
+      "currency": "tzs",
+      "status": "succeeded"
+    }
+  }
+}
 ```
 
 **Success Response:** `200 OK`
@@ -4439,6 +4487,14 @@ Credit Amount = Unused Value - New Plan Cost
 
 **Error Responses:**
 
+`401 Unauthorized`
+```json
+{
+  "success": false,
+  "message": "Invalid webhook signature"
+}
+```
+
 `429 Too Many Requests`
 ```json
 {
@@ -4446,12 +4502,564 @@ Credit Amount = Unused Value - New Plan Cost
 }
 ```
 
-`500 Internal Server Error`
-```json
-{
-  "error": "Invalid webhook signature"
+---
+
+## Custom Webhooks Management
+
+Configure webhook endpoints to receive **real-time notifications** from this billing platform when billing events occur in your products. Webhooks are configured per product for complete isolation.
+
+### 📋 Available Events
+
+Subscribe to any of these event types:
+
+| Event Type | Description | When It Fires |
+|------------|-------------|---------------|
+| `payment.success` | Payment successfully processed | When a payment is completed via any gateway |
+| `payment.failed` | Payment failed | When a payment attempt fails |
+| `invoice.created` | New invoice created | When an invoice is generated |
+| `invoice.paid` | Invoice fully paid | When an invoice payment is completed |
+| `subscription.created` | New subscription | When a customer subscribes |
+| `subscription.cancelled` | Subscription cancelled | When a subscription is terminated |
+
+**Wildcard Support:** Use `payment.*` to subscribe to all payment events, `invoice.*` for all invoice events, etc.
+
+---
+
+### 🔐 Webhook Security
+
+All webhook deliveries include an `X-Webhook-Signature` header containing an HMAC SHA256 signature. Verify this signature to ensure the webhook came from the billing platform:
+
+```php
+// PHP Example
+$signature = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
+$payload = file_get_contents('php://input');
+$secret = 'whsec_...'; // Your webhook secret
+
+$expectedSignature = hash_hmac('sha256', $payload, $secret);
+
+if (!hash_equals($signature, $expectedSignature)) {
+    http_response_code(401);
+    exit('Invalid signature');
+}
+
+// Process the webhook
+$event = json_decode($payload, true);
+```
+
+```javascript
+// Node.js Example
+const crypto = require('crypto');
+
+function verifyWebhook(payload, signature, secret) {
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+    
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
 }
 ```
+
+---
+
+### 📦 Standardized Payload Structure
+
+All webhook events use the same payload structure regardless of the payment gateway (Stripe, Flutterwave, or UCN):
+
+```json
+{
+  "event": "payment.success",
+  "timestamp": "2026-03-24T15:30:00+00:00",
+  "product": {
+    "id": 1,
+    "name": "Hospital Management System",
+    "type": "saas",
+    "sku": "HMS-001"
+  },
+  "organization": {
+    "id": 1,
+    "name": "General Hospital",
+    "email": "billing@hospital.com",
+    "phone": "+255123456789"
+  },
+  "customer": {
+    "id": 123,
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "+255987654321",
+    "status": "active"
+  },
+  "payment": {
+    "id": 456,
+    "amount": "50000.00",
+    "currency": "TZS",
+    "status": "success",
+    "payment_method": "card",
+    "gateway_reference": "pi_1234567890",
+    "paid_at": "2026-03-24T15:30:00+00:00"
+  },
+  "invoice": {
+    "id": 789,
+    "invoice_number": "INV-2026-001",
+    "total_amount": "50000.00",
+    "paid_amount": "50000.00",
+    "status": "paid",
+    "due_date": "2026-03-31"
+  },
+  "gateway_details": {
+    "gateway": "stripe",
+    "transaction_id": "ch_1234567890",
+    "card_last4": "4242",
+    "card_brand": "visa"
+  },
+  "metadata": {
+    "ip_address": "192.168.1.100",
+    "user_agent": "Mozilla/5.0...",
+    "processed_at": "2026-03-24T15:30:00+00:00"
+  }
+}
+```
+
+---
+
+### Create Webhook
+**Method:** `POST`  
+**URL:** `/api/v1/products/{product}/webhooks`
+
+**Description:** Create a new webhook endpoint to receive event notifications for a specific product.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+
+**Request Body:**
+```json
+{
+  "name": "Production Payment Webhook",
+  "url": "https://your-app.com/webhooks/billing",
+  "events": ["payment.success", "invoice.paid"],
+  "status": "active",
+  "http_method": "POST",
+  "headers": {
+    "X-Custom-Header": "custom-value",
+    "X-API-Key": "your-internal-api-key"
+  },
+  "timeout": 30,
+  "retry_count": 3,
+  "verify_ssl": true
+}
+```
+
+**Parameters:**
+- `name` (required): Descriptive name for the webhook
+- `url` (required): Your endpoint URL (must be HTTPS in production)
+- `events` (required): Array of event types to subscribe to
+- `status` (optional): `active` or `inactive` (default: `active`)
+- `http_method` (optional): `POST` or `PUT` (default: `POST`)
+- `headers` (optional): Custom headers to include in webhook deliveries
+- `timeout` (optional): Request timeout in seconds (default: 30)
+- `retry_count` (optional): Number of retry attempts (default: 3)
+- `verify_ssl` (optional): Verify SSL certificates (default: true)
+
+**Success Response:** `201 Created`
+```json
+{
+  "success": true,
+  "message": "Webhook created successfully",
+  "data": {
+    "id": 1,
+    "product_id": 1,
+    "name": "Production Payment Webhook",
+    "url": "https://your-app.com/webhooks/billing",
+    "secret": "whsec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "status": "active",
+    "events": ["payment.success", "invoice.paid"],
+    "http_method": "POST",
+    "headers": {
+      "X-Custom-Header": "custom-value",
+      "X-API-Key": "your-internal-api-key"
+    },
+    "timeout": 30,
+    "retry_count": 3,
+    "verify_ssl": true,
+    "last_triggered_at": null,
+    "created_at": "2026-03-24T15:30:00+00:00",
+    "updated_at": "2026-03-24T15:30:00+00:00"
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized`
+```json
+{
+  "message": "Unauthenticated",
+  "error": "invalid_access_token"
+}
+```
+
+`422 Unprocessable Entity`
+```json
+{
+  "errors": {
+    "url": ["The url field must be a valid URL."],
+    "events": ["The events field must contain valid event types."]
+  }
+}
+```
+
+---
+
+### List Webhooks
+**Method:** `GET`  
+**URL:** `/api/v1/products/{product}/webhooks`
+
+**Description:** Get all webhook configurations for a product.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "product_id": 1,
+      "name": "Production Payment Webhook",
+      "url": "https://your-app.com/webhooks/billing",
+      "status": "active",
+      "events": ["payment.success", "invoice.paid"],
+      "http_method": "POST",
+      "timeout": 30,
+      "retry_count": 3,
+      "verify_ssl": true,
+      "last_triggered_at": "2026-03-24T14:00:00+00:00",
+      "delivery_stats": {
+        "total": 150,
+        "successful": 145,
+        "failed": 5
+      },
+      "created_at": "2026-03-20T10:00:00+00:00",
+      "updated_at": "2026-03-24T15:30:00+00:00"
+    }
+  ]
+}
+```
+
+---
+
+### Get Webhook Details
+**Method:** `GET`  
+**URL:** `/api/v1/products/{product}/webhooks/{webhook}`
+
+**Description:** Get details of a specific webhook configuration.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+- `webhook` (required): Webhook ID
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "product_id": 1,
+    "name": "Production Payment Webhook",
+    "url": "https://your-app.com/webhooks/billing",
+    "secret": "whsec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+    "status": "active",
+    "events": ["payment.success", "invoice.paid"],
+    "http_method": "POST",
+    "headers": {
+      "X-Custom-Header": "custom-value"
+    },
+    "timeout": 30,
+    "retry_count": 3,
+    "verify_ssl": true,
+    "last_triggered_at": "2026-03-24T14:00:00+00:00",
+    "created_at": "2026-03-20T10:00:00+00:00",
+    "updated_at": "2026-03-24T15:30:00+00:00"
+  }
+}
+```
+
+---
+
+### Update Webhook
+**Method:** `PUT`  
+**URL:** `/api/v1/products/{product}/webhooks/{webhook}`
+
+**Description:** Update webhook configuration.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Content-Type | application/json |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+- `webhook` (required): Webhook ID
+
+**Request Body:** (All fields optional)
+```json
+{
+  "name": "Updated Webhook Name",
+  "url": "https://your-app.com/webhooks/billing-v2",
+  "events": ["payment.*", "invoice.*"],
+  "status": "active",
+  "http_method": "POST",
+  "headers": {
+    "X-Updated-Header": "new-value"
+  },
+  "timeout": 45,
+  "retry_count": 5,
+  "verify_ssl": true
+}
+```
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Webhook updated successfully",
+  "data": {
+    "id": 1,
+    "product_id": 1,
+    "name": "Updated Webhook Name",
+    "url": "https://your-app.com/webhooks/billing-v2",
+    "status": "active",
+    "events": ["payment.*", "invoice.*"],
+    "updated_at": "2026-03-24T16:00:00+00:00"
+  }
+}
+```
+
+---
+
+### Delete Webhook
+**Method:** `DELETE`  
+**URL:** `/api/v1/products/{product}/webhooks/{webhook}`
+
+**Description:** Delete a webhook configuration.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+- `webhook` (required): Webhook ID
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Webhook deleted successfully"
+}
+```
+
+---
+
+### Test Webhook
+**Method:** `POST`  
+**URL:** `/api/v1/products/{product}/webhooks/{webhook}/test`
+
+**Description:** Send a test webhook delivery to verify your endpoint is working correctly.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+- `webhook` (required): Webhook ID
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Test webhook sent successfully",
+  "delivery": {
+    "id": 1234,
+    "status": "sent",
+    "http_status_code": 200,
+    "response_body": "{\"received\": true}",
+    "duration_ms": 145,
+    "sent_at": "2026-03-24T16:30:00+00:00"
+  }
+}
+```
+
+**Test Payload Sent:**
+```json
+{
+  "event": "webhook.test",
+  "timestamp": "2026-03-24T16:30:00+00:00",
+  "webhook_id": 1,
+  "message": "This is a test webhook from the billing platform"
+}
+```
+
+---
+
+### Webhook Delivery History
+**Method:** `GET`  
+**URL:** `/api/v1/products/{product}/webhooks/{webhook}/deliveries`
+
+**Description:** View delivery history and retry status for a webhook.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+- `webhook` (required): Webhook ID
+
+**Query Parameters:**
+- `status` (optional): Filter by status (`sent`, `failed`, `pending`)
+- `per_page` (optional): Results per page (default: 15)
+- `page` (optional): Page number (default: 1)
+
+**Example:** `/api/v1/products/1/webhooks/10/deliveries?status=failed&per_page=20`
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 5001,
+      "webhook_id": 10,
+      "event_type": "payment.success",
+      "status": "sent",
+      "attempt_count": 1,
+      "http_status_code": 200,
+      "response_body": "{\"received\": true}",
+      "duration_ms": 234,
+      "sent_at": "2026-03-24T15:00:00+00:00",
+      "next_retry_at": null,
+      "created_at": "2026-03-24T15:00:00+00:00"
+    },
+    {
+      "id": 5002,
+      "webhook_id": 10,
+      "event_type": "invoice.paid",
+      "status": "failed",
+      "attempt_count": 3,
+      "http_status_code": 500,
+      "error_message": "Connection timeout",
+      "duration_ms": 30000,
+      "sent_at": "2026-03-24T14:00:00+00:00",
+      "next_retry_at": "2026-03-24T14:45:00+00:00",
+      "created_at": "2026-03-24T14:00:00+00:00"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 15,
+    "total": 150,
+    "last_page": 10
+  }
+}
+```
+
+---
+
+### Regenerate Webhook Secret
+**Method:** `POST`  
+**URL:** `/api/v1/products/{product}/webhooks/{webhook}/regenerate-secret`
+
+**Description:** Generate a new secret for webhook signature verification. The old secret will be immediately invalidated.
+
+**Required Headers:**
+| Key | Value |
+|-----|-------|
+| Authorization | Bearer {YOUR_ACCESS_TOKEN} |
+| Accept | application/json |
+
+**URL Parameters:**
+- `product` (required): Product ID
+- `webhook` (required): Webhook ID
+
+**Success Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Webhook secret regenerated successfully",
+  "data": {
+    "id": 1,
+    "secret": "whsec_z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"
+  }
+}
+```
+
+> ⚠️ **Warning:** Make sure to update your webhook verification code with the new secret before regenerating, otherwise webhook deliveries will fail verification.
+
+---
+
+### 🔄 Retry Logic
+
+Failed webhook deliveries are automatically retried with exponential backoff:
+
+- **Attempt 1:** Immediate
+- **Attempt 2:** 5 minutes later
+- **Attempt 3:** 15 minutes later (20 minutes total)
+- **Attempt 4:** 45 minutes later (65 minutes total)
+
+After all retry attempts are exhausted, the delivery is marked as permanently failed. You can view failed deliveries in the delivery history.
+
+**Automatic Retry:** A scheduled job runs every 5 minutes to retry failed webhooks that are due for retry.
+
+**Manual Intervention:** For permanently failed deliveries, you can review the error in the delivery history and manually trigger a new event if needed.
+
+---
+
+### 📊 Best Practices
+
+1. **Always verify signatures** - Never process webhooks without signature verification
+2. **Use HTTPS** - Webhook endpoints must use HTTPS in production
+3. **Respond quickly** - Return a 200 status code within 5 seconds; process events asynchronously
+4. **Handle duplicate events** - Use the delivery ID to prevent processing the same event twice
+5. **Monitor delivery history** - Regularly check for failed deliveries
+6. **Use wildcards sparingly** - Subscribe to specific events unless you need all events of a type
+7. **Test your endpoints** - Use the test endpoint before going live
+8. **Set reasonable timeouts** - Don't set timeouts too low; network latency varies
+9. **Secure your endpoint** - In addition to signature verification, consider IP whitelisting
+10. **Log everything** - Keep logs of all webhook deliveries for debugging
 
 ## Reconciliation
 

@@ -170,6 +170,10 @@
                 <span>▼</span>
             </button>
             <div class="nav-links">
+                <a href="#webhook-overview" class="nav-link">
+                    <span>→</span>
+                    <span>Overview & Events</span>
+                </a>
                 <a href="#list-webhooks" class="nav-link">
                     <span class="method-badge method-get">GET</span>
                     <span>List Webhooks</span>
@@ -178,9 +182,29 @@
                     <span class="method-badge method-post">POST</span>
                     <span>Create Webhook</span>
                 </a>
-                <a href="#webhook-events" class="nav-link">
-                    <span>→</span>
-                    <span>Webhook Events</span>
+                <a href="#get-webhook" class="nav-link">
+                    <span class="method-badge method-get">GET</span>
+                    <span>Get Webhook</span>
+                </a>
+                <a href="#update-webhook" class="nav-link">
+                    <span class="method-badge method-put">PUT</span>
+                    <span>Update Webhook</span>
+                </a>
+                <a href="#delete-webhook" class="nav-link">
+                    <span class="method-badge method-delete">DELETE</span>
+                    <span>Delete Webhook</span>
+                </a>
+                <a href="#test-webhook" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Test Webhook</span>
+                </a>
+                <a href="#webhook-deliveries" class="nav-link">
+                    <span class="method-badge method-get">GET</span>
+                    <span>Delivery History</span>
+                </a>
+                <a href="#regenerate-secret" class="nav-link">
+                    <span class="method-badge method-post">POST</span>
+                    <span>Regenerate Secret</span>
                 </a>
             </div>
         </div>
