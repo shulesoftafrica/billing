@@ -209,9 +209,11 @@ class InvoiceController extends Controller
                 ->first();
 
             // If customer doesn't exist, create a new one
+            // We'll set the product_id after processing the first product
             if (!$customer) {
                 $customer = Customer::create([
                     'organization_id' => $organizationId,
+                    'product_id' => null, // Will be set to first product in the invoice
                     'name' => $customerData['name'],
                     'email' => $customerData['email'],
                     'phone' => $customerData['phone'],
@@ -226,11 +228,17 @@ class InvoiceController extends Controller
             $totalAmount = 0;
             $oneTimeInvoiceItems = [];
             $existingInvoiceToReturn = null;
+            $firstProductId = null;
 
             foreach ($productsData as $productData) {
                 // Get price plan and its product
                 $pricePlan = PricePlan::with('product')->findOrFail($productData['price_plan_id']);
                 $product = $pricePlan->product;
+                
+                // Store first product ID to associate with customer if they don't have one
+                if ($firstProductId === null) {
+                    $firstProductId = $product->id;
+                }
 
                 // Validate product belongs to organization
                 if ($product->organization_id != $organizationId) {
@@ -344,6 +352,11 @@ class InvoiceController extends Controller
 
                     $totalAmount += $productData['amount'];
                 }
+            }
+
+            // Update customer's product_id if they don't have one yet
+            if ($customer->product_id === null && $firstProductId !== null) {
+                $customer->update(['product_id' => $firstProductId]);
             }
 
             // Check if ANY product in the request is a wallet product (product_type_id = 3)
