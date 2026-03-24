@@ -45,7 +45,7 @@ class InvoiceController extends Controller
     protected $labId = 'KmiqL3yCLf1V68oRQrIv';
     protected $baseUrl = 'https://payservice.ecobank.com';
     protected $origin = 'https://payservice.ecobank.com/PayPortal';
-    protected $callBackUrl = 'https://api.safaribank.africa/api/v1/ecobank/notification';
+    protected $callBackUrl = 'https://api.safaribank.africa/api/v1/webhooks/ecobank/notification';
 
     /**
      * Display a listing of the resource.
