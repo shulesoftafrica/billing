@@ -262,9 +262,11 @@ class InvoiceController extends Controller
                             
                             if ($existingInvoice) {
                                 $existingInvoiceToReturn = $existingInvoice;
-                                Log::info('Found existing pending subscription with same plan', [
+                                // Log only for subscription products, not for wallets
+                                Log::debug('Found existing pending subscription with same plan', [
                                     'customer_id' => $customer->id,
                                     'price_plan_id' => $pricePlan->id,
+                                    'product_type_id' => $product->product_type_id,
                                     'subscription_id' => $existingSubscription->id,
                                     'invoice_id' => $existingInvoice->id
                                 ]);
@@ -344,8 +346,19 @@ class InvoiceController extends Controller
                 }
             }
 
+            // Check if ANY product in the request is a wallet product (product_type_id = 3)
+            $hasWalletProduct = false;
+            foreach ($productsData as $productData) {
+                $pricePlan = PricePlan::with('product')->find($productData['price_plan_id']);
+                if ($pricePlan && $pricePlan->product && $pricePlan->product->product_type_id == 3) {
+                    $hasWalletProduct = true;
+                    break;
+                }
+            }
+
             // If we found an existing invoice for the same pending subscription, return it
-            if ($existingInvoiceToReturn && empty($invoiceItems)) {
+            // EXCEPT for wallet products - wallet top-ups should always create new invoices
+            if ($existingInvoiceToReturn && empty($invoiceItems) && !$hasWalletProduct) {
                 DB::commit();
                 $existingInvoiceToReturn->load([
                     'customer',
@@ -362,6 +375,39 @@ class InvoiceController extends Controller
                     'message' => 'Pending subscription already exists - returning existing invoice',
                     'data' => $data
                 ], 200);
+            }
+
+            // For wallet products, reset variables to force new invoice creation
+            if ($hasWalletProduct) {
+                Log::debug('Wallet product detected - forcing new invoice creation', [
+                    'customer_id' => $customer->id,
+                    'existing_invoice_id' => $existingInvoiceToReturn?->id ?? null
+                ]);
+                
+                $existingInvoiceToReturn = null;
+                
+                // Rebuild invoice items for wallet products even if they were skipped
+                if (empty($invoiceItems)) {
+                    $totalAmount = 0;
+                    foreach ($productsData as $productData) {
+                        $pricePlan = PricePlan::with('product')->findOrFail($productData['price_plan_id']);
+                        $product = $pricePlan->product;
+                        
+                        if ($product->product_type_id == 3) {
+                            $invoiceItems[] = [
+                                'price_plan_id' => $pricePlan->id,
+                                'subscription_id' => null, // Wallet products don't have subscriptions
+                                'quantity' => 1,
+                                'unit_price' => $productData['amount'],
+                                'total' => $productData['amount'],
+                            ];
+                            $oneTimeInvoiceItems[$pricePlan->id] = [
+                                'amount' => $productData['amount']
+                            ];
+                            $totalAmount += $productData['amount'];
+                        }
+                    }
+                }
             }
 
             // Create new invoice for new subscriptions or upgrades/downgrades
