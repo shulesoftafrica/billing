@@ -18,10 +18,11 @@ return new class extends Migration
         // Strategy 1: Map via subscriptions
         DB::statement("
             UPDATE customers c
-            INNER JOIN subscriptions s ON s.customer_id = c.id
+            SET product_id = pp.product_id
+            FROM subscriptions s
             INNER JOIN price_plans pp ON pp.id = s.price_plan_id
-            SET c.product_id = pp.product_id
-            WHERE c.product_id IS NULL
+            WHERE s.customer_id = c.id
+            AND c.product_id IS NULL
             AND s.id = (
                 SELECT MIN(id) FROM subscriptions WHERE customer_id = c.id LIMIT 1
             )
@@ -30,11 +31,12 @@ return new class extends Migration
         // Strategy 2: Map via invoices for customers still without product_id
         DB::statement("
             UPDATE customers c
-            INNER JOIN invoices i ON i.customer_id = c.id
+            SET product_id = pp.product_id
+            FROM invoices i
             INNER JOIN invoice_items ii ON ii.invoice_id = i.id
             INNER JOIN price_plans pp ON pp.id = ii.price_plan_id
-            SET c.product_id = pp.product_id
-            WHERE c.product_id IS NULL
+            WHERE i.customer_id = c.id
+            AND c.product_id IS NULL
             AND i.id = (
                 SELECT MIN(id) FROM invoices WHERE customer_id = c.id LIMIT 1
             )
