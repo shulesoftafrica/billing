@@ -20,10 +20,10 @@
         --bg: #0d1117;
         --surface: #161b22;
         --surface-soft: #1c2128;
-        --surface-code: #0d1117;
+        --surface-code: #1c2128;
         --border: #30363d;
-        --text: #e6edf3;
-        --text-soft: #c9d1d9;
+        --text: #f0f6fc;
+        --text-soft: #e6edf3;
         --accent: #58a6ff;
         --accent-soft: rgba(88, 166, 255, 0.15);
         --success: #3fb950;
@@ -39,6 +39,9 @@
         font-family: 'Syne', system-ui, -apple-system, sans-serif;
         scroll-behavior: smooth;
         line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
     }
 
     .layout { min-height: 100vh; }
@@ -382,7 +385,10 @@
     }
 
     td { color: var(--text-soft); }
-    [data-theme="dark"] td { color: #c9d1d9; }
+    [data-theme="dark"] td { 
+        color: #e6edf3;
+        font-weight: 400;
+    }
 
     tr:last-child td { border-bottom: 0; }
 
@@ -394,12 +400,88 @@
         border-radius: 12px;
         padding: 16px;
         font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.78rem;
+        font-size: 0.82rem;
         color: var(--text);
-        line-height: 1.6;
+        line-height: 1.7;
         white-space: pre-wrap;
         word-break: break-word;
         overflow-x: auto;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+    }
+
+    /* Enhanced dark mode code block styling */
+    [data-theme="dark"] pre {
+        background: #161b22;
+        border-color: #30363d;
+        font-weight: 400;
+    }
+
+    [data-theme="dark"] code {
+        font-weight: 400;
+        text-shadow: none;
+        color: #f0f6fc;
+    }
+
+    /* Comprehensive Prism.js color overrides for excellent dark mode readability */
+    [data-theme="dark"] pre[class*="language-"],
+    [data-theme="dark"] code[class*="language-"] {
+        text-shadow: none !important;
+        font-weight: 400 !important;
+        color: #f0f6fc !important;
+    }
+
+    [data-theme="dark"] .token.comment,
+    [data-theme="dark"] .token.prolog,
+    [data-theme="dark"] .token.doctype,
+    [data-theme="dark"] .token.cdata {
+        color: #8b949e !important;
+    }
+
+    [data-theme="dark"] .token.string,
+    [data-theme="dark"] .token.attr-value {
+        color: #a5d6ff !important;
+        font-weight: 400 !important;
+    }
+
+    [data-theme="dark"] .token.number {
+        color: #79c0ff !important;
+        font-weight: 500 !important;
+    }
+
+    [data-theme="dark"] .token.boolean,
+    [data-theme="dark"] .token.constant {
+        color: #ffa657 !important;
+        font-weight: 500 !important;
+    }
+
+    [data-theme="dark"] .token.property,
+    [data-theme="dark"] .token.tag {
+        color: #7ee787 !important;
+        font-weight: 400 !important;
+    }
+
+    [data-theme="dark"] .token.punctuation,
+    [data-theme="dark"] .token.operator {
+        color: #e6edf3 !important;
+        font-weight: 400 !important;
+    }
+
+    [data-theme="dark"] .token.keyword,
+    [data-theme="dark"] .token.function {
+        color: #d2a8ff !important;
+        font-weight: 500 !important;
+    }
+
+    [data-theme="dark"] .token.class-name {
+        color: #ffa657 !important;
+    }
+
+    [data-theme="dark"] .token.null,
+    [data-theme="dark"] .token.undefined {
+        color: #ff7b72 !important;
+        font-weight: 500 !important;
     }
 
     .code-block-wrapper {
