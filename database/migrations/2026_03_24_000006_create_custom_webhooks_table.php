@@ -34,8 +34,8 @@ return new class extends Migration
                   ->onDelete('cascade');
             
             // Indexes
-            $table->index(['product_id', 'status'], 'idx_product_status');
-            $table->unique(['product_id', 'url'], 'unique_webhook_url');
+            $table->index(['product_id', 'status'], 'idx_custom_webhooks_product_status');
+            $table->unique(['product_id', 'url'], 'unique_custom_webhook_url');
         });
     }
 
