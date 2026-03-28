@@ -12,6 +12,7 @@ use App\Models\Payment;
 use App\Models\PricePlan;
 use App\Models\ProductPurchase;
 use App\Models\Subscription;
+use App\Services\WebhookDispatchService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -444,7 +445,18 @@ class SubscriptionService
                 'price_plan_id' => $subscription->price_plan_id,
             ]);
 
-            return $subscription->fresh(['customer', 'pricePlan']);
+            $freshSubscription = $subscription->fresh(['customer', 'pricePlan']);
+
+            // Dispatch subscription.cancelled webhook
+            try {
+                app(WebhookDispatchService::class)->dispatchSubscriptionCancelled($freshSubscription);
+            } catch (\Exception $e) {
+                Log::warning('[SubscriptionService] Failed to dispatch subscription.cancelled webhook', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return $freshSubscription;
         });
     }
     /**
@@ -1187,6 +1199,17 @@ class SubscriptionService
                     'amount' => $amount,
                 ]);
             }
+
+            // Dispatch subscription.created webhook
+            try {
+                app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                    $newSubscription->load(['customer.product', 'pricePlan'])
+                );
+            } catch (\Exception $e) {
+                Log::warning('[SubscriptionService] Failed to dispatch subscription.created webhook', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -1459,6 +1482,19 @@ class SubscriptionService
                 'proration_amount' => $prorationDetails['amount_to_charge'],
                 'invoice_id' => $invoice->id,
             ]);
+
+            // Dispatch subscription.upgraded webhook
+            try {
+                app(WebhookDispatchService::class)->dispatchSubscriptionUpgraded(
+                    $subscription->fresh(['customer.product', 'pricePlan']),
+                    $oldPlan,
+                    $newPlan
+                );
+            } catch (\Exception $e) {
+                Log::warning('[SubscriptionService] Failed to dispatch subscription.upgraded webhook', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
             
             return $invoice->load(['invoiceItems.pricePlan', 'customer']);
         });

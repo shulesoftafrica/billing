@@ -365,7 +365,7 @@ class WebhookController extends Controller
             if ($invoiceId) {
                 $invoice = Invoice::find($invoiceId);
                 if ($invoice) {
-                    Payment::updateOrCreate(
+                    $failedPayment = Payment::updateOrCreate(
                         [
                             'invoice_id' => $invoice->id,
                             'gateway_reference' => $charge['id']
@@ -382,6 +382,17 @@ class WebhookController extends Controller
                             'retry_count' => ($invoice->payments()->where('gateway_reference', $charge['id'])->first()->retry_count ?? 0) + 1
                         ]
                     );
+
+                    // Dispatch payment.failed webhook
+                    try {
+                        app(WebhookDispatchService::class)->dispatchPaymentFailed(
+                            $failedPayment->load('customer.product')
+                        );
+                    } catch (\Exception $dispatchEx) {
+                        Log::warning('[WebhookController] Failed to dispatch payment.failed webhook', [
+                            'error' => $dispatchEx->getMessage(),
+                        ]);
+                    }
                 }
             }
 

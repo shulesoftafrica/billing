@@ -331,4 +331,144 @@ class PayloadBuilderService
             'webhook_triggered_at' => now()->toIso8601String(),
         ];
     }
+
+    // ----------------------------------------------------------------
+    // Additional event payload builders
+    // ----------------------------------------------------------------
+
+    public function buildSubscriptionRenewedPayload(Subscription $subscription, ?Payment $payment = null): array
+    {
+        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $customer     = $subscription->customer;
+        $product      = $customer->product;
+        $organization = $product->organization;
+
+        return [
+            'event'        => 'subscription.renewed',
+            'event_id'     => 'evt_' . uniqid(),
+            'timestamp'    => now()->toIso8601String(),
+            'api_version'  => '2026-03-24',
+            'customer_id'  => $customer->id,
+            'product'      => $this->buildProductData($product),
+            'organization' => $this->buildOrganizationData($organization),
+            'subscription' => $this->buildSubscriptionData($subscription),
+            'customer'     => $this->buildCustomerData($customer),
+            'payment'      => $payment ? $this->buildPaymentData($payment) : null,
+            'metadata'     => $this->buildMetadata(),
+        ];
+    }
+
+    public function buildSubscriptionCancelledPayload(Subscription $subscription, ?string $reason = null): array
+    {
+        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $customer     = $subscription->customer;
+        $product      = $customer->product;
+        $organization = $product->organization;
+
+        return [
+            'event'        => 'subscription.cancelled',
+            'event_id'     => 'evt_' . uniqid(),
+            'timestamp'    => now()->toIso8601String(),
+            'api_version'  => '2026-03-24',
+            'customer_id'  => $customer->id,
+            'product'      => $this->buildProductData($product),
+            'organization' => $this->buildOrganizationData($organization),
+            'subscription' => $this->buildSubscriptionData($subscription),
+            'customer'     => $this->buildCustomerData($customer),
+            'cancellation' => [
+                'reason'       => $reason ?? 'Not specified',
+                'cancelled_at' => now()->toIso8601String(),
+            ],
+            'metadata'     => $this->buildMetadata(),
+        ];
+    }
+
+    public function buildSubscriptionExpiredPayload(Subscription $subscription): array
+    {
+        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $customer     = $subscription->customer;
+        $product      = $customer->product;
+        $organization = $product->organization;
+
+        return [
+            'event'        => 'subscription.expired',
+            'event_id'     => 'evt_' . uniqid(),
+            'timestamp'    => now()->toIso8601String(),
+            'api_version'  => '2026-03-24',
+            'customer_id'  => $customer->id,
+            'product'      => $this->buildProductData($product),
+            'organization' => $this->buildOrganizationData($organization),
+            'subscription' => $this->buildSubscriptionData($subscription),
+            'customer'     => $this->buildCustomerData($customer),
+            'expired_at'   => $subscription->end_date ?? now()->toIso8601String(),
+            'metadata'     => $this->buildMetadata(),
+        ];
+    }
+
+    public function buildCreditsPurchasedPayload(mixed $creditTransaction, ?Payment $payment = null): array
+    {
+        $customer = $creditTransaction->customer;
+        $customer->loadMissing(['product.organization']);
+        $product      = $customer->product;
+        $organization = $product->organization;
+
+        return [
+            'event'        => 'credits.purchased',
+            'event_id'     => 'evt_' . uniqid(),
+            'timestamp'    => now()->toIso8601String(),
+            'api_version'  => '2026-03-24',
+            'customer_id'  => $customer->id,
+            'product'      => $this->buildProductData($product),
+            'organization' => $this->buildOrganizationData($organization),
+            'customer'     => $this->buildCustomerData($customer),
+            'credits'      => [
+                'id'          => $creditTransaction->id,
+                'amount'      => $creditTransaction->amount,
+                'balance'     => $creditTransaction->balance ?? null,
+                'description' => $creditTransaction->description ?? null,
+                'purchased_at'=> $creditTransaction->created_at?->toIso8601String(),
+            ],
+            'payment'      => $payment ? $this->buildPaymentData($payment) : null,
+            'metadata'     => $this->buildMetadata(),
+        ];
+    }
+
+    public function buildSubscriptionUpgradedPayload(
+        Subscription $subscription,
+        mixed $oldPlan = null,
+        mixed $newPlan = null
+    ): array {
+        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $customer     = $subscription->customer;
+        $product      = $customer->product;
+        $organization = $product->organization;
+
+        return [
+            'event'        => 'subscription.upgraded',
+            'event_id'     => 'evt_' . uniqid(),
+            'timestamp'    => now()->toIso8601String(),
+            'api_version'  => '2026-03-24',
+            'customer_id'  => $customer->id,
+            'product'      => $this->buildProductData($product),
+            'organization' => $this->buildOrganizationData($organization),
+            'subscription' => $this->buildSubscriptionData($subscription),
+            'customer'     => $this->buildCustomerData($customer),
+            'upgrade'      => [
+                'previous_plan' => $oldPlan ? [
+                    'id'       => $oldPlan->id,
+                    'name'     => $oldPlan->name,
+                    'amount'   => (float) ($oldPlan->amount ?? $oldPlan->rate ?? 0),
+                    'interval' => $oldPlan->billing_interval ?? null,
+                ] : null,
+                'new_plan' => $newPlan ? [
+                    'id'       => $newPlan->id,
+                    'name'     => $newPlan->name,
+                    'amount'   => (float) ($newPlan->amount ?? $newPlan->rate ?? 0),
+                    'interval' => $newPlan->billing_interval ?? null,
+                ] : null,
+                'upgraded_at' => now()->toIso8601String(),
+            ],
+            'metadata'     => $this->buildMetadata(),
+        ];
+    }
 }

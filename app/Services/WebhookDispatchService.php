@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CustomWebhook;
 use App\Models\Customer;
 use App\Models\Payment;
+use App\Models\Subscription;
 use App\Models\WebhookDelivery;
 use App\Models\Product;
 use Illuminate\Support\Facades\Http;
@@ -13,6 +14,8 @@ use App\Services\PayloadBuilderService;
 
 class WebhookDispatchService
 {
+    public function __construct(private PayloadBuilderService $payloadBuilder) {}
+
     /**
      * Dispatch webhook to a single endpoint
      *
@@ -229,11 +232,9 @@ class WebhookDispatchService
         $skipped  = 0;
         $failed   = 0;
 
-        $payloadBuilder = app(PayloadBuilderService::class);
-
         foreach ($payments as $payment) {
             try {
-                $payload = $payloadBuilder->buildPaymentSuccessPayload($payment);
+                $payload = $this->payloadBuilder->buildPaymentSuccessPayload($payment);
                 $delivery = $this->dispatch($webhook, $payload, $payment->id);
 
                 if ($delivery->status === 'sent') {
@@ -430,6 +431,128 @@ class WebhookDispatchService
                 'response_time' => $durationMs,
                 'error_message' => $e->getMessage(),
             ];
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Event-specific dispatch helpers
+    // Each method loads the product, builds the payload, and calls
+    // dispatchToProduct() which fans out to all matching active webhooks.
+    // Errors are caught internally so they never bubble up to callers.
+    // ----------------------------------------------------------------
+
+    public function dispatchPaymentFailed(Payment $payment): void
+    {
+        $payment->loadMissing('customer.product');
+        $product = $payment->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildPaymentFailedPayload($payment);
+            $this->dispatchToProduct($product, 'payment.failed', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchPaymentFailed failed', [
+                'payment_id' => $payment->id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function dispatchSubscriptionCreated(Subscription $subscription): void
+    {
+        $subscription->loadMissing('customer.product');
+        $product = $subscription->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildSubscriptionCreatedPayload($subscription);
+            $this->dispatchToProduct($product, 'subscription.created', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchSubscriptionCreated failed', [
+                'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function dispatchSubscriptionRenewed(Subscription $subscription, ?Payment $payment = null): void
+    {
+        $subscription->loadMissing('customer.product');
+        $product = $subscription->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildSubscriptionRenewedPayload($subscription, $payment);
+            $this->dispatchToProduct($product, 'subscription.renewed', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchSubscriptionRenewed failed', [
+                'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function dispatchSubscriptionCancelled(Subscription $subscription, ?string $reason = null): void
+    {
+        $subscription->loadMissing('customer.product');
+        $product = $subscription->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildSubscriptionCancelledPayload($subscription, $reason);
+            $this->dispatchToProduct($product, 'subscription.cancelled', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchSubscriptionCancelled failed', [
+                'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function dispatchSubscriptionExpired(Subscription $subscription): void
+    {
+        $subscription->loadMissing('customer.product');
+        $product = $subscription->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildSubscriptionExpiredPayload($subscription);
+            $this->dispatchToProduct($product, 'subscription.expired', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchSubscriptionExpired failed', [
+                'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function dispatchCreditsPurchased(mixed $creditTransaction, ?Payment $payment = null): void
+    {
+        $creditTransaction->loadMissing('customer.product');
+        $product = $creditTransaction->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildCreditsPurchasedPayload($creditTransaction, $payment);
+            $this->dispatchToProduct($product, 'credits.purchased', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchCreditsPurchased failed', [
+                'transaction_id' => $creditTransaction->id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function dispatchSubscriptionUpgraded(
+        Subscription $subscription,
+        mixed $oldPlan = null,
+        mixed $newPlan = null
+    ): void {
+        $subscription->loadMissing('customer.product');
+        $product = $subscription->customer?->product;
+        if (!$product) return;
+
+        try {
+            $payload = $this->payloadBuilder->buildSubscriptionUpgradedPayload($subscription, $oldPlan, $newPlan);
+            $this->dispatchToProduct($product, 'subscription.upgraded', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[WEBHOOK] dispatchSubscriptionUpgraded failed', [
+                'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
+            ]);
         }
     }
 }

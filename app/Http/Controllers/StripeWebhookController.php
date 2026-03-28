@@ -267,7 +267,33 @@ class StripeWebhookController extends Controller
 
     private function handleFailed(PaymentIntent $intent): void
     {
-        return;
+        try {
+            $payment = Payment::where('gateway_reference', $intent->id)->first();
+
+            if (!$payment) {
+                Log::info('[STRIPE WEBHOOK] handleFailed: no payment record for intent', [
+                    'intent_id' => $intent->id,
+                ]);
+                return;
+            }
+
+            // Mark as failed if not already
+            if ($payment->status !== 'failed') {
+                $payment->update([
+                    'status'           => 'failed',
+                    'gateway_response' => $intent->toArray(),
+                ]);
+            }
+
+            app(WebhookDispatchService::class)->dispatchPaymentFailed(
+                $payment->load('customer.product')
+            );
+        } catch (\Exception $e) {
+            Log::warning('[STRIPE WEBHOOK] handleFailed dispatch error', [
+                'intent_id' => $intent->id,
+                'error'     => $e->getMessage(),
+            ]);
+        }
     }
 
     private function handleCanceled(PaymentIntent $intent): void
