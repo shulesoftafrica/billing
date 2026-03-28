@@ -80,25 +80,77 @@ class RetryWebhooksCommand extends Command
             }
 
             try {
-                $result = $this->dispatchService->retryDelivery($delivery);
+                // If we have a payment_id, rebuild the payload fresh so any
+                // payload schema fixes are applied rather than replaying a
+                // stale stored payload.
+                if ($delivery->payment_id) {
+                    $payment = Payment::find($delivery->payment_id);
 
-                if ($result['success']) {
-                    $ok++;
-                    $this->line("  ✅ Retried {$label} — HTTP {$result['http_status']} ({$result['response_time']}ms)");
-                    Log::info('[webhooks:retry] Phase-1 delivery succeeded', [
-                        'delivery_id'  => $delivery->id,
-                        'webhook_id'   => $delivery->custom_webhook_id,
-                        'http_status'  => $result['http_status'],
-                        'duration_ms'  => $result['response_time'],
-                    ]);
+                    if (!$payment) {
+                        $bad++;
+                        $this->warn("  ⚠️  Skipped {$label} — payment #{$delivery->payment_id} not found");
+                        continue;
+                    }
+
+                    $freshPayload = $this->payloadBuilder->buildPaymentSuccessPayload($payment);
+
+                    // Overwrite stored payload with the fresh one so future
+                    // retries also have the correct structure.
+                    $delivery->update(['payload' => json_encode($freshPayload)]);
+
+                    $newDelivery = $this->dispatchService->dispatch(
+                        $delivery->customWebhook,
+                        $freshPayload,
+                        $payment->id
+                    );
+
+                    // Mark the original delivery as superseded so it doesn't
+                    // keep appearing in the retry queue.
+                    $delivery->update(['status' => 'superseded', 'next_retry_at' => null]);
+
+                    if ($newDelivery->status === 'sent') {
+                        $ok++;
+                        $this->line("  ✅ Retried {$label} (fresh payload) — HTTP {$newDelivery->http_status_code} ({$newDelivery->duration_ms}ms)");
+                        Log::info('[webhooks:retry] Phase-1 delivery succeeded (fresh payload)', [
+                            'original_delivery_id' => $delivery->id,
+                            'new_delivery_id'      => $newDelivery->id,
+                            'webhook_id'           => $delivery->custom_webhook_id,
+                            'payment_id'           => $payment->id,
+                            'http_status'          => $newDelivery->http_status_code,
+                        ]);
+                    } else {
+                        $bad++;
+                        $this->warn("  ⚠️  Failed {$label} (fresh payload) — {$newDelivery->error_message}");
+                        Log::warning('[webhooks:retry] Phase-1 delivery failed (fresh payload)', [
+                            'original_delivery_id' => $delivery->id,
+                            'new_delivery_id'      => $newDelivery->id,
+                            'webhook_id'           => $delivery->custom_webhook_id,
+                            'payment_id'           => $payment->id,
+                            'error'                => $newDelivery->error_message,
+                        ]);
+                    }
                 } else {
-                    $bad++;
-                    $this->warn("  ⚠️  Failed {$label} — {$result['error_message']}");
-                    Log::warning('[webhooks:retry] Phase-1 delivery failed', [
-                        'delivery_id'  => $delivery->id,
-                        'webhook_id'   => $delivery->custom_webhook_id,
-                        'error'        => $result['error_message'],
-                    ]);
+                    // No payment_id — fall back to resending stored payload.
+                    $result = $this->dispatchService->retryDelivery($delivery);
+
+                    if ($result['success']) {
+                        $ok++;
+                        $this->line("  ✅ Retried {$label} — HTTP {$result['http_status']} ({$result['response_time']}ms)");
+                        Log::info('[webhooks:retry] Phase-1 delivery succeeded', [
+                            'delivery_id'  => $delivery->id,
+                            'webhook_id'   => $delivery->custom_webhook_id,
+                            'http_status'  => $result['http_status'],
+                            'duration_ms'  => $result['response_time'],
+                        ]);
+                    } else {
+                        $bad++;
+                        $this->warn("  ⚠️  Failed {$label} — {$result['error_message']}");
+                        Log::warning('[webhooks:retry] Phase-1 delivery failed', [
+                            'delivery_id'  => $delivery->id,
+                            'webhook_id'   => $delivery->custom_webhook_id,
+                            'error'        => $result['error_message'],
+                        ]);
+                    }
                 }
             } catch (\Exception $e) {
                 $bad++;
