@@ -42,37 +42,72 @@
                 <tbody>
                     <tr style="border-bottom: 1px solid var(--border-secondary);">
                         <td style="padding: 8px;"><code>payment.success</code></td>
-                        <td style="padding: 8px;">Payment completed</td>
-                        <td style="padding: 8px;">When payment is successfully processed via any gateway</td>
+                        <td style="padding: 8px;">Payment cleared</td>
+                        <td style="padding: 8px;">When a payment is confirmed as cleared by the gateway</td>
                     </tr>
                     <tr style="border-bottom: 1px solid var(--border-secondary);">
                         <td style="padding: 8px;"><code>payment.failed</code></td>
-                        <td style="padding: 8px;">Payment failed</td>
-                        <td style="padding: 8px;">When payment attempt fails</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid var(--border-secondary);">
-                        <td style="padding: 8px;"><code>invoice.created</code></td>
-                        <td style="padding: 8px;">New invoice</td>
-                        <td style="padding: 8px;">When an invoice is generated</td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid var(--border-secondary);">
-                        <td style="padding: 8px;"><code>invoice.paid</code></td>
-                        <td style="padding: 8px;">Invoice paid</td>
-                        <td style="padding: 8px;">When invoice payment is completed</td>
+                        <td style="padding: 8px;">Payment rejected</td>
+                        <td style="padding: 8px;">When a payment attempt is rejected by the gateway</td>
                     </tr>
                     <tr style="border-bottom: 1px solid var(--border-secondary);">
                         <td style="padding: 8px;"><code>subscription.created</code></td>
                         <td style="padding: 8px;">New subscription</td>
-                        <td style="padding: 8px;">When customer subscribes</td>
+                        <td style="padding: 8px;">When a customer is subscribed to a price plan</td>
                     </tr>
-                    <tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);">
+                        <td style="padding: 8px;"><code>subscription.renewed</code></td>
+                        <td style="padding: 8px;">Subscription renewed</td>
+                        <td style="padding: 8px;">When a subscription is renewed for a new billing period</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);">
                         <td style="padding: 8px;"><code>subscription.cancelled</code></td>
                         <td style="padding: 8px;">Subscription cancelled</td>
-                        <td style="padding: 8px;">When subscription is terminated</td>
+                        <td style="padding: 8px;">When a subscription is terminated</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);">
+                        <td style="padding: 8px;"><code>subscription.expired</code></td>
+                        <td style="padding: 8px;">Subscription expired</td>
+                        <td style="padding: 8px;">When a subscription reaches its end date without renewal</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);">
+                        <td style="padding: 8px;"><code>subscription.upgraded</code></td>
+                        <td style="padding: 8px;">Plan upgraded</td>
+                        <td style="padding: 8px;">When a customer moves to a different price plan</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);">
+                        <td style="padding: 8px;"><code>credits.purchased</code></td>
+                        <td style="padding: 8px;">Credits purchased</td>
+                        <td style="padding: 8px;">When a customer purchases usage credits</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);">
+                        <td style="padding: 8px;"><code>invoice.created</code></td>
+                        <td style="padding: 8px;">Invoice created</td>
+                        <td style="padding: 8px;">When an invoice is generated</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px;"><code>invoice.paid</code></td>
+                        <td style="padding: 8px;">Invoice paid</td>
+                        <td style="padding: 8px;">When an invoice is fully paid</td>
                     </tr>
                 </tbody>
             </table>
-            <p style="margin-top: 12px;"><strong>💡 Wildcard Support:</strong> Use <code>payment.*</code> to subscribe to all payment events, <code>invoice.*</code> for all invoice events, etc.</p>
+            <p style="margin-top: 12px;"><strong>💡 Wildcard Support:</strong></p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border-primary);">
+                        <th style="text-align: left; padding: 8px;">Pattern</th>
+                        <th style="text-align: left; padding: 8px;">Matches</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>payment.*</code></td><td style="padding: 8px;"><code>payment.success</code>, <code>payment.failed</code></td></tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>subscription.*</code></td><td style="padding: 8px;">All six subscription events</td></tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>invoice.*</code></td><td style="padding: 8px;"><code>invoice.created</code>, <code>invoice.paid</code></td></tr>
+                    <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>*</code></td><td style="padding: 8px;">Every event</td></tr>
+                    <tr><td style="padding: 8px;"><em>empty array</em></td><td style="padding: 8px;">Every event</td></tr>
+                </tbody>
+            </table>
         </div>
 
         <div style="margin-bottom: 24px;">
@@ -100,27 +135,73 @@
         </div>
     </div>
 
-    {{-- Security Example --}}
-    <div style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 16px; margin-bottom: 32px; border-radius: 4px;">
-        <h4 style="margin-top: 0;">🔐 Security: Verify Webhook Signatures</h4>
-        <p style="margin-bottom: 12px;">Always verify the HMAC SHA256 signature before processing webhooks:</p>
+    {{-- Security & Headers --}}
+    <div style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 24px; margin-bottom: 32px; border-radius: 4px;">
+        <h4 style="margin-top: 0;">🔐 Request Headers &amp; Signature Verification</h4>
+        <p style="margin-bottom: 16px;">Every webhook delivery includes these HTTP headers:</p>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border-primary);">
+                    <th style="text-align: left; padding: 8px;">Header</th>
+                    <th style="text-align: left; padding: 8px;">Example</th>
+                    <th style="text-align: left; padding: 8px;">Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Webhook-Signature</code></td><td style="padding: 8px;"><code>a3f9d2...</code></td><td style="padding: 8px;">HMAC-SHA256 of the raw request body — <strong>verify this first</strong></td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Event-Type</code></td><td style="padding: 8px;"><code>payment.success</code></td><td style="padding: 8px;">The event name — use this to route your handler logic</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Webhook-ID</code></td><td style="padding: 8px;"><code>7</code></td><td style="padding: 8px;">ID of the webhook configuration that triggered this</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Delivery-ID</code></td><td style="padding: 8px;"><code>142</code></td><td style="padding: 8px;">Unique delivery attempt ID — use for deduplication</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>Content-Type</code></td><td style="padding: 8px;"><code>application/json</code></td><td style="padding: 8px;">Always JSON</td></tr>
+                <tr><td style="padding: 8px;"><code>User-Agent</code></td><td style="padding: 8px;"><code>BillingPlatform-Webhook/1.0</code></td><td style="padding: 8px;">Fixed identifier</td></tr>
+            </tbody>
+        </table>
+        <p style="margin-bottom: 12px;"><strong>Signature formula:</strong> <code>HMAC-SHA256(raw_request_body, webhook_secret)</code>. Compute this over the <strong>raw bytes</strong> before any JSON parsing.</p>
         <x-docs.code-block language="php">
-// PHP Example
-$signature = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
-$payload = file_get_contents('php://input');
-$secret = 'whsec_...'; // Your webhook secret from creation
+// PHP — verify before processing
+$rawBody  = file_get_contents('php://input');
+$received = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
+$computed = hash_hmac('sha256', $rawBody, $webhookSecret);
 
-$expectedSignature = hash_hmac('sha256', $payload, $secret);
-
-if (!hash_equals($signature, $expectedSignature)) {
+if (!hash_equals($computed, $received)) {
     http_response_code(401);
     exit('Invalid signature');
 }
 
-// Process the webhook
-$event = json_decode($payload, true);
-// Return 200 OK
-http_response_code(200);
+$event = json_decode($rawBody, true);
+http_response_code(200); // always respond 2xx
+        </x-docs.code-block>
+        <x-docs.code-block language="javascript">
+// Node.js (Express) — use express.raw() to get raw bytes
+const crypto = require('crypto');
+
+app.post('/webhooks/billing', express.raw({ type: 'application/json' }), (req, res) => {
+    const computed = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(req.body)               // Buffer — before JSON.parse
+        .digest('hex');
+
+    if (!crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(req.headers['x-webhook-signature']))) {
+        return res.status(401).send('Invalid signature');
+    }
+
+    const event = JSON.parse(req.body);
+    // handle event...
+    res.status(200).json({ received: true });
+});
+        </x-docs.code-block>
+        <x-docs.code-block language="python">
+# Python / Django
+import hmac, hashlib
+
+raw_body = request.body                 # bytes, before any parsing
+received = request.headers.get('X-Webhook-Signature', '')
+computed  = hmac.new(webhook_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+
+if not hmac.compare_digest(computed, received):
+    return HttpResponse(status=401)
+
+event = json.loads(raw_body)
         </x-docs.code-block>
     </div>
 
@@ -518,15 +599,9 @@ http_response_code(200);
   }
 }
             </x-docs.code-block>
-            <h4 style="margin-top: 16px;">Test Payload Sent to Your Endpoint:</h4>
-            <x-docs.code-block language="json">
-{
-  "event": "webhook.test",
-  "timestamp": "2026-03-24T16:30:00+00:00",
-  "webhook_id": 1,
-  "message": "This is a test webhook from the billing platform"
-}
-            </x-docs.code-block>
+            <div style="background: rgba(23,162,184,0.1); border-left: 4px solid #17a2b8; padding: 12px; margin-top: 16px; border-radius: 4px;">
+                <p style="margin: 0;">💡 <strong>Test payload:</strong> A real <code>payment.success</code> payload is built from your product's most recent cleared payment and sent to your endpoint — the same schema you will receive in production. If no payment exists yet, a synthetic sample is used. This means your signature verification, field parsing, and routing logic are tested against the actual payload structure.</p>
+            </div>
         </x-slot>
     </x-docs.endpoint>
 
@@ -671,70 +746,219 @@ http_response_code(200);
         </x-slot>
     </x-docs.endpoint>
 
-    {{-- Standardized Payload Section --}}
+    {{-- Payload Reference --}}
     <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-top: 32px;">
-        <h3 style="margin-top: 0; color: var(--text-primary);">📦 Standardized Webhook Payload</h3>
-        <p>All webhook events use the same payload structure regardless of the payment gateway (Stripe, Flutterwave, or UCN):</p>
+        <h3 style="margin-top: 0; color: var(--text-primary);">📦 Payload Reference</h3>
+
+        <p>All events share a common envelope. Fields that don't apply to a given event are sent as <code>null</code>.</p>
+
+        <h4 style="color: var(--text-primary);">Common Envelope Fields</h4>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border-primary);">
+                    <th style="text-align: left; padding: 8px;">Field</th>
+                    <th style="text-align: left; padding: 8px;">Type</th>
+                    <th style="text-align: left; padding: 8px;">Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>event</code></td><td style="padding: 8px;">string</td><td style="padding: 8px;">Event name — route your handler on this field</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>event_id</code></td><td style="padding: 8px;">string</td><td style="padding: 8px;">Globally unique ID — use for deduplication</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>timestamp</code></td><td style="padding: 8px;">ISO 8601</td><td style="padding: 8px;">When the event was triggered</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>api_version</code></td><td style="padding: 8px;">string</td><td style="padding: 8px;">Payload schema version (<code>2026-03-24</code>)</td></tr>
+                <tr><td style="padding: 8px;"><code>customer_id</code></td><td style="padding: 8px;">integer</td><td style="padding: 8px;">Shortcut to the customer — also present inside <code>customer.id</code></td></tr>
+            </tbody>
+        </table>
+
+        <h4 style="color: var(--text-primary);">Complete <code>payment.success</code> Example</h4>
         <x-docs.code-block language="json">
 {
-  "event": "payment.success",
-  "timestamp": "2026-03-24T15:30:00+00:00",
+  "event":       "payment.success",
+  "event_id":    "evt_68026f3a4b1e2",
+  "timestamp":   "2026-03-29T10:15:00+00:00",
+  "api_version": "2026-03-24",
+  "customer_id": 42,
+
   "product": {
-    "id": 1,
-    "name": "Hospital Management System",
-    "type": "saas",
-    "sku": "HMS-001"
-  },
-  "organization": {
-    "id": 1,
-    "name": "General Hospital",
-    "email": "billing@hospital.com",
-    "phone": "+255123456789"
-  },
-  "customer": {
-    "id": 123,
-    "name": "John Doe",
-    "email": "john@example.com",
-    "phone": "+255987654321",
+    "id": 3,
+    "name": "School Management System",
+    "product_code": "SMS-001",
+    "organization_id": 1,
     "status": "active"
   },
+
+  "organization": {
+    "id": 1,
+    "name": "Shule Soft Africa"
+  },
+
   "payment": {
-    "id": 456,
-    "amount": "50000.00",
-    "currency": "TZS",
-    "status": "success",
-    "payment_method": "card",
-    "gateway_reference": "pi_1234567890",
-    "paid_at": "2026-03-24T15:30:00+00:00"
+    "id":                187,
+    "transaction_id":    "pi_3OqXyz",
+    "amount":            150000.00,
+    "currency":          "TZS",
+    "status":            "success",
+    "payment_method":    "card",
+    "gateway":           "stripe",
+    "gateway_reference": "pi_3OqXyz",
+    "gateway_fee":       4500.00,
+    "net_amount":        145500.00,
+    "description":       "Invoice INV-2026-0042 payment",
+    "paid_at":           "2026-03-29T10:14:58+00:00",
+    "created_at":        "2026-03-29T10:14:50+00:00"
   },
+
   "invoice": {
-    "id": 789,
-    "invoice_number": "INV-2026-001",
-    "total_amount": "50000.00",
-    "paid_amount": "50000.00",
-    "status": "paid",
-    "due_date": "2026-03-31"
+    "id":             99,
+    "invoice_number": "INV-2026-0042",
+    "subtotal":       130435.00,
+    "tax_total":      19565.00,
+    "total":          150000.00,
+    "amount_paid":    150000.00,
+    "amount_due":     0.00,
+    "currency":       "TZS",
+    "status":         "paid",
+    "due_date":       "2026-04-05",
+    "issued_at":      "2026-03-29T08:00:00+00:00",
+    "paid_at":        "2026-03-29T10:14:58+00:00",
+    "items": [
+      {
+        "id":              201,
+        "description":     "Term 1 Fees",
+        "quantity":        1,
+        "unit_price":      130435.00,
+        "total":           130435.00,
+        "price_plan_id":   5,
+        "price_plan_name": "Standard Term Plan"
+      }
+    ],
+    "ucn":             "9920240001234",
+    "control_number":  "9920240001234",
+    "control_numbers": ["9920240001234"]
   },
+
+  "customer": {
+    "id":         42,
+    "product_id": 3,
+    "name":       "Mwanafunzi Primary School",
+    "email":      "accounts@mwanafunzi.ac.tz",
+    "phone":      "+255712345678",
+    "status":     "active"
+  },
+
+  "subscription": {
+    "id":                   18,
+    "status":               "active",
+    "price_plan_id":        5,
+    "price_plan_name":      "Standard Term Plan",
+    "billing_interval":     "quarterly",
+    "amount":               150000.00,
+    "currency":             "TZS",
+    "current_period_start": "2026-01-01",
+    "current_period_end":   "2026-03-31",
+    "next_billing_date":    "2026-04-01",
+    "trial_ends_at":        null,
+    "canceled_at":          null
+  },
+
   "gateway_details": {
-    "gateway": "stripe",
-    "transaction_id": "ch_1234567890",
-    "card_last4": "4242",
-    "card_brand": "visa"
+    "stripe": {
+      "payment_intent_id":  "pi_3OqXyz",
+      "charge_id":          "ch_3OqXyz",
+      "payment_method_id":  "pm_3OqXyz",
+      "customer_id":        "cus_Stripe123",
+      "last4":              "4242",
+      "brand":              "visa",
+      "country":            "TZ",
+      "receipt_url":        "https://pay.stripe.com/receipts/..."
+    },
+    "flutterwave": null,
+    "ucn": null
   },
+
   "metadata": {
-    "ip_address": "192.168.1.100",
-    "user_agent": "Mozilla/5.0...",
-    "processed_at": "2026-03-24T15:30:00+00:00"
+    "ip_address":           "41.75.200.10",
+    "user_agent":           "Mozilla/5.0...",
+    "webhook_triggered_at": "2026-03-29T10:15:00+00:00"
   }
 }
         </x-docs.code-block>
-        <p style="margin-top: 12px;"><strong>Webhook Headers Sent:</strong></p>
-        <ul>
-            <li><code>X-Webhook-Signature</code> - HMAC SHA256 signature for verification</li>
-            <li><code>X-Event-Type</code> - Event type (e.g., payment.success)</li>
-            <li><code>X-Webhook-ID</code> - Webhook configuration ID</li>
-            <li><code>X-Delivery-ID</code> - Unique delivery ID (use for idempotency)</li>
-            <li><code>Content-Type</code> - application/json</li>
-        </ul>
+
+        <div style="background: rgba(23,162,184,0.1); border-left: 4px solid #17a2b8; padding: 12px; margin: 16px 0; border-radius: 4px;">
+            <p style="margin: 0;">💡 <strong><code>payment.status</code> values:</strong> <code>success</code> (cleared), <code>pending</code>, <code>failed</code>, <code>cancelled</code>, <code>refunded</code>. The system stores payments internally as <code>cleared</code> but always sends <code>success</code> in the webhook payload.</p>
+        </div>
+
+        <h4 style="color: var(--text-primary); margin-top: 24px;">Per-Event Differences</h4>
+
+        <p><strong><code>payment.failed</code></strong> — same as <code>payment.success</code> plus two extra fields on the <code>payment</code> object:</p>
+        <x-docs.code-block language="json">
+"payment": {
+  "status":        "failed",
+  "error_code":    "card_declined",
+  "error_message": "Your card was declined."
+}
+        </x-docs.code-block>
+
+        <p><strong>Subscription events</strong> (<code>subscription.created</code>, <code>subscription.renewed</code>, <code>subscription.cancelled</code>, <code>subscription.expired</code>, <code>subscription.upgraded</code>) — <code>invoice</code> and <code>payment</code> are <code>null</code> unless a payment was captured (renewal). Each event adds its own block:</p>
+        <x-docs.code-block language="json">
+// subscription.cancelled — adds:
+"cancellation": {
+  "reason":       "Customer requested cancellation",
+  "cancelled_at": "2026-03-29T10:15:00+00:00"
+}
+
+// subscription.expired — adds:
+"expired_at": "2026-03-31"
+
+// subscription.upgraded — adds:
+"upgrade": {
+  "previous_plan": { "id": 5, "name": "Standard Term Plan", "amount": 150000.00, "interval": "quarterly" },
+  "new_plan":      { "id": 7, "name": "Premium Annual Plan", "amount": 500000.00, "interval": "yearly" },
+  "upgraded_at":   "2026-03-29T10:15:00+00:00"
+}
+        </x-docs.code-block>
+
+        <p><strong><code>credits.purchased</code></strong> — replaces <code>invoice</code> and <code>subscription</code> with a <code>credits</code> block:</p>
+        <x-docs.code-block language="json">
+"credits": {
+  "id":           55,
+  "amount":       1000,
+  "balance":      4200,
+  "description":  "SMS credit top-up",
+  "purchased_at": "2026-03-29T10:15:00+00:00"
+}
+        </x-docs.code-block>
+
+        <h4 style="color: var(--text-primary); margin-top: 24px;"><code>gateway_details</code> by gateway</h4>
+        <p>Only the key matching the active gateway is populated; others are <code>null</code>.</p>
+        <x-docs.code-block language="json">
+// Flutterwave
+"gateway_details": {
+  "stripe": null,
+  "flutterwave": {
+    "transaction_id": 123456789,
+    "flw_ref":        "FLW-MOCK-abc",
+    "tx_ref":         "billing-187",
+    "payment_type":   "mobilemoneyuganda",
+    "card_brand":     null,
+    "last4":          null
+  },
+  "ucn": null
+}
+
+// UCN (bank / control-number transfer)
+"gateway_details": {
+  "stripe": null,
+  "flutterwave": null,
+  "ucn": {
+    "control_number":  "9920240001234",
+    "bill_id":         "BILL-99",
+    "payer_name":      "JOHN DOE",
+    "payer_phone":     "+255712345678",
+    "payment_channel": "bank_transfer",
+    "sp_code":         "SP001"
+  }
+}
+        </x-docs.code-block>
     </div>
 </section>
