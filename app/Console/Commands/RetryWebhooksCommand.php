@@ -98,6 +98,8 @@ class RetryWebhooksCommand extends Command
                     // retries also have the correct structure.
                     $delivery->update(['payload' => json_encode($freshPayload)]);
 
+                    $sentStatus = $freshPayload['payment']['status'] ?? '(missing)';
+
                     $newDelivery = $this->dispatchService->dispatch(
                         $delivery->customWebhook,
                         $freshPayload,
@@ -110,22 +112,26 @@ class RetryWebhooksCommand extends Command
 
                     if ($newDelivery->status === 'sent') {
                         $ok++;
-                        $this->line("  ✅ Retried {$label} (fresh payload) — HTTP {$newDelivery->http_status_code} ({$newDelivery->duration_ms}ms)");
+                        $this->line("  ✅ Retried {$label} (fresh payload, status={$sentStatus}) — HTTP {$newDelivery->http_status_code} ({$newDelivery->duration_ms}ms)");
                         Log::info('[webhooks:retry] Phase-1 delivery succeeded (fresh payload)', [
                             'original_delivery_id' => $delivery->id,
                             'new_delivery_id'      => $newDelivery->id,
                             'webhook_id'           => $delivery->custom_webhook_id,
                             'payment_id'           => $payment->id,
+                            'payment_db_status'    => $payment->status,
+                            'sent_status'          => $sentStatus,
                             'http_status'          => $newDelivery->http_status_code,
                         ]);
                     } else {
                         $bad++;
-                        $this->warn("  ⚠️  Failed {$label} (fresh payload) — {$newDelivery->error_message}");
+                        $this->warn("  ⚠️  Failed {$label} (fresh payload, status={$sentStatus}) — {$newDelivery->error_message}");
                         Log::warning('[webhooks:retry] Phase-1 delivery failed (fresh payload)', [
                             'original_delivery_id' => $delivery->id,
                             'new_delivery_id'      => $newDelivery->id,
                             'webhook_id'           => $delivery->custom_webhook_id,
                             'payment_id'           => $payment->id,
+                            'payment_db_status'    => $payment->status,
+                            'sent_status'          => $sentStatus,
                             'error'                => $newDelivery->error_message,
                         ]);
                     }
@@ -244,28 +250,33 @@ class RetryWebhooksCommand extends Command
                 }
 
                 try {
-                    $payload  = $this->payloadBuilder->buildPaymentSuccessPayload($payment);
-                    $delivery = $this->dispatchService->dispatch($webhook, $payload, $payment->id);
+                    $payload     = $this->payloadBuilder->buildPaymentSuccessPayload($payment);
+                    $sentStatus  = $payload['payment']['status'] ?? '(missing)';
+                    $delivery    = $this->dispatchService->dispatch($webhook, $payload, $payment->id);
 
                     if ($delivery->status === 'sent') {
                         $ok++;
-                        $this->line("    ✅ Sent {$label} — HTTP {$delivery->http_status_code} ({$delivery->duration_ms}ms)");
+                        $this->line("    ✅ Sent {$label} (status={$sentStatus}) — HTTP {$delivery->http_status_code} ({$delivery->duration_ms}ms)");
                         Log::info('[webhooks:retry] Phase-2 payment delivered', [
-                            'webhook_id'   => $webhook->id,
-                            'webhook_name' => $webhook->name,
-                            'payment_id'   => $payment->id,
-                            'delivery_id'  => $delivery->id,
-                            'http_status'  => $delivery->http_status_code,
-                            'duration_ms'  => $delivery->duration_ms,
+                            'webhook_id'       => $webhook->id,
+                            'webhook_name'     => $webhook->name,
+                            'payment_id'       => $payment->id,
+                            'payment_db_status'=> $payment->status,
+                            'sent_status'      => $sentStatus,
+                            'delivery_id'      => $delivery->id,
+                            'http_status'      => $delivery->http_status_code,
+                            'duration_ms'      => $delivery->duration_ms,
                         ]);
                     } else {
                         $bad++;
-                        $this->warn("    ⚠️  Failed {$label} — {$delivery->error_message}");
+                        $this->warn("    ⚠️  Failed {$label} (status={$sentStatus}) — {$delivery->error_message}");
                         Log::warning('[webhooks:retry] Phase-2 payment delivery failed', [
-                            'webhook_id'   => $webhook->id,
-                            'payment_id'   => $payment->id,
-                            'delivery_id'  => $delivery->id,
-                            'error'        => $delivery->error_message,
+                            'webhook_id'        => $webhook->id,
+                            'payment_id'        => $payment->id,
+                            'payment_db_status' => $payment->status,
+                            'sent_status'       => $sentStatus,
+                            'delivery_id'       => $delivery->id,
+                            'error'             => $delivery->error_message,
                         ]);
                     }
                 } catch (\Exception $e) {
