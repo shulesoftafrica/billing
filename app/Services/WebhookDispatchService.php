@@ -3,26 +3,34 @@
 namespace App\Services;
 
 use App\Models\CustomWebhook;
+use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\WebhookDelivery;
 use App\Models\Product;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\PayloadBuilderService;
 
 class WebhookDispatchService
 {
     /**
      * Dispatch webhook to a single endpoint
+     *
+     * @param CustomWebhook $webhook
+     * @param array $payload
+     * @param int|null $paymentId  Optional payment ID for tracking / replay deduplication
      */
-    public function dispatch(CustomWebhook $webhook, array $payload): WebhookDelivery
+    public function dispatch(CustomWebhook $webhook, array $payload, ?int $paymentId = null): WebhookDelivery
     {
         $startTime = microtime(true);
 
         // Create delivery record
         $delivery = WebhookDelivery::create([
             'custom_webhook_id' => $webhook->id,
-            'event_type' => $payload['event'],
-            'payload' => json_encode($payload),
-            'status' => 'pending',
+            'payment_id'        => $paymentId,
+            'event_type'        => $payload['event'],
+            'payload'           => json_encode($payload),
+            'status'            => 'pending',
         ]);
 
         Log::info('📤 [WEBHOOK DISPATCH] Sending webhook', [
@@ -161,6 +169,107 @@ class WebhookDispatchService
             'successful' => $successful,
             'failed' => $failed,
         ];
+    }
+
+    /**
+     * Replay payment.success webhooks for a specific webhook endpoint.
+     *
+     * This is used when a webhook URL is registered after payments have already been
+     * processed — it finds all cleared payments for the product that have NOT yet
+     * been successfully delivered to this webhook and dispatches them.
+     *
+     * @param  CustomWebhook  $webhook
+     * @param  array{from?: string, to?: string, payment_ids?: int[]}  $filters
+     * @return array{replayed: int, skipped: int, failed: int}
+     */
+    public function replayPaymentsToWebhook(CustomWebhook $webhook, array $filters = []): array
+    {
+        $product = $webhook->product;
+
+        if (!$product) {
+            throw new \Exception('Webhook has no associated product.');
+        }
+
+        // ── 1. Collect payment IDs already successfully delivered to this webhook ──
+        $alreadySentPaymentIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
+            ->where('status', 'sent')
+            ->whereNotNull('payment_id')
+            ->pluck('payment_id')
+            ->toArray();
+
+        // ── 2. Find all cleared payments for this product ──
+        $query = Payment::whereHas('customer', function ($q) use ($product) {
+                $q->where('product_id', $product->id);
+            })
+            ->where('status', 'cleared')
+            ->whereNotIn('id', $alreadySentPaymentIds)
+            ->with(['customer']);
+
+        if (!empty($filters['from'])) {
+            $query->where('paid_at', '>=', $filters['from']);
+        }
+        if (!empty($filters['to'])) {
+            $query->where('paid_at', '<=', $filters['to']);
+        }
+        if (!empty($filters['payment_ids'])) {
+            $query->whereIn('id', $filters['payment_ids']);
+        }
+
+        $payments = $query->orderBy('paid_at')->get();
+
+        Log::info('[WEBHOOK REPLAY] Starting replay', [
+            'webhook_id'   => $webhook->id,
+            'webhook_name' => $webhook->name,
+            'product_id'   => $product->id,
+            'total_found'  => $payments->count(),
+            'filters'      => $filters,
+        ]);
+
+        $replayed = 0;
+        $skipped  = 0;
+        $failed   = 0;
+
+        $payloadBuilder = app(PayloadBuilderService::class);
+
+        foreach ($payments as $payment) {
+            try {
+                $payload = $payloadBuilder->buildPaymentSuccessPayload($payment);
+                $delivery = $this->dispatch($webhook, $payload, $payment->id);
+
+                if ($delivery->status === 'sent') {
+                    $replayed++;
+                    Log::info('[WEBHOOK REPLAY] Delivered', [
+                        'webhook_id'  => $webhook->id,
+                        'payment_id'  => $payment->id,
+                        'delivery_id' => $delivery->id,
+                    ]);
+                } else {
+                    $failed++;
+                    Log::warning('[WEBHOOK REPLAY] Delivery failed', [
+                        'webhook_id'  => $webhook->id,
+                        'payment_id'  => $payment->id,
+                        'delivery_id' => $delivery->id,
+                        'error'       => $delivery->error_message,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                $failed++;
+                Log::error('[WEBHOOK REPLAY] Exception for payment', [
+                    'webhook_id' => $webhook->id,
+                    'payment_id' => $payment->id,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        }
+
+        Log::info('[WEBHOOK REPLAY] Completed', [
+            'webhook_id' => $webhook->id,
+            'replayed'   => $replayed,
+            'skipped'    => $skipped,
+            'failed'     => $failed,
+        ]);
+
+        return compact('replayed', 'skipped', 'failed');
     }
 
     /**

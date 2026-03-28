@@ -110,6 +110,7 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
         Route::post('webhooks/{webhook}/test', [CustomWebhookController::class, 'test']);
         Route::get('webhooks/{webhook}/deliveries', [CustomWebhookController::class, 'deliveries']);
         Route::post('webhooks/{webhook}/regenerate-secret', [CustomWebhookController::class, 'regenerateSecret']);
+        Route::post('webhooks/{webhook}/replay', [CustomWebhookController::class, 'replay']);
     });
 
     // Subscription routes

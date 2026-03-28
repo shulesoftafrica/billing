@@ -263,6 +263,47 @@ class CustomWebhookController extends Controller
     }
 
     /**
+     * Replay payment.success webhooks for past payments that missed delivery.
+     * POST /api/v1/products/{product}/webhooks/{webhook}/replay
+     *
+     * Optional body:
+     *   from         - ISO date, filter payments paid_at >= from
+     *   to           - ISO date, filter payments paid_at <= to
+     *   payment_ids  - array of specific payment IDs to replay
+     */
+    public function replay(Request $request, Product $product, CustomWebhook $webhook): JsonResponse
+    {
+        if ($webhook->product_id !== $product->id) {
+            return response()->json(['success' => false, 'message' => 'Webhook not found'], 404);
+        }
+
+        if ($webhook->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Webhook must be active to replay'], 400);
+        }
+
+        $validated = $request->validate([
+            'from'           => 'nullable|date',
+            'to'             => 'nullable|date',
+            'payment_ids'    => 'nullable|array',
+            'payment_ids.*'  => 'integer|min:1',
+        ]);
+
+        $filters = array_filter([
+            'from'        => $validated['from'] ?? null,
+            'to'          => $validated['to'] ?? null,
+            'payment_ids' => $validated['payment_ids'] ?? null,
+        ]);
+
+        $result = $this->dispatchService->replayPaymentsToWebhook($webhook, $filters);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Replay completed: {$result['replayed']} delivered, {$result['failed']} failed.",
+            'data'    => $result,
+        ]);
+    }
+
+    /**
      * Regenerate webhook secret
      * POST /api/v1/products/{product}/webhooks/{webhook}/regenerate-secret
      */
