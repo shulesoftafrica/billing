@@ -4514,111 +4514,302 @@ Subscribe to any of these event types:
 
 | Event Type | Description | When It Fires |
 |------------|-------------|---------------|
-| `payment.success` | Payment successfully processed | When a payment is completed via any gateway |
-| `payment.failed` | Payment failed | When a payment attempt fails |
+| `payment.success` | Payment cleared by gateway | When a payment is confirmed as cleared via any gateway |
+| `payment.failed` | Payment rejected by gateway | When a payment attempt is rejected |
+| `subscription.created` | New subscription activated | When a customer is subscribed to a price plan |
+| `subscription.renewed` | Subscription renewed | When an existing subscription is renewed for a new billing period |
+| `subscription.cancelled` | Subscription cancelled | When a subscription is terminated |
+| `subscription.expired` | Subscription expired | When a subscription reaches end date without renewal |
+| `subscription.upgraded` | Plan upgraded | When a customer moves to a different price plan |
+| `credits.purchased` | Credits purchased | When a customer purchases usage credits |
 | `invoice.created` | New invoice created | When an invoice is generated |
 | `invoice.paid` | Invoice fully paid | When an invoice payment is completed |
-| `subscription.created` | New subscription | When a customer subscribes |
-| `subscription.cancelled` | Subscription cancelled | When a subscription is terminated |
 
-**Wildcard Support:** Use `payment.*` to subscribe to all payment events, `invoice.*` for all invoice events, etc.
+**Wildcard Support:**
+
+| Pattern | Matches |
+|---|---|
+| `payment.*` | `payment.success`, `payment.failed` |
+| `subscription.*` | All six subscription events |
+| `invoice.*` | `invoice.created`, `invoice.paid` |
+| `*` | Every event |
+| *(empty array)* | Every event |
 
 ---
 
 ### 🔐 Webhook Security
 
-All webhook deliveries include an `X-Webhook-Signature` header containing an HMAC SHA256 signature. Verify this signature to ensure the webhook came from the billing platform:
+#### Request Headers
+
+Every webhook delivery includes these headers:
+
+| Header | Example | Description |
+|---|---|---|
+| `X-Webhook-Signature` | `a3f9d2...` | HMAC-SHA256 of raw request body — verify this first |
+| `X-Event-Type` | `payment.success` | The event name — use this to route your handler |
+| `X-Webhook-ID` | `7` | ID of the webhook configuration that triggered this |
+| `X-Delivery-ID` | `142` | Unique ID of this delivery attempt — use for deduplication |
+| `User-Agent` | `BillingPlatform-Webhook/1.0` | Fixed identifier |
+| `Content-Type` | `application/json` | Always JSON |
+
+Any custom headers you configure on the webhook are merged on top of these.
+
+#### Signature Verification
+
+The `X-Webhook-Signature` is `HMAC-SHA256(raw_request_body, webhook_secret)`. Compute it over the **raw bytes** of the request body before any JSON parsing.
 
 ```php
-// PHP Example
-$signature = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
-$payload = file_get_contents('php://input');
-$secret = 'whsec_...'; // Your webhook secret
+// PHP
+$rawBody  = file_get_contents('php://input');
+$received = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
+$computed = hash_hmac('sha256', $rawBody, $webhookSecret);
 
-$expectedSignature = hash_hmac('sha256', $payload, $secret);
-
-if (!hash_equals($signature, $expectedSignature)) {
+if (!hash_equals($computed, $received)) {
     http_response_code(401);
     exit('Invalid signature');
 }
 
-// Process the webhook
-$event = json_decode($payload, true);
+$event = json_decode($rawBody, true);
 ```
 
 ```javascript
-// Node.js Example
+// Node.js
 const crypto = require('crypto');
 
-function verifyWebhook(payload, signature, secret) {
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
+app.post('/webhooks/billing', express.raw({ type: 'application/json' }), (req, res) => {
+  const computed = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(req.body)          // raw Buffer — before JSON.parse
     .digest('hex');
-    
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
-}
+
+  if (!crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(req.headers['x-webhook-signature']))) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  const event = JSON.parse(req.body);
+  // handle event...
+  res.status(200).json({ received: true });
+});
+```
+
+```python
+# Python / Django
+import hmac, hashlib
+
+raw_body = request.body  # bytes, before any parsing
+received = request.headers.get('X-Webhook-Signature', '')
+computed = hmac.new(webhook_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+
+if not hmac.compare_digest(computed, received):
+    return HttpResponse(status=401)
+
+event = json.loads(raw_body)
 ```
 
 ---
 
-### 📦 Standardized Payload Structure
+### 📦 Payload Structure
 
-All webhook events use the same payload structure regardless of the payment gateway (Stripe, Flutterwave, or UCN):
+All events share a common envelope. Fields that don't apply to a given event are sent as `null`.
+
+#### Common Envelope
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Event name — route your handler on this field |
+| `event_id` | string | Globally unique ID — use for deduplication |
+| `timestamp` | ISO 8601 | When the event was triggered |
+| `api_version` | string | Payload schema version (`2026-03-24`) |
+| `customer_id` | integer | Shortcut to the customer ID |
+
+#### Complete `payment.success` Example
 
 ```json
 {
-  "event": "payment.success",
-  "timestamp": "2026-03-24T15:30:00+00:00",
+  "event":       "payment.success",
+  "event_id":    "evt_68026f3a4b1e2",
+  "timestamp":   "2026-03-29T10:15:00+00:00",
+  "api_version": "2026-03-24",
+  "customer_id": 42,
+
   "product": {
-    "id": 1,
-    "name": "Hospital Management System",
-    "type": "saas",
-    "sku": "HMS-001"
-  },
-  "organization": {
-    "id": 1,
-    "name": "General Hospital",
-    "email": "billing@hospital.com",
-    "phone": "+255123456789"
-  },
-  "customer": {
-    "id": 123,
-    "name": "John Doe",
-    "email": "john@example.com",
-    "phone": "+255987654321",
+    "id": 3,
+    "name": "School Management System",
+    "product_code": "SMS-001",
+    "organization_id": 1,
     "status": "active"
   },
+
+  "organization": {
+    "id": 1,
+    "name": "Shule Soft Africa"
+  },
+
   "payment": {
-    "id": 456,
-    "amount": "50000.00",
-    "currency": "TZS",
-    "status": "success",
-    "payment_method": "card",
-    "gateway_reference": "pi_1234567890",
-    "paid_at": "2026-03-24T15:30:00+00:00"
+    "id":                187,
+    "transaction_id":    "pi_3OqXyz",
+    "amount":            150000.00,
+    "currency":          "TZS",
+    "status":            "success",
+    "payment_method":    "card",
+    "gateway":           "stripe",
+    "gateway_reference": "pi_3OqXyz",
+    "gateway_fee":       4500.00,
+    "net_amount":        145500.00,
+    "description":       "Invoice INV-2026-0042 payment",
+    "paid_at":           "2026-03-29T10:14:58+00:00",
+    "created_at":        "2026-03-29T10:14:50+00:00"
   },
+
   "invoice": {
-    "id": 789,
-    "invoice_number": "INV-2026-001",
-    "total_amount": "50000.00",
-    "paid_amount": "50000.00",
-    "status": "paid",
-    "due_date": "2026-03-31"
+    "id":             99,
+    "invoice_number": "INV-2026-0042",
+    "subtotal":       130435.00,
+    "tax_total":      19565.00,
+    "total":          150000.00,
+    "amount_paid":    150000.00,
+    "amount_due":     0.00,
+    "currency":       "TZS",
+    "status":         "paid",
+    "due_date":       "2026-04-05",
+    "issued_at":      "2026-03-29T08:00:00+00:00",
+    "paid_at":        "2026-03-29T10:14:58+00:00",
+    "items": [
+      {
+        "id":              201,
+        "description":     "Term 1 Fees",
+        "quantity":        1,
+        "unit_price":      130435.00,
+        "total":           130435.00,
+        "price_plan_id":   5,
+        "price_plan_name": "Standard Term Plan"
+      }
+    ],
+    "ucn":             "9920240001234",
+    "control_number":  "9920240001234",
+    "control_numbers": ["9920240001234"]
   },
+
+  "customer": {
+    "id":         42,
+    "product_id": 3,
+    "name":       "Mwanafunzi Primary School",
+    "email":      "accounts@mwanafunzi.ac.tz",
+    "phone":      "+255712345678",
+    "status":     "active"
+  },
+
+  "subscription": {
+    "id":                   18,
+    "status":               "active",
+    "price_plan_id":        5,
+    "price_plan_name":      "Standard Term Plan",
+    "billing_interval":     "quarterly",
+    "amount":               150000.00,
+    "currency":             "TZS",
+    "current_period_start": "2026-01-01",
+    "current_period_end":   "2026-03-31",
+    "next_billing_date":    "2026-04-01",
+    "trial_ends_at":        null,
+    "canceled_at":          null
+  },
+
   "gateway_details": {
-    "gateway": "stripe",
-    "transaction_id": "ch_1234567890",
-    "card_last4": "4242",
-    "card_brand": "visa"
+    "stripe": {
+      "payment_intent_id":  "pi_3OqXyz",
+      "charge_id":          "ch_3OqXyz",
+      "payment_method_id":  "pm_3OqXyz",
+      "customer_id":        "cus_Stripe123",
+      "last4":              "4242",
+      "brand":              "visa",
+      "country":            "TZ",
+      "receipt_url":        "https://pay.stripe.com/receipts/..."
+    },
+    "flutterwave": null,
+    "ucn": null
   },
+
   "metadata": {
-    "ip_address": "192.168.1.100",
-    "user_agent": "Mozilla/5.0...",
-    "processed_at": "2026-03-24T15:30:00+00:00"
+    "ip_address":           "41.75.200.10",
+    "user_agent":           "Mozilla/5.0...",
+    "webhook_triggered_at": "2026-03-29T10:15:00+00:00"
+  }
+}
+```
+
+> **`payment.status` values:** `success` (cleared), `pending`, `failed`, `cancelled`, `refunded`. Internally the system stores `cleared` but always sends `success` in the webhook payload.
+
+#### Per-Event Differences
+
+**`payment.failed`** — same as `payment.success` plus extra fields on the `payment` object:
+```json
+"payment": {
+  ...,
+  "status":        "failed",
+  "error_code":    "card_declined",
+  "error_message": "Your card was declined."
+}
+```
+
+**`subscription.created` / `subscription.renewed` / `subscription.cancelled` / `subscription.expired` / `subscription.upgraded`** — `invoice` and `payment` are `null` except for `subscription.renewed` (which includes `payment` if a renewal charge was captured). Cancelled events include a `cancellation` block:
+```json
+"cancellation": {
+  "reason":       "Customer requested cancellation",
+  "cancelled_at": "2026-03-29T10:15:00+00:00"
+}
+```
+Upgraded events include an `upgrade` block showing the old and new plan:
+```json
+"upgrade": {
+  "previous_plan": { "id": 5, "name": "Standard Term Plan", "amount": 150000.00, "interval": "quarterly" },
+  "new_plan":      { "id": 7, "name": "Premium Annual Plan", "amount": 500000.00, "interval": "yearly" },
+  "upgraded_at":   "2026-03-29T10:15:00+00:00"
+}
+```
+
+**`credits.purchased`** — replaces `invoice` and `subscription` with a `credits` block:
+```json
+"credits": {
+  "id":           55,
+  "amount":       1000,
+  "balance":      4200,
+  "description":  "SMS credit top-up",
+  "purchased_at": "2026-03-29T10:15:00+00:00"
+}
+```
+
+#### `gateway_details` by gateway
+
+Only the key matching the active gateway is populated; the others are `null`.
+
+**Flutterwave:**
+```json
+"gateway_details": {
+  "stripe": null,
+  "flutterwave": {
+    "transaction_id": 123456789,
+    "flw_ref":        "FLW-MOCK-abc",
+    "tx_ref":         "billing-187",
+    "payment_type":   "mobilemoneyuganda",
+    "card_brand":     null,
+    "last4":          null
+  },
+  "ucn": null
+}
+```
+
+**UCN (bank/control number transfer):**
+```json
+"gateway_details": {
+  "stripe": null,
+  "flutterwave": null,
+  "ucn": {
+    "control_number":  "9920240001234",
+    "bill_id":         "BILL-99",
+    "payer_name":      "JOHN DOE",
+    "payer_phone":     "+255712345678",
+    "payment_channel": "bank_transfer",
+    "sp_code":         "SP001"
   }
 }
 ```
@@ -4922,14 +5113,8 @@ All webhook events use the same payload structure regardless of the payment gate
 ```
 
 **Test Payload Sent:**
-```json
-{
-  "event": "webhook.test",
-  "timestamp": "2026-03-24T16:30:00+00:00",
-  "webhook_id": 1,
-  "message": "This is a test webhook from the billing platform"
-}
-```
+
+A real `payment.success` payload is built and sent using the most recent cleared payment for this product. If no payment exists, a sample payload with synthetic data is used. This means your signature verification, field parsing, and routing logic are tested against the actual production payload schema.
 
 ---
 
