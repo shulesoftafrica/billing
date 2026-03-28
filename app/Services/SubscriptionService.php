@@ -1106,14 +1106,36 @@ class SubscriptionService
     {
 
         // Find the last subscription for this product
-        $lastSubscription = Subscription::where('customer_id', $customerId)
+        $lastSubscription = Subscription::with('pricePlan')
+            ->where('customer_id', $customerId)
             ->whereHas('pricePlan.product', function ($query) use ($productId) {
                 $query->where('id', $productId);
             })
             ->where('status', '=', 'active')
             ->latest('created_at')
             ->first();
-        $rate = $lastSubscription->PricePlan->rate;
+
+        if (!$lastSubscription) {
+            Log::warning('[SubscriptionService] createAutoSubscription: No active subscription found', [
+                'customer_id' => $customerId,
+                'product_id'  => $productId,
+                'amount'      => $amount,
+            ]);
+            return;
+        }
+
+        $pricePlan = $lastSubscription->pricePlan;
+
+        if (!$pricePlan) {
+            Log::warning('[SubscriptionService] createAutoSubscription: PricePlan not found for subscription', [
+                'subscription_id' => $lastSubscription->id,
+                'customer_id'     => $customerId,
+                'product_id'      => $productId,
+            ]);
+            return;
+        }
+
+        $rate = $pricePlan->rate;
         // Create product purchase for excess amount
         $quantity = $amount / $rate;
         if ($quantity >= 1) {
@@ -1121,7 +1143,7 @@ class SubscriptionService
             // Create new subscription
             $newSubscription = Subscription::create([
                 'customer_id' => $customerId,
-                'price_plan_id' => $lastSubscription->PricePlan->id,
+                'price_plan_id' => $pricePlan->id,
                 'status' => 'active',
                 'start_date' => null,
                 'end_date' => null,
@@ -1132,7 +1154,7 @@ class SubscriptionService
             $newInvoice = Invoice::create([
                 'customer_id' => $customerId,
                 'invoice_number' => $this->generateInvoiceNumber(),
-                'currency' => strtoupper((string) ($lastSubscription->PricePlan->currency ?? 'TZS')),
+                'currency' => strtoupper((string) ($pricePlan->currency ?? 'TZS')),
                 'status' => 'issued',
                 'description' => 'Excess payment invoice for product usage',
                 'subtotal' => $amount,
@@ -1145,7 +1167,7 @@ class SubscriptionService
             InvoiceItem::create([
                 'invoice_id' => $newInvoice->id,
                 'subscription_id' => $newSubscription->id,
-                'price_plan_id' => $lastSubscription->PricePlan->id,
+                'price_plan_id' => $pricePlan->id,
                 'quantity' => 1,
                 'unit_price' => $amount,
                 'total' => $amount,

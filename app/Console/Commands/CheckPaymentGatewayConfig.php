@@ -22,6 +22,31 @@ class CheckPaymentGatewayConfig extends Command
 
         // Check Flutterwave
         $this->info('--- Flutterwave Configuration ---');
+        
+        // Check database config first (highest priority)
+        $flutterwaveGateway = \App\Models\PaymentGateway::whereRaw('LOWER(name) = ?', ['flutterwave'])->first();
+        $dbConfig = null;
+        if ($flutterwaveGateway) {
+            $dbConfig = is_array($flutterwaveGateway->config) ? $flutterwaveGateway->config : 
+                        (is_string($flutterwaveGateway->config) ? json_decode($flutterwaveGateway->config, true) : null);
+            
+            if (is_array($dbConfig)) {
+                $dbBaseUrl = $dbConfig['base_url'] ?? $dbConfig['gateway'] ?? null;
+                if ($dbBaseUrl && str_contains($dbBaseUrl, 'dev-flutterwave.com') && $environment === 'production') {
+                    $this->error("✗ Flutterwave: Database config has DEVELOPMENT URL in PRODUCTION");
+                    $this->line("  DB config base_url: {$dbBaseUrl}");
+                    $this->line("  This overrides environment variables!");
+                    $hasIssues = true;
+                } elseif ($dbBaseUrl) {
+                    $isDev = str_contains($dbBaseUrl, 'dev-flutterwave.com');
+                    $this->line($isDev ? 
+                        "  DB config base_url: <fg=yellow>{$dbBaseUrl}</> (DEVELOPMENT)" :
+                        "  DB config base_url: <fg=green>{$dbBaseUrl}</> (PRODUCTION)"
+                    );
+                }
+            }
+        }
+        
         $flutterwaveUrl = config('services.flutterwave.v3_base_url');
         $flutterwaveSecret = config('services.flutterwave.secret_key');
         
@@ -64,6 +89,32 @@ class CheckPaymentGatewayConfig extends Command
 
         // Check Stripe
         $this->info('--- Stripe Configuration ---');
+        
+        // Check database config first
+        $stripeGateway = \App\Models\PaymentGateway::whereRaw('LOWER(name) = ?', ['stripe'])->first();
+        if ($stripeGateway) {
+            $dbConfig = is_array($stripeGateway->config) ? $stripeGateway->config : 
+                        (is_string($stripeGateway->config) ? json_decode($stripeGateway->config, true) : null);
+            
+            if (is_array($dbConfig) && isset($dbConfig['api_key'])) {
+                $dbApiKey = $dbConfig['api_key'];
+                $dbKeyPrefix = substr($dbApiKey, 0, 8);
+                $isDbTest = str_starts_with($dbApiKey, 'sk_test_');
+                
+                if ($isDbTest && $environment === 'production') {
+                    $this->error("✗ Stripe: Database config has TEST key in PRODUCTION");
+                    $this->line("  DB config api_key: {$dbKeyPrefix}...");
+                    $this->line("  This could override environment variables!");
+                    $hasIssues = true;
+                } else {
+                    $this->line($isDbTest ?
+                        "  DB config api_key: <fg=yellow>{$dbKeyPrefix}...</> (TEST)" :
+                        "  DB config api_key: <fg=green>{$dbKeyPrefix}...</> (LIVE)"
+                    );
+                }
+            }
+        }
+        
         $stripeSecret = config('services.stripe.secret');
         $stripePublishable = config('services.stripe.publishable_key');
         
