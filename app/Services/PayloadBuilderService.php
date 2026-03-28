@@ -21,19 +21,20 @@ class PayloadBuilderService
         $subscription = $payment->subscription ?? $customer->subscriptions()->latest()->first();
 
         return [
-            'event' => 'payment.success',
-            'event_id' => 'evt_' . uniqid(),
-            'timestamp' => now()->toIso8601String(),
-            'api_version' => '2026-03-24',
-            
-            'product' => $this->buildProductData($product),
-            'organization' => $this->buildOrganizationData($organization),
-            'payment' => $this->buildPaymentData($payment),
-            'invoice' => $this->buildInvoiceData($invoice),
-            'customer' => $this->buildCustomerData($customer),
-            'subscription' => $subscription ? $this->buildSubscriptionData($subscription) : null,
+            'event'          => 'payment.success',
+            'event_id'       => 'evt_' . uniqid(),
+            'timestamp'      => now()->toIso8601String(),
+            'api_version'    => '2026-03-24',
+            'customer_id'    => $customer->id,
+
+            'product'         => $this->buildProductData($product),
+            'organization'    => $this->buildOrganizationData($organization),
+            'payment'         => $this->buildPaymentData($payment),
+            'invoice'         => $this->buildInvoiceData($invoice),
+            'customer'        => $this->buildCustomerData($customer),
+            'subscription'    => $subscription ? $this->buildSubscriptionData($subscription) : null,
             'gateway_details' => $this->buildGatewayDetails($payment),
-            'metadata' => $this->buildMetadata(),
+            'metadata'        => $this->buildMetadata(),
         ];
     }
 
@@ -156,20 +157,33 @@ class PayloadBuilderService
     private function buildPaymentData(Payment $payment): array
     {
         $gateway = $payment->gateway;
-        
+
+        // Normalize internal status values to standard external values
+        $statusMap = [
+            'cleared'   => 'success',
+            'completed' => 'success',
+            'success'   => 'success',
+            'pending'   => 'pending',
+            'failed'    => 'failed',
+            'cancelled' => 'cancelled',
+            'refunded'  => 'refunded',
+        ];
+        $externalStatus = $statusMap[$payment->status] ?? $payment->status;
+
         return [
-            'id' => $payment->id,
-            'amount' => (float) $payment->amount,
-            'currency' => $payment->currency ?? 'TZS',
-            'status' => $payment->status,
-            'payment_method' => $payment->payment_method,
-            'gateway' => $gateway ? $gateway->type : 'unknown',
+            'id'                => $payment->id,
+            'transaction_id'    => $payment->gateway_reference, // required by receivers
+            'amount'            => (float) $payment->amount,
+            'currency'          => $payment->currency ?? 'TZS',
+            'status'            => $externalStatus,
+            'payment_method'    => $payment->payment_method,
+            'gateway'           => $gateway ? $gateway->type : 'unknown',
             'gateway_reference' => $payment->gateway_reference,
-            'gateway_fee' => (float) ($payment->gateway_fee ?? 0),
-            'net_amount' => (float) ($payment->amount - ($payment->gateway_fee ?? 0)),
-            'description' => $payment->description,
-            'paid_at' => $payment->paid_at?->toIso8601String(),
-            'created_at' => $payment->created_at->toIso8601String(),
+            'gateway_fee'       => (float) ($payment->gateway_fee ?? 0),
+            'net_amount'        => (float) ($payment->amount - ($payment->gateway_fee ?? 0)),
+            'description'       => $payment->description,
+            'paid_at'           => $payment->paid_at?->toIso8601String(),
+            'created_at'        => $payment->created_at->toIso8601String(),
         ];
     }
 
