@@ -10,6 +10,7 @@ class WebhookDelivery extends Model
     protected $fillable = [
         'custom_webhook_id',
         'payment_id',
+        'subscription_id',
         'event_type',
         'payload',
         'status',

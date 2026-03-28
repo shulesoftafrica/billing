@@ -23,14 +23,19 @@ class WebhookDispatchService
      * @param array $payload
      * @param int|null $paymentId  Optional payment ID for tracking / replay deduplication
      */
-    public function dispatch(CustomWebhook $webhook, array $payload, ?int $paymentId = null): WebhookDelivery
-    {
+    public function dispatch(
+        CustomWebhook $webhook,
+        array $payload,
+        ?int $paymentId = null,
+        ?int $subscriptionId = null
+    ): WebhookDelivery {
         $startTime = microtime(true);
 
         // Create delivery record
         $delivery = WebhookDelivery::create([
             'custom_webhook_id' => $webhook->id,
             'payment_id'        => $paymentId,
+            'subscription_id'   => $subscriptionId,
             'event_type'        => $payload['event'],
             'payload'           => json_encode($payload),
             'status'            => 'pending',
@@ -464,8 +469,12 @@ class WebhookDispatchService
         if (!$product) return;
 
         try {
-            $payload = $this->payloadBuilder->buildSubscriptionCreatedPayload($subscription);
-            $this->dispatchToProduct($product, 'subscription.created', $payload);
+            $payload   = $this->payloadBuilder->buildSubscriptionCreatedPayload($subscription);
+            $webhooks  = $product->getActiveWebhooksForEvent('subscription.created');
+            foreach ($webhooks as $webhook) {
+                $this->dispatch($webhook, $payload, null, $subscription->id);
+            }
+            return;
         } catch (\Exception $e) {
             Log::warning('[WEBHOOK] dispatchSubscriptionCreated failed', [
                 'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
@@ -480,8 +489,12 @@ class WebhookDispatchService
         if (!$product) return;
 
         try {
-            $payload = $this->payloadBuilder->buildSubscriptionRenewedPayload($subscription, $payment);
-            $this->dispatchToProduct($product, 'subscription.renewed', $payload);
+            $payload  = $this->payloadBuilder->buildSubscriptionRenewedPayload($subscription, $payment);
+            $webhooks = $product->getActiveWebhooksForEvent('subscription.renewed');
+            foreach ($webhooks as $webhook) {
+                $this->dispatch($webhook, $payload, $payment?->id, $subscription->id);
+            }
+            return;
         } catch (\Exception $e) {
             Log::warning('[WEBHOOK] dispatchSubscriptionRenewed failed', [
                 'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
@@ -496,8 +509,12 @@ class WebhookDispatchService
         if (!$product) return;
 
         try {
-            $payload = $this->payloadBuilder->buildSubscriptionCancelledPayload($subscription, $reason);
-            $this->dispatchToProduct($product, 'subscription.cancelled', $payload);
+            $payload  = $this->payloadBuilder->buildSubscriptionCancelledPayload($subscription, $reason);
+            $webhooks = $product->getActiveWebhooksForEvent('subscription.cancelled');
+            foreach ($webhooks as $webhook) {
+                $this->dispatch($webhook, $payload, null, $subscription->id);
+            }
+            return;
         } catch (\Exception $e) {
             Log::warning('[WEBHOOK] dispatchSubscriptionCancelled failed', [
                 'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
@@ -512,8 +529,12 @@ class WebhookDispatchService
         if (!$product) return;
 
         try {
-            $payload = $this->payloadBuilder->buildSubscriptionExpiredPayload($subscription);
-            $this->dispatchToProduct($product, 'subscription.expired', $payload);
+            $payload  = $this->payloadBuilder->buildSubscriptionExpiredPayload($subscription);
+            $webhooks = $product->getActiveWebhooksForEvent('subscription.expired');
+            foreach ($webhooks as $webhook) {
+                $this->dispatch($webhook, $payload, null, $subscription->id);
+            }
+            return;
         } catch (\Exception $e) {
             Log::warning('[WEBHOOK] dispatchSubscriptionExpired failed', [
                 'subscription_id' => $subscription->id, 'error' => $e->getMessage(),
@@ -547,8 +568,12 @@ class WebhookDispatchService
         if (!$product) return;
 
         try {
-            $payload = $this->payloadBuilder->buildSubscriptionUpgradedPayload($subscription, $oldPlan, $newPlan);
-            $this->dispatchToProduct($product, 'subscription.upgraded', $payload);
+            $payload  = $this->payloadBuilder->buildSubscriptionUpgradedPayload($subscription, $oldPlan, $newPlan);
+            $webhooks = $product->getActiveWebhooksForEvent('subscription.upgraded');
+            foreach ($webhooks as $webhook) {
+                $this->dispatch($webhook, $payload, null, $subscription->id);
+            }
+            return;
         } catch (\Exception $e) {
             Log::warning('[WEBHOOK] dispatchSubscriptionUpgraded failed', [
                 'subscription_id' => $subscription->id, 'error' => $e->getMessage(),

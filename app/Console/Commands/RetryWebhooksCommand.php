@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\CustomWebhook;
 use App\Models\Payment;
+use App\Models\Subscription;
 use App\Models\WebhookDelivery;
 use App\Services\PayloadBuilderService;
 use App\Services\WebhookDispatchService;
@@ -16,7 +17,7 @@ class RetryWebhooksCommand extends Command
                             {--product= : Limit to a specific product ID}
                             {--dry-run  : Show what would be sent without actually sending}';
 
-    protected $description = 'Retry failed webhook deliveries AND send payment.success for cleared payments that were never delivered';
+    protected $description = 'Retry failed webhook deliveries AND sweep all unsent events (payments + subscriptions) for every active webhook';
 
     public function __construct(
         private readonly WebhookDispatchService $dispatchService,
@@ -31,13 +32,14 @@ class RetryWebhooksCommand extends Command
         $productId = $this->option('product');
 
         $this->info('======================================================');
-        $this->info('  Webhook Retry + Unsent-Payment Sweep');
+        $this->info('  Webhook Retry + Full Event Sweep');
         $this->info('  ' . now()->toDateTimeString() . ($dryRun ? '  [DRY RUN]' : ''));
         $this->info('======================================================');
 
         $exitCode  = Command::SUCCESS;
         $exitCode  = min($exitCode, $this->phaseRetryFailed($productId, $dryRun));
         $exitCode  = min($exitCode, $this->phaseUnsentPayments($productId, $dryRun));
+        $exitCode  = min($exitCode, $this->phaseUnsentSubscriptionEvents($productId, $dryRun));
 
         $this->info('');
         $this->info('✅ Done.');
@@ -80,81 +82,55 @@ class RetryWebhooksCommand extends Command
             }
 
             try {
-                // If we have a payment_id, rebuild the payload fresh so any
-                // payload schema fixes are applied rather than replaying a
-                // stale stored payload.
-                if ($delivery->payment_id) {
-                    $payment = Payment::find($delivery->payment_id);
+                $freshPayload = $this->rebuildPayload($delivery);
 
-                    if (!$payment) {
-                        $bad++;
-                        $this->warn("  ⚠️  Skipped {$label} — payment #{$delivery->payment_id} not found");
-                        continue;
-                    }
-
-                    $freshPayload = $this->payloadBuilder->buildPaymentSuccessPayload($payment);
-
-                    // Overwrite stored payload with the fresh one so future
-                    // retries also have the correct structure.
+                if ($freshPayload !== null) {
+                    // Update stored payload so future retries also get the correct schema.
                     $delivery->update(['payload' => json_encode($freshPayload)]);
-
-                    $sentStatus = $freshPayload['payment']['status'] ?? '(missing)';
 
                     $newDelivery = $this->dispatchService->dispatch(
                         $delivery->customWebhook,
                         $freshPayload,
-                        $payment->id
+                        $delivery->payment_id,
+                        $delivery->subscription_id,
                     );
 
-                    // Mark the original delivery as superseded so it doesn't
-                    // keep appearing in the retry queue.
                     $delivery->update(['status' => 'superseded', 'next_retry_at' => null]);
 
                     if ($newDelivery->status === 'sent') {
                         $ok++;
-                        $this->line("  ✅ Retried {$label} (fresh payload, status={$sentStatus}) — HTTP {$newDelivery->http_status_code} ({$newDelivery->duration_ms}ms)");
-                        Log::info('[webhooks:retry] Phase-1 delivery succeeded (fresh payload)', [
+                        $this->line("  ✅ Retried {$label} (fresh) — HTTP {$newDelivery->http_status_code} ({$newDelivery->duration_ms}ms)");
+                        Log::info('[webhooks:retry] Phase-1 succeeded (fresh)', [
                             'original_delivery_id' => $delivery->id,
                             'new_delivery_id'      => $newDelivery->id,
-                            'webhook_id'           => $delivery->custom_webhook_id,
-                            'payment_id'           => $payment->id,
-                            'payment_db_status'    => $payment->status,
-                            'sent_status'          => $sentStatus,
-                            'http_status'          => $newDelivery->http_status_code,
+                            'event_type'           => $delivery->event_type,
                         ]);
                     } else {
                         $bad++;
-                        $this->warn("  ⚠️  Failed {$label} (fresh payload, status={$sentStatus}) — {$newDelivery->error_message}");
-                        Log::warning('[webhooks:retry] Phase-1 delivery failed (fresh payload)', [
+                        $this->warn("  ⚠️  Failed {$label} (fresh) — {$newDelivery->error_message}");
+                        Log::warning('[webhooks:retry] Phase-1 failed (fresh)', [
                             'original_delivery_id' => $delivery->id,
                             'new_delivery_id'      => $newDelivery->id,
-                            'webhook_id'           => $delivery->custom_webhook_id,
-                            'payment_id'           => $payment->id,
-                            'payment_db_status'    => $payment->status,
-                            'sent_status'          => $sentStatus,
+                            'event_type'           => $delivery->event_type,
                             'error'                => $newDelivery->error_message,
                         ]);
                     }
                 } else {
-                    // No payment_id — fall back to resending stored payload.
+                    // Cannot rebuild from DB — replay the stored payload as-is.
                     $result = $this->dispatchService->retryDelivery($delivery);
 
                     if ($result['success']) {
                         $ok++;
-                        $this->line("  ✅ Retried {$label} — HTTP {$result['http_status']} ({$result['response_time']}ms)");
-                        Log::info('[webhooks:retry] Phase-1 delivery succeeded', [
-                            'delivery_id'  => $delivery->id,
-                            'webhook_id'   => $delivery->custom_webhook_id,
-                            'http_status'  => $result['http_status'],
-                            'duration_ms'  => $result['response_time'],
+                        $this->line("  ✅ Retried {$label} (stored) — HTTP {$result['http_status']} ({$result['response_time']}ms)");
+                        Log::info('[webhooks:retry] Phase-1 succeeded (stored)', [
+                            'delivery_id' => $delivery->id,
                         ]);
                     } else {
                         $bad++;
-                        $this->warn("  ⚠️  Failed {$label} — {$result['error_message']}");
-                        Log::warning('[webhooks:retry] Phase-1 delivery failed', [
-                            'delivery_id'  => $delivery->id,
-                            'webhook_id'   => $delivery->custom_webhook_id,
-                            'error'        => $result['error_message'],
+                        $this->warn("  ⚠️  Failed {$label} (stored) — {$result['error_message']}");
+                        Log::warning('[webhooks:retry] Phase-1 failed (stored)', [
+                            'delivery_id' => $delivery->id,
+                            'error'       => $result['error_message'],
                         ]);
                     }
                 }
@@ -177,37 +153,145 @@ class RetryWebhooksCommand extends Command
     // Phase 2 – find cleared payments with no successful delivery record
     //           for each active product webhook and send them
     // ------------------------------------------------------------------
+    // Phase 2 – sweep cleared/failed payments never successfully delivered
+    // ------------------------------------------------------------------
     private function phaseUnsentPayments(?string $productId, bool $dryRun): int
     {
         $this->info('');
-        $this->info('─── Phase 2: Sweep cleared payments never delivered ───');
+        $this->info('─── Phase 2: Sweep unsent payment events ───');
 
-        // Load all active webhooks that listen to payment.success (or wildcard)
-        $webhookQuery = CustomWebhook::with('product')
-            ->where('status', 'active')
-            ->where(function ($q) {
-                // events is null/empty (trigger on all) OR contains payment.success / payment.* / *
-                $q->whereNull('events')
-                  ->orWhereJsonContains('events', 'payment.success')
-                  ->orWhereJsonContains('events', 'payment.*')
-                  ->orWhereJsonContains('events', '*');
-            });
-
-        if ($productId) {
-            $webhookQuery->where('product_id', $productId);
-        }
-
-        $webhooks = $webhookQuery->get();
-
-        if ($webhooks->isEmpty()) {
-            $this->line('  ℹ️  No active payment.success webhooks found.');
-            return Command::SUCCESS;
-        }
-
-        $this->line("  Checking {$webhooks->count()} active webhook(s)...");
+        /** @var array<string, string> event_type => payment status to match */
+        $eventMap = [
+            'payment.success' => 'cleared',
+            'payment.failed'  => 'failed',
+        ];
 
         $totalDispatched = 0;
         $totalFailed     = 0;
+
+        foreach ($eventMap as $eventType => $paymentStatus) {
+            $webhooks = $this->activeWebhooksForProducts($eventType, $productId);
+
+            if ($webhooks->isEmpty()) {
+                $this->line("  ℹ️  No active {$eventType} webhooks found.");
+                continue;
+            }
+
+            $this->line("  Checking {$webhooks->count()} webhook(s) for {$eventType}...");
+
+            [$ok, $bad] = $this->dispatchPayments($webhooks, $eventType, $paymentStatus, $dryRun);
+            $totalDispatched += $ok;
+            $totalFailed     += $bad;
+        }
+
+        $this->line("  Phase-2 result: {$totalDispatched} sent, {$totalFailed} failed.");
+
+        return $totalFailed > 0 ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 3 – sweep subscription events never successfully delivered
+    // ------------------------------------------------------------------
+    private function phaseUnsentSubscriptionEvents(?string $productId, bool $dryRun): int
+    {
+        $this->info('');
+        $this->info('─── Phase 3: Sweep unsent subscription events ───');
+
+        /**
+         * event_type => closure that further filters the Subscription query
+         * @var array<string, \Closure>
+         */
+        $sweepMap = [
+            'subscription.created'   => fn ($q) => $q,
+            'subscription.cancelled' => fn ($q) => $q->where('status', 'cancelled'),
+            'subscription.expired'   => fn ($q) => $q->where('status', 'expired'),
+            'subscription.upgraded'  => fn ($q) => $q->whereNotNull('previous_plan_id'),
+        ];
+
+        $totalDispatched = 0;
+        $totalFailed     = 0;
+
+        foreach ($sweepMap as $eventType => $queryFilter) {
+            $webhooks = $this->activeWebhooksForProducts($eventType, $productId);
+
+            if ($webhooks->isEmpty()) {
+                $this->line("  ℹ️  No active {$eventType} webhooks found.");
+                continue;
+            }
+
+            $this->line("  Checking {$webhooks->count()} webhook(s) for {$eventType}...");
+
+            [$ok, $bad] = $this->dispatchSubscriptions($webhooks, $eventType, $queryFilter, $dryRun);
+            $totalDispatched += $ok;
+            $totalFailed     += $bad;
+        }
+
+        $this->line("  Phase-3 result: {$totalDispatched} sent, {$totalFailed} failed.");
+
+        return $totalFailed > 0 ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Rebuild a fresh payload for a delivery based on its event_type.
+     * Returns null if the source record (payment / subscription) is missing
+     * or the event_type is unrecognised — caller falls back to stored payload.
+     */
+    private function rebuildPayload(WebhookDelivery $delivery): ?array
+    {
+        $eventType = $delivery->event_type;
+
+        if (in_array($eventType, ['payment.success', 'payment.failed'], true) && $delivery->payment_id) {
+            $payment = Payment::find($delivery->payment_id);
+            if (!$payment) {
+                return null;
+            }
+            return $eventType === 'payment.failed'
+                ? $this->payloadBuilder->buildPaymentFailedPayload($payment)
+                : $this->payloadBuilder->buildPaymentSuccessPayload($payment);
+        }
+
+        if (str_starts_with($eventType, 'subscription.') && $delivery->subscription_id) {
+            $subscription = Subscription::with([
+                'customer.product.organization',
+                'pricePlan',
+            ])->find($delivery->subscription_id);
+
+            if (!$subscription) {
+                return null;
+            }
+
+            return match ($eventType) {
+                'subscription.created'   => $this->payloadBuilder->buildSubscriptionCreatedPayload($subscription),
+                'subscription.renewed'   => $this->payloadBuilder->buildSubscriptionRenewedPayload($subscription),
+                'subscription.cancelled' => $this->payloadBuilder->buildSubscriptionCancelledPayload($subscription),
+                'subscription.expired'   => $this->payloadBuilder->buildSubscriptionExpiredPayload($subscription),
+                'subscription.upgraded'  => $this->payloadBuilder->buildSubscriptionUpgradedPayload($subscription),
+                default                  => null,
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Loop through a webhook collection and send unsent payments of the
+     * given status/event_type. Returns [dispatched, failed].
+     *
+     * @param  \Illuminate\Support\Collection $webhooks
+     * @return array{int, int}
+     */
+    private function dispatchPayments(
+        \Illuminate\Support\Collection $webhooks,
+        string $eventType,
+        string $paymentStatus,
+        bool $dryRun
+    ): array {
+        $totalOk  = 0;
+        $totalBad = 0;
 
         foreach ($webhooks as $webhook) {
             $product = $webhook->product;
@@ -217,32 +301,32 @@ class RetryWebhooksCommand extends Command
                 continue;
             }
 
-            // IDs already successfully sent to THIS webhook
+            // IDs already successfully sent for this event to THIS webhook
             $sentPaymentIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
+                ->where('event_type', $eventType)
                 ->where('status', 'sent')
                 ->whereNotNull('payment_id')
                 ->pluck('payment_id')
                 ->toArray();
 
-            // Cleared payments for this product not yet sent to this webhook
             $payments = Payment::whereHas('customer', fn ($q) => $q->where('product_id', $product->id))
-                ->where('status', 'cleared')
+                ->where('status', $paymentStatus)
                 ->whereNotIn('id', $sentPaymentIds)
                 ->orderBy('paid_at')
                 ->get();
 
             if ($payments->isEmpty()) {
-                $this->line("  ✔  Webhook #{$webhook->id} '{$webhook->name}' — all payments already delivered.");
+                $this->line("  ✔  Webhook #{$webhook->id} '{$webhook->name}' — all {$eventType} already delivered.");
                 continue;
             }
 
-            $this->line("  📬 Webhook #{$webhook->id} '{$webhook->name}' ({$product->name}) — {$payments->count()} unsent payment(s).");
+            $this->line("  📬 Webhook #{$webhook->id} '{$webhook->name}' ({$product->name}) — {$payments->count()} unsent {$eventType}.");
 
             $ok  = 0;
             $bad = 0;
 
             foreach ($payments as $payment) {
-                $label = "payment #{$payment->id} (" . number_format($payment->amount, 2) . ") to webhook #{$webhook->id}";
+                $label = "{$eventType} payment #{$payment->id} (" . number_format($payment->amount, 2) . ") → webhook #{$webhook->id}";
 
                 if ($dryRun) {
                     $this->line("    [dry-run] would send {$label}");
@@ -250,57 +334,199 @@ class RetryWebhooksCommand extends Command
                 }
 
                 try {
-                    $payload     = $this->payloadBuilder->buildPaymentSuccessPayload($payment);
-                    $sentStatus  = $payload['payment']['status'] ?? '(missing)';
-                    $delivery    = $this->dispatchService->dispatch($webhook, $payload, $payment->id);
+                    $payload = $eventType === 'payment.failed'
+                        ? $this->payloadBuilder->buildPaymentFailedPayload($payment)
+                        : $this->payloadBuilder->buildPaymentSuccessPayload($payment);
+
+                    $delivery = $this->dispatchService->dispatch($webhook, $payload, $payment->id);
 
                     if ($delivery->status === 'sent') {
                         $ok++;
-                        $this->line("    ✅ Sent {$label} (status={$sentStatus}) — HTTP {$delivery->http_status_code} ({$delivery->duration_ms}ms)");
+                        $this->line("    ✅ Sent {$label} — HTTP {$delivery->http_status_code} ({$delivery->duration_ms}ms)");
                         Log::info('[webhooks:retry] Phase-2 payment delivered', [
-                            'webhook_id'       => $webhook->id,
-                            'webhook_name'     => $webhook->name,
-                            'payment_id'       => $payment->id,
-                            'payment_db_status'=> $payment->status,
-                            'sent_status'      => $sentStatus,
-                            'delivery_id'      => $delivery->id,
-                            'http_status'      => $delivery->http_status_code,
-                            'duration_ms'      => $delivery->duration_ms,
+                            'event_type'  => $eventType,
+                            'webhook_id'  => $webhook->id,
+                            'payment_id'  => $payment->id,
+                            'delivery_id' => $delivery->id,
                         ]);
                     } else {
                         $bad++;
-                        $this->warn("    ⚠️  Failed {$label} (status={$sentStatus}) — {$delivery->error_message}");
-                        Log::warning('[webhooks:retry] Phase-2 payment delivery failed', [
-                            'webhook_id'        => $webhook->id,
-                            'payment_id'        => $payment->id,
-                            'payment_db_status' => $payment->status,
-                            'sent_status'       => $sentStatus,
-                            'delivery_id'       => $delivery->id,
-                            'error'             => $delivery->error_message,
+                        $this->warn("    ⚠️  Failed {$label} — {$delivery->error_message}");
+                        Log::warning('[webhooks:retry] Phase-2 payment failed', [
+                            'event_type'  => $eventType,
+                            'webhook_id'  => $webhook->id,
+                            'payment_id'  => $payment->id,
+                            'error'       => $delivery->error_message,
                         ]);
                     }
                 } catch (\Exception $e) {
                     $bad++;
                     $this->error("    ❌ Exception for {$label}: {$e->getMessage()}");
                     Log::error('[webhooks:retry] Phase-2 exception', [
+                        'event_type' => $eventType,
                         'webhook_id' => $webhook->id,
                         'payment_id' => $payment->id,
                         'error'      => $e->getMessage(),
-                        'trace'      => $e->getTraceAsString(),
                     ]);
                 }
             }
 
-            $totalDispatched += $ok;
-            $totalFailed     += $bad;
+            $totalOk  += $ok;
+            $totalBad += $bad;
 
             if (!$dryRun) {
                 $this->line("    → {$ok} sent, {$bad} failed for webhook #{$webhook->id}.");
             }
         }
 
-        $this->line("  Phase-2 result: {$totalDispatched} sent, {$totalFailed} failed.");
+        return [$totalOk, $totalBad];
+    }
 
-        return $totalFailed > 0 ? Command::FAILURE : Command::SUCCESS;
+    /**
+     * Loop through a webhook collection and send unsent subscription events.
+     * Returns [dispatched, failed].
+     *
+     * @param  \Illuminate\Support\Collection $webhooks
+     * @param  \Closure                       $queryFilter  Extra where clauses on Subscription query
+     * @return array{int, int}
+     */
+    private function dispatchSubscriptions(
+        \Illuminate\Support\Collection $webhooks,
+        string $eventType,
+        \Closure $queryFilter,
+        bool $dryRun
+    ): array {
+        $totalOk  = 0;
+        $totalBad = 0;
+
+        foreach ($webhooks as $webhook) {
+            $product = $webhook->product;
+
+            if (!$product) {
+                $this->warn("  ⚠️  Webhook #{$webhook->id} has no product — skipping.");
+                continue;
+            }
+
+            // Subscription IDs already successfully delivered for this event to THIS webhook
+            $sentSubscriptionIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
+                ->where('event_type', $eventType)
+                ->where('status', 'sent')
+                ->whereNotNull('subscription_id')
+                ->pluck('subscription_id')
+                ->toArray();
+
+            $subscriptionQuery = Subscription::with(['customer.product.organization', 'pricePlan'])
+                ->whereHas('customer', fn ($q) => $q->where('product_id', $product->id))
+                ->whereNotIn('id', $sentSubscriptionIds)
+                ->orderBy('created_at');
+
+            // Apply event-specific filter (e.g. where status = 'cancelled')
+            $subscriptions = $queryFilter($subscriptionQuery)->get();
+
+            if ($subscriptions->isEmpty()) {
+                $this->line("  ✔  Webhook #{$webhook->id} '{$webhook->name}' — all {$eventType} already delivered.");
+                continue;
+            }
+
+            $this->line("  📬 Webhook #{$webhook->id} '{$webhook->name}' ({$product->name}) — {$subscriptions->count()} unsent {$eventType}.");
+
+            $ok  = 0;
+            $bad = 0;
+
+            foreach ($subscriptions as $subscription) {
+                $label = "{$eventType} subscription #{$subscription->id} → webhook #{$webhook->id}";
+
+                if ($dryRun) {
+                    $this->line("    [dry-run] would send {$label}");
+                    continue;
+                }
+
+                try {
+                    $payload = match ($eventType) {
+                        'subscription.created'   => $this->payloadBuilder->buildSubscriptionCreatedPayload($subscription),
+                        'subscription.renewed'   => $this->payloadBuilder->buildSubscriptionRenewedPayload($subscription),
+                        'subscription.cancelled' => $this->payloadBuilder->buildSubscriptionCancelledPayload($subscription),
+                        'subscription.expired'   => $this->payloadBuilder->buildSubscriptionExpiredPayload($subscription),
+                        'subscription.upgraded'  => $this->payloadBuilder->buildSubscriptionUpgradedPayload($subscription),
+                        default                  => null,
+                    };
+
+                    if ($payload === null) {
+                        $this->warn("    ⚠️  No payload builder for {$eventType} — skipping.");
+                        continue;
+                    }
+
+                    $delivery = $this->dispatchService->dispatch($webhook, $payload, null, $subscription->id);
+
+                    if ($delivery->status === 'sent') {
+                        $ok++;
+                        $this->line("    ✅ Sent {$label} — HTTP {$delivery->http_status_code} ({$delivery->duration_ms}ms)");
+                        Log::info('[webhooks:retry] Phase-3 subscription delivered', [
+                            'event_type'      => $eventType,
+                            'webhook_id'      => $webhook->id,
+                            'subscription_id' => $subscription->id,
+                            'delivery_id'     => $delivery->id,
+                        ]);
+                    } else {
+                        $bad++;
+                        $this->warn("    ⚠️  Failed {$label} — {$delivery->error_message}");
+                        Log::warning('[webhooks:retry] Phase-3 subscription failed', [
+                            'event_type'      => $eventType,
+                            'webhook_id'      => $webhook->id,
+                            'subscription_id' => $subscription->id,
+                            'error'           => $delivery->error_message,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $bad++;
+                    $this->error("    ❌ Exception for {$label}: {$e->getMessage()}");
+                    Log::error('[webhooks:retry] Phase-3 exception', [
+                        'event_type'      => $eventType,
+                        'webhook_id'      => $webhook->id,
+                        'subscription_id' => $subscription->id,
+                        'error'           => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $totalOk  += $ok;
+            $totalBad += $bad;
+
+            if (!$dryRun) {
+                $this->line("    → {$ok} sent, {$bad} failed for webhook #{$webhook->id}.");
+            }
+        }
+
+        return [$totalOk, $totalBad];
+    }
+
+    /**
+     * Return all active CustomWebhooks (with their product) that listen to
+     * $eventType, optionally filtered to a single product.
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    private function activeWebhooksForProducts(string $eventType, ?string $productId): \Illuminate\Support\Collection
+    {
+        $query = CustomWebhook::with('product')
+            ->where('status', 'active')
+            ->where(function ($q) use ($eventType) {
+                $q->whereNull('events')
+                  ->orWhereJsonContains('events', $eventType)
+                  ->orWhereJsonContains('events', '*');
+
+                // e.g. "payment.*" covers both payment.success and payment.failed
+                $parts = explode('.', $eventType);
+                if (count($parts) >= 2) {
+                    $q->orWhereJsonContains('events', $parts[0] . '.*');
+                }
+            });
+
+        if ($productId) {
+            $query->where('product_id', $productId);
+        }
+
+        return $query->get();
     }
 }
+
