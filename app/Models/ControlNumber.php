@@ -22,6 +22,14 @@ class ControlNumber extends Model
         'header_response' => 'array',
     ];
 
+    /**
+     * Alias for the 'reference' column so callers can use ->control_number.
+     */
+    public function getControlNumberAttribute(): ?string
+    {
+        return $this->reference;
+    }
+
     public function customer()
     {
         return $this->belongsTo(Customer::class);
