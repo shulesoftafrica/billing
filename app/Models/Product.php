@@ -37,6 +37,27 @@ class Product extends Model
         return $this->hasMany(PricePlan::class);
     }
 
+    public function customers()
+    {
+        return $this->hasMany(Customer::class);
+    }
+
+    public function webhooks()
+    {
+        return $this->hasMany(CustomWebhook::class);
+    }
+
+    /**
+     * Get active webhooks for a specific event type
+     */
+    public function getActiveWebhooksForEvent(string $eventType)
+    {
+        return $this->webhooks()
+            ->where('status', 'active')
+            ->get()
+            ->filter(fn($webhook) => $webhook->shouldTrigger($eventType));
+    }
+
     /**
      * Get the product status.
      */

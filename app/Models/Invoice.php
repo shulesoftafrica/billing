@@ -60,4 +60,14 @@ class Invoice extends Model
     {
         return $this->hasMany(InvoiceTaxes::class, 'invoice_id');
     }
+
+    /**
+     * Control numbers for this invoice's customer+product combination.
+     * A control number is linked to customer_id on the control_numbers table;
+     * we scope further to the products present in this invoice's items.
+     */
+    public function controlNumbers(): HasMany
+    {
+        return $this->hasMany(ControlNumber::class, 'customer_id', 'customer_id');
+    }
 }

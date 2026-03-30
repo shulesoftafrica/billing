@@ -35,26 +35,29 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Force JSON responses for all API routes - no HTML redirects
         $exceptions->shouldRenderJsonWhen(function (Request $request) {
-            return $request->is('api/*');
+            return $request->is('api/*') || 
+                   $request->expectsJson() || 
+                   str_contains($request->path(), 'api/');
+        });
+
+        // Return JSON response for unauthenticated API requests - MUST be before validation
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson() || str_contains($request->path(), 'api/')) {
+                return response()->json([
+                    'message' => 'Unauthenticated',
+                    'error' => 'authentication_required',
+                    'hint' => 'Please include Authorization header with Bearer token'
+                ], 401);
+            }
         });
 
         // Return JSON response for validation errors
         $exceptions->render(function (ValidationException $e, Request $request) {
-            if ($request->is('api/*')) {
+            if ($request->is('api/*') || $request->expectsJson() || str_contains($request->path(), 'api/')) {
                 return response()->json([
                     'message' => $e->getMessage(),
                     'errors' => $e->errors(),
                 ], 422);
-            }
-        });
-
-        // Return JSON response for unauthenticated API requests
-        $exceptions->render(function (AuthenticationException $e, Request $request) {
-            if ($request->is('api/*')) {
-                return response()->json([
-                    'message' => 'Unauthenticated',
-                    'error' => 'authentication_required'
-                ], 401);
             }
         });
 

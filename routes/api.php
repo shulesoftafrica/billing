@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\TaxRateController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\Api\CustomWebhookController;
 
 /*
 |--------------------------------------------------------------------------
@@ -99,6 +100,17 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
         Route::get('price-plans/{pricePlan}', [PricePlanController::class, 'show']);
         Route::put('price-plans/{pricePlan}', [PricePlanController::class, 'update']);
         Route::delete('price-plans/{pricePlan}', [PricePlanController::class, 'destroy']);
+        
+        // Custom webhooks nested under products
+        Route::get('webhooks', [CustomWebhookController::class, 'index']);
+        Route::post('webhooks', [CustomWebhookController::class, 'store']);
+        Route::get('webhooks/{webhook}', [CustomWebhookController::class, 'show']);
+        Route::put('webhooks/{webhook}', [CustomWebhookController::class, 'update']);
+        Route::delete('webhooks/{webhook}', [CustomWebhookController::class, 'destroy']);
+        Route::post('webhooks/{webhook}/test', [CustomWebhookController::class, 'test']);
+        Route::get('webhooks/{webhook}/deliveries', [CustomWebhookController::class, 'deliveries']);
+        Route::post('webhooks/{webhook}/regenerate-secret', [CustomWebhookController::class, 'regenerateSecret']);
+        Route::post('webhooks/{webhook}/replay', [CustomWebhookController::class, 'replay']);
     });
 
     // Subscription routes
@@ -126,71 +138,6 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->pref
     });
 
     // Payment endpoints (Reconciliation)
-    Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
-    Route::get('payments', [PaymentController::class, 'getByDateRange']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Legacy Routes - MIGRATED TO SANCTUM
-|--------------------------------------------------------------------------
-| ✅ UPDATED: Now using Sanctum authentication (auth:sanctum)
-| These routes maintain backward compatibility but now use modern auth
-| Accepts both user tokens and OAuth client tokens
-*/
-Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
-    // Protected API routes
-    Route::apiResource('currencies', CurrencyController::class);
-    Route::apiResource('countries', CountryController::class);
-    Route::apiResource('organizations', OrganizationController::class);
-    Route::apiResource('customers', CustomerController::class);
-    Route::apiResource('products', ProductController::class);
-    Route::apiResource('product-types', ProductTypeController::class);
-    Route::apiResource('payment-gateways', PaymentGatewayController::class);
-    Route::apiResource('bank-accounts', BankAccountController::class);
-    Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
-    Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
-    Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
-    Route::get('invoices/{id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
-    Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
-    Route::post('invoices/plan-upgrade', [InvoiceController::class, 'upgradeSubscription']);
-    Route::post('invoices/plan-downgrade', [InvoiceController::class, 'downgradeSubscription']);
-    Route::apiResource('tax-rates', TaxRateController::class);
-
-    // Organization payment gateway integration
-    Route::post('organizations/integrate-payment-gateway', [OrganizationController::class, 'integratePaymentGateway']);
-
-    // Product price plans nested routes
-    Route::prefix('products/{product}')->group(function () {
-        Route::get('price-plans', [PricePlanController::class, 'index']);
-        Route::post('price-plans', [PricePlanController::class, 'store']);
-        Route::get('price-plans/{pricePlan}', [PricePlanController::class, 'show']);
-        Route::put('price-plans/{pricePlan}', [PricePlanController::class, 'update']);
-        Route::delete('price-plans/{pricePlan}', [PricePlanController::class, 'destroy']);
-    });
-
-    // Subscription routes
-    Route::get('subscriptions', [SubscriptionController::class, 'index']);
-    Route::get('subscriptions/{id}', [SubscriptionController::class, 'show']);
-    Route::post('subscriptions', [SubscriptionController::class, 'store']);
-    Route::post('subscriptions/{id}/cancel', [SubscriptionController::class, 'cancel']);
-
-    // Customer subscriptions routes
-    Route::get('customers/{customer}/subscriptions', [SubscriptionController::class, 'getCustomerSubscriptions']);
-
-    // Product usage routes
-    Route::post('product-usages', [ProductUsageController::class, 'store']);
-    Route::get('product-usages/{wallet_id}/balance', [ProductUsageController::class, 'getBalance']);
-    Route::get('product-usages/{customer_id}/report', [ProductUsageController::class, 'getUsageReportByCustomer']);
-    Route::get('product-usages/{customer_id}/{product_id}/history', [ProductUsageController::class, 'getHistory']);
-
-    // Enhanced customer management
-    Route::prefix('customers')->group(function () {
-        Route::get('by-phone/{phone}', [CustomerController::class, 'lookupByPhoneWithStatus']);
-        Route::get('by-email/{email}', [CustomerController::class, 'lookupByEmailWithStatus']);
-    });
-
-    // Payment endpoints
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
 });

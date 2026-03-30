@@ -32,7 +32,6 @@ class PricePlan extends Model
         'rate' => 'integer',
     ];
 
-    protected $appends = ['currency', 'rate', 'subscription_type'];
 
     /**
      * Get the currency code for the price plan.

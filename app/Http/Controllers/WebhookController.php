@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\UCNPaymentService;
 use App\Services\WebhookPaymentProcessingService;
+use App\Services\PayloadBuilderService;
+use App\Services\WebhookDispatchService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -14,16 +16,25 @@ use App\Models\PaymentGateway;
 use App\Models\ControlNumber;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\WebhookLog;
 
 class WebhookController extends Controller
 {
     protected UCNPaymentService $ucnPaymentService;
     protected WebhookPaymentProcessingService $webhookPaymentProcessingService;
+    protected PayloadBuilderService $payloadBuilderService;
+    protected WebhookDispatchService $webhookDispatchService;
 
-    public function __construct(UCNPaymentService $ucnPaymentService, WebhookPaymentProcessingService $webhookPaymentProcessingService)
-    {
+    public function __construct(
+        UCNPaymentService $ucnPaymentService,
+        WebhookPaymentProcessingService $webhookPaymentProcessingService,
+        PayloadBuilderService $payloadBuilderService,
+        WebhookDispatchService $webhookDispatchService
+    ) {
         $this->ucnPaymentService = $ucnPaymentService;
         $this->webhookPaymentProcessingService = $webhookPaymentProcessingService;
+        $this->payloadBuilderService = $payloadBuilderService;
+        $this->webhookDispatchService = $webhookDispatchService;
     }
 
     /**
@@ -34,73 +45,91 @@ class WebhookController extends Controller
      */
     public function handleUCNPayment(Request $request): JsonResponse
     {
-        // Log incoming webhook
-        Log::info('UCN webhook received', [
+        $startTime = microtime(true);
+        $requestId = uniqid('ucn_wh_', true);
+        
+        // Create webhook log in database with status 'in_progress'
+        $webhookLog = WebhookLog::create([
+            'request_id' => $requestId,
+            'webhook_type' => 'ucn',
+            'status' => 'in_progress',
             'payload' => $request->all(),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+        
+        // Log incoming webhook
+        Log::info('🟢 [UCN WEBHOOK] Request received', [
+            'request_id' => $requestId,
+            'url' => $request->fullUrl(),
+            'method' => $request->method(),
             'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'payload_keys' => array_keys($request->all()),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+        
+        Log::debug('[UCN WEBHOOK] Full payload', [
+            'request_id' => $requestId,
+            'payload' => $request->all(),
         ]);
 
         $webhookData = $request->all();
 
-        // Process the webhook
-        $response = $this->ucnPaymentService->processWebhook($webhookData);
-
-        // Determine HTTP status code based on response code
-        $httpStatus = $response['responseCode'] === '000' ? 200 : 400;
-
-        return response()->json($response, $httpStatus);
-    }
-
-    /**
-     * Handle Stripe webhook
-     * POST /api/webhooks/stripe
-     */
-    public function handleStripeWebhook(Request $request): JsonResponse
-    {
-        Log::info('Stripe webhook received', [
-            'payload' => $request->all(),
-            'ip' => $request->ip(),
-            'headers' => [
-                'stripe-signature' => $request->header('stripe-signature')
-            ]
-        ]);
-
         try {
-            // Verify webhook signature
-            $signature = $request->header('stripe-signature');
-            if (!$this->verifyStripeSignature($request->getContent(), $signature)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid webhook signature'
-                ], 401);
+            // Process the webhook
+            $response = $this->ucnPaymentService->processWebhook($webhookData);
+
+            // Determine HTTP status code based on response code
+            $httpStatus = $response['responseCode'] === '000' ? 200 : 400;
+            $success = $httpStatus === 200;
+            
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            if ($success) {
+                // Mark webhook as completed
+                $webhookLog->markAsCompleted($response, $httpStatus, $duration);
+                
+                Log::info('✅ [UCN WEBHOOK] Processing successful', [
+                    'request_id' => $requestId,
+                    'response_code' => $response['responseCode'],
+                    'duration_ms' => $duration,
+                    'http_status' => $httpStatus,
+                ]);
+            } else {
+                // Mark webhook as error
+                $webhookLog->markAsError(
+                    $response['responseDescription'] ?? 'Processing failed',
+                    $httpStatus,
+                    $duration
+                );
+                
+                Log::warning('⚠️ [UCN WEBHOOK] Processing failed', [
+                    'request_id' => $requestId,
+                    'response_code' => $response['responseCode'],
+                    'response_description' => $response['responseDescription'] ?? 'N/A',
+                    'duration_ms' => $duration,
+                    'http_status' => $httpStatus,
+                ]);
             }
 
-            $payload = $request->all();
-            $eventType = $payload['type'] ?? null;
-
-            switch ($eventType) {
-                case 'payment_intent.succeeded':
-                    return $this->handleStripePaymentSuccess($payload['data']['object']);
-
-                case 'payment_intent.payment_failed':
-                    return $this->handleStripePaymentFailed($payload['data']['object']);
-
-                case 'invoice.payment_succeeded':
-                    return $this->handleStripeInvoicePaymentSuccess($payload['data']['object']);
-
-                default:
-                    Log::info("Unhandled Stripe webhook event: {$eventType}");
-                    return response()->json(['success' => true, 'message' => 'Event received'], 200);
-            }
+            return response()->json($response, $httpStatus);
         } catch (\Exception $e) {
-            Log::error('Stripe webhook processing failed: ' . $e->getMessage(), [
-                'payload' => $request->all(),
-                'trace' => $e->getTraceAsString()
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            
+            // Mark webhook as error
+            $webhookLog->markAsError($e->getMessage(), 500, $duration);
+            
+            Log::error('🔴 [UCN WEBHOOK] Exception occurred', [
+                'request_id' => $requestId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'duration_ms' => $duration,
             ]);
-
+            
             return response()->json([
-                'success' => false,
-                'message' => 'Webhook processing failed'
+                'responseCode' => '999',
+                'responseDescription' => 'Internal server error'
             ], 500);
         }
     }
@@ -111,119 +140,120 @@ class WebhookController extends Controller
      */
     public function handleFlutterWaveWebhook(Request $request): JsonResponse
     {
-        Log::info('FlutterWave webhook received', [
+        $startTime = microtime(true);
+        $requestId = uniqid('flw_wh_', true);
+        
+        // Create webhook log in database with status 'in_progress'
+        $webhookLog = WebhookLog::create([
+            'request_id' => $requestId,
+            'webhook_type' => 'flutterwave',
+            'status' => 'in_progress',
             'payload' => $request->all(),
-            'ip' => $request->ip(),
-            'headers' => [
-                'flutterwave-signature' => $request->header('flutterwave-signature')
-            ]
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
         ]);
+        
+        // Log incoming webhook
+        $hasSignature = $request->header('flutterwave-signature') ? 'present' : 'missing';
+        Log::info('🟣 [FLUTTERWAVE WEBHOOK] Request received', [
+            'request_id' => $requestId,
+            'url' => $request->fullUrl(),
+            'method' => $request->method(),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'signature_status' => $hasSignature,
+            'content_length' => strlen($request->getContent()),
+            'payload_keys' => array_keys($request->all()),
+            'timestamp' => now()->toIso8601String(),
+        ]);
+        
+        Log::debug('[FLUTTERWAVE WEBHOOK] Full payload', [
+            'request_id' => $requestId,
+            'payload' => $request->all(),
+            'signature' => $request->header('flutterwave-signature'),
+        ]);
+        
         try {
             // Verify webhook signature
             $hash = $request->header('flutterwave-signature');
             if (!$this->verifyFlutterWaveSignature($request->getContent(), $hash)) {
+                $duration = round((microtime(true) - $startTime) * 1000, 2);
+                
+                // Mark webhook as error
+                $webhookLog->markAsError('Invalid webhook signature', 401, $duration);
+                
+                Log::warning('⚠️ [FLUTTERWAVE WEBHOOK] Invalid signature', [
+                    'request_id' => $requestId,
+                    'duration_ms' => $duration,
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid webhook signature'
                 ], 401);
             }
+            
+            Log::info('🔐 [FLUTTERWAVE WEBHOOK] Signature verified', [
+                'request_id' => $requestId,
+            ]);
 
             $payload = $request->all();
             $eventType = $payload['type'] ?? null;
+            
+            // Update webhook log with event type
+            $webhookLog->update(['event_type' => $eventType]);
+            
+            Log::info('🟢 [FLUTTERWAVE WEBHOOK] Processing event', [
+                'request_id' => $requestId,
+                'event_type' => $eventType,
+                'transaction_id' => $payload['data']['id'] ?? 'N/A',
+            ]);
 
-            switch ($eventType) {
-                case 'charge.completed':
-                    return $this->handleFlutterWavePaymentSuccess($payload['data']);
-
-                case 'charge.failed':
-                    return $this->handleFlutterWavePaymentFailed($payload['data']);
-
-                default:
-                    Log::info("Unhandled FlutterWave webhook event: {$eventType}");
+            $response = match ($eventType) {
+                'charge.completed' => $this->handleFlutterWavePaymentSuccess($payload['data']),
+                'charge.failed' => $this->handleFlutterWavePaymentFailed($payload['data']),
+                default => (function() use ($eventType, $requestId) {
+                    Log::info("📋 [FLUTTERWAVE WEBHOOK] Unhandled event type: {$eventType}", [
+                        'request_id' => $requestId,
+                    ]);
                     return response()->json(['success' => true, 'message' => 'Event received'], 200);
-            }
+                })()
+            };
+            
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            
+            // Mark webhook as completed
+            $webhookLog->markAsCompleted(
+                ['event_type' => $eventType],
+                $response->status(),
+                $duration
+            );
+            
+            Log::info('✅ [FLUTTERWAVE WEBHOOK] Processing completed', [
+                'request_id' => $requestId,
+                'event_type' => $eventType,
+                'duration_ms' => $duration,
+                'http_status' => $response->status(),
+            ]);
+            
+            return $response;
         } catch (\Exception $e) {
-            Log::error('FlutterWave webhook processing failed: ' . $e->getMessage(), [
-                'payload' => $request->all(),
-                'trace' => $e->getTraceAsString()
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            
+            // Mark webhook as error
+            $webhookLog->markAsError($e->getMessage(), 500, $duration);
+            
+            Log::error('🔴 [FLUTTERWAVE WEBHOOK] Exception occurred', [
+                'request_id' => $requestId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'duration_ms' => $duration,
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Webhook processing failed'
             ], 500);
-        }
-    }
-
-    /**
-     * Handle Stripe payment success
-     */
-    private function handleStripePaymentSuccess(array $paymentIntent): JsonResponse
-    {
-        try {
-            $invoiceId = $paymentIntent['metadata']['invoice_id'] ?? null;
-            if (!$invoiceId) {
-                throw new \Exception('Invoice ID not found in payment metadata');
-            }
-
-            $invoice = Invoice::findOrFail($invoiceId);
-
-            $payment = Payment::updateOrCreate(
-                [
-                    'invoice_id' => $invoice->id,
-                    'gateway_reference' => $paymentIntent['id']
-                ],
-                [
-                    'gateway_id' => PaymentGateway::where('type', 'stripe')->first()->id,
-                    'customer_id' => $invoice->customer_id,
-                    'amount' => $paymentIntent['amount'] / 100, // Stripe uses cents
-                    'status' => 'success',
-                    'payment_method' => 'card',
-                    'gateway_response' => $paymentIntent,
-                    'paid_at' => now()
-                ]
-            );
-            $this->webhookPaymentProcessingService->processByInvoice($invoice, $payment);
-
-            return response()->json(['success' => true], 200);
-        } catch (\Exception $e) {
-            Log::error('Stripe payment success handling failed: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    /**
-     * Handle Stripe payment failure
-     */
-    private function handleStripePaymentFailed(array $paymentIntent): JsonResponse
-    {
-        try {
-            $invoiceId = $paymentIntent['metadata']['invoice_id'] ?? null;
-            if ($invoiceId) {
-                $invoice = Invoice::find($invoiceId);
-                if ($invoice) {
-                    Payment::updateOrCreate(
-                        [
-                            'invoice_id' => $invoice->id,
-                            'gateway_reference' => $paymentIntent['id']
-                        ],
-                        [
-                            'gateway_id' => PaymentGateway::where('type', 'stripe')->first()->id,
-                            'customer_id' => $invoice->customer_id,
-                            'amount' => $paymentIntent['amount'] / 100,
-                            'status' => 'failed',
-                            'payment_method' => 'card',
-                            'gateway_response' => $paymentIntent,
-                            'retry_count' => ($invoice->payments()->where('gateway_reference', $paymentIntent['id'])->first()->retry_count ?? 0) + 1
-                        ]
-                    );
-                }
-            }
-
-            return response()->json(['success' => true], 200);
-        } catch (\Exception $e) {
-            Log::error('Stripe payment failure handling failed: ' . $e->getMessage());
-            throw $e;
         }
     }
 
@@ -310,6 +340,14 @@ class WebhookController extends Controller
 
             $this->webhookPaymentProcessingService->processByProductAndCustomer($product, $customer, $payment);
 
+            // Dispatch custom webhooks
+            try {
+                $payload = $this->payloadBuilderService->buildPaymentSuccessPayload($payment);
+                $this->webhookDispatchService->dispatchToProduct($product, 'payment.success', $payload);
+            } catch (\Exception $e) {
+                Log::warning('Failed to dispatch custom webhooks', ['error' => $e->getMessage()]);
+            }
+
             return response()->json(['success' => true], 200);
         } catch (\Exception $e) {
             Log::error('FlutterWave payment success handling failed: ' . $e->getMessage());
@@ -327,7 +365,7 @@ class WebhookController extends Controller
             if ($invoiceId) {
                 $invoice = Invoice::find($invoiceId);
                 if ($invoice) {
-                    Payment::updateOrCreate(
+                    $failedPayment = Payment::updateOrCreate(
                         [
                             'invoice_id' => $invoice->id,
                             'gateway_reference' => $charge['id']
@@ -344,6 +382,17 @@ class WebhookController extends Controller
                             'retry_count' => ($invoice->payments()->where('gateway_reference', $charge['id'])->first()->retry_count ?? 0) + 1
                         ]
                     );
+
+                    // Dispatch payment.failed webhook
+                    try {
+                        app(WebhookDispatchService::class)->dispatchPaymentFailed(
+                            $failedPayment->load('customer.product')
+                        );
+                    } catch (\Exception $dispatchEx) {
+                        Log::warning('[WebhookController] Failed to dispatch payment.failed webhook', [
+                            'error' => $dispatchEx->getMessage(),
+                        ]);
+                    }
                 }
             }
 
@@ -352,20 +401,6 @@ class WebhookController extends Controller
             Log::error('FlutterWave payment failure handling failed: ' . $e->getMessage());
             throw $e;
         }
-    }
-
-    /**
-     * Verify Stripe webhook signature
-     */
-    private function verifyStripeSignature(string $payload, string $signature = null): bool
-    {
-        if (!$signature) {
-            return false;
-        }
-
-        // In a real implementation, you'd verify against your Stripe webhook secret
-        // For now, we'll just check if signature is present
-        return !empty($signature);
     }
 
     /**
@@ -393,8 +428,4 @@ class WebhookController extends Controller
         return base64_encode(hash_hmac('sha256', $payload, $secretHash, true));
     }
 
-    private function handleStripeInvoicePaymentSuccess($payload)
-    {
-        return response()->json(['true']);
-    }
 }

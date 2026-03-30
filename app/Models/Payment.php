@@ -21,8 +21,8 @@ class Payment extends Model
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
-        'paid_at' => 'datetime',
+        'amount'   => 'decimal:2',
+        'paid_at'  => 'datetime',
     ];
 
     public function paymentGateway(): BelongsTo
@@ -35,12 +35,24 @@ class Payment extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    /**
+     * Primary invoice this payment is for (via invoice_id FK).
+     */
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
+    }
+
+    /**
+     * All invoices linked through the invoice_payments pivot table.
+     */
     public function invoices(): BelongsToMany
     {
         return $this->belongsToMany(Invoice::class, 'invoice_payments')
             ->withPivot('amount')
             ->withTimestamps();
     }
+
     public function controlNumber()
     {
         return $this->belongsTo(ControlNumber::class, 'payment_reference', 'reference');

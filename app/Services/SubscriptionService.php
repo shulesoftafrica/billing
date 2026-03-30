@@ -12,6 +12,7 @@ use App\Models\Payment;
 use App\Models\PricePlan;
 use App\Models\ProductPurchase;
 use App\Models\Subscription;
+use App\Services\WebhookDispatchService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -444,7 +445,18 @@ class SubscriptionService
                 'price_plan_id' => $subscription->price_plan_id,
             ]);
 
-            return $subscription->fresh(['customer', 'pricePlan']);
+            $freshSubscription = $subscription->fresh(['customer', 'pricePlan']);
+
+            // Dispatch subscription.cancelled webhook
+            try {
+                app(WebhookDispatchService::class)->dispatchSubscriptionCancelled($freshSubscription);
+            } catch (\Exception $e) {
+                Log::warning('[SubscriptionService] Failed to dispatch subscription.cancelled webhook', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return $freshSubscription;
         });
     }
     /**
@@ -1106,14 +1118,36 @@ class SubscriptionService
     {
 
         // Find the last subscription for this product
-        $lastSubscription = Subscription::where('customer_id', $customerId)
+        $lastSubscription = Subscription::with('pricePlan')
+            ->where('customer_id', $customerId)
             ->whereHas('pricePlan.product', function ($query) use ($productId) {
                 $query->where('id', $productId);
             })
             ->where('status', '=', 'active')
             ->latest('created_at')
             ->first();
-        $rate = $lastSubscription->PricePlan->rate;
+
+        if (!$lastSubscription) {
+            Log::warning('[SubscriptionService] createAutoSubscription: No active subscription found', [
+                'customer_id' => $customerId,
+                'product_id'  => $productId,
+                'amount'      => $amount,
+            ]);
+            return;
+        }
+
+        $pricePlan = $lastSubscription->pricePlan;
+
+        if (!$pricePlan) {
+            Log::warning('[SubscriptionService] createAutoSubscription: PricePlan not found for subscription', [
+                'subscription_id' => $lastSubscription->id,
+                'customer_id'     => $customerId,
+                'product_id'      => $productId,
+            ]);
+            return;
+        }
+
+        $rate = $pricePlan->rate;
         // Create product purchase for excess amount
         $quantity = $amount / $rate;
         if ($quantity >= 1) {
@@ -1121,7 +1155,7 @@ class SubscriptionService
             // Create new subscription
             $newSubscription = Subscription::create([
                 'customer_id' => $customerId,
-                'price_plan_id' => $lastSubscription->PricePlan->id,
+                'price_plan_id' => $pricePlan->id,
                 'status' => 'active',
                 'start_date' => null,
                 'end_date' => null,
@@ -1132,7 +1166,7 @@ class SubscriptionService
             $newInvoice = Invoice::create([
                 'customer_id' => $customerId,
                 'invoice_number' => $this->generateInvoiceNumber(),
-                'currency' => strtoupper((string) ($lastSubscription->PricePlan->currency ?? 'TZS')),
+                'currency' => strtoupper((string) ($pricePlan->currency ?? 'TZS')),
                 'status' => 'issued',
                 'description' => 'Excess payment invoice for product usage',
                 'subtotal' => $amount,
@@ -1145,7 +1179,7 @@ class SubscriptionService
             InvoiceItem::create([
                 'invoice_id' => $newInvoice->id,
                 'subscription_id' => $newSubscription->id,
-                'price_plan_id' => $lastSubscription->PricePlan->id,
+                'price_plan_id' => $pricePlan->id,
                 'quantity' => 1,
                 'unit_price' => $amount,
                 'total' => $amount,
@@ -1163,6 +1197,17 @@ class SubscriptionService
                     'invoice_id' => $newInvoice->id,
                     'payment_id' => $payment->id,
                     'amount' => $amount,
+                ]);
+            }
+
+            // Dispatch subscription.created webhook
+            try {
+                app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                    $newSubscription->load(['customer.product', 'pricePlan'])
+                );
+            } catch (\Exception $e) {
+                Log::warning('[SubscriptionService] Failed to dispatch subscription.created webhook', [
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -1437,6 +1482,19 @@ class SubscriptionService
                 'proration_amount' => $prorationDetails['amount_to_charge'],
                 'invoice_id' => $invoice->id,
             ]);
+
+            // Dispatch subscription.upgraded webhook
+            try {
+                app(WebhookDispatchService::class)->dispatchSubscriptionUpgraded(
+                    $subscription->fresh(['customer.product', 'pricePlan']),
+                    $oldPlan,
+                    $newPlan
+                );
+            } catch (\Exception $e) {
+                Log::warning('[SubscriptionService] Failed to dispatch subscription.upgraded webhook', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
             
             return $invoice->load(['invoiceItems.pricePlan', 'customer']);
         });

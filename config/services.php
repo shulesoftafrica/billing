@@ -38,13 +38,17 @@ return [
         'encryption_key' => env('ENCRYPTION_KEY'),
         'secret_hash' => env('FLUTTERWAVE_SECRET_HASH'),
         'secret_key' => env('FLUTTERWAVE_SECRET_KEY', env('FLW_SECRET_KEY')),
-        'v3_base_url' => env('FLUTTERWAVE_V3_BASE_URL'),
+        // Production URL: https://api.flutterwave.com
+        // Development URL: https://api-dev.flutterwave.com (NOT RECOMMENDED for production)
+        // Defaults to production if not set
+        'v3_base_url' => env('FLUTTERWAVE_V3_BASE_URL', 'https://api.flutterwave.com'),
         'api_key' => env('FLUTTERWAVE_API_KEY'),
-
     ],
 
     'stripe' => [
+        // Use sk_live_* for production, sk_test_* for development
         'secret' => env('STRIPE_SECRET_KEY'),
+        // Use pk_live_* for production, pk_test_* for development
         'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],

@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Customer extends Model
 {
     protected $fillable = [
-        'organization_id',
+        'product_id',
+        'organization_id', // Restored for backward compatibility (derived from product)
         'name',
         'username',
         'email',
@@ -22,6 +23,17 @@ class Customer extends Model
         'updated_at' => 'datetime',
     ];
 
+    /**
+     * Get the product this customer belongs to
+     */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Get the organization this customer belongs to
+     */
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);

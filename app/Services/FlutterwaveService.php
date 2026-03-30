@@ -849,7 +849,7 @@ class FlutterwaveService
 
     private function resolveV3PaymentsEndpoint(): string
     {
-        $baseUrl =config('services.flutterwave.v3_base_url');
+        $baseUrl = config('services.flutterwave.v3_base_url') ?? 'https://api.flutterwave.com';
         return rtrim($baseUrl, '/') . '/v3/payments';
     }
 
@@ -901,7 +901,6 @@ class FlutterwaveService
     private function resolveGatewayConfigValue(string $key): mixed
     {
         $config = $this->gateway?->config;
-        dd($config, 'config');
 
         if (is_string($config)) {
             $decodedConfig = json_decode($config, true);
