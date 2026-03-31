@@ -870,6 +870,18 @@ class SubscriptionService
                         'total_payments' => $totalPayments,
                         'invoiced_amount' => $invoicedAmount,
                     ]);
+
+                    // Dispatch credits.purchased webhook for wallet products
+                    if ($product->product_type_id == 3) {
+                        $walletPlan = $invoice->invoiceItems
+                            ->first(fn ($i) => $i->pricePlan?->product_id == $productId)
+                            ?->pricePlan;
+                        if ($walletPlan) {
+                            app(WebhookDispatchService::class)->dispatchCreditsPurchased(
+                                $invoice, $walletPlan, $pendingPayments->first()
+                            );
+                        }
+                    }
                 } elseif ($totalPayments > $invoicedAmount) {
                     // Greater: Handle excess
                     // Allocate amount to invoice and track remaining amount for each payment
@@ -931,6 +943,18 @@ class SubscriptionService
                             $p->update(['status' => 'cleared']);
                         }
                     });
+
+                    // Dispatch credits.purchased webhook for wallet products (overpaid → fully cleared)
+                    if ($product->product_type_id == 3) {
+                        $walletPlan = $invoice->invoiceItems
+                            ->first(fn ($i) => $i->pricePlan?->product_id == $productId)
+                            ?->pricePlan;
+                        if ($walletPlan) {
+                            app(WebhookDispatchService::class)->dispatchCreditsPurchased(
+                                $invoice, $walletPlan, $pendingPayments->first()
+                            );
+                        }
+                    }
                 } else {
                     // Allocate advance payments to invoice with remaining amount as reminder
                     $advancePayments->each(function ($ap) use ($invoice_id) {

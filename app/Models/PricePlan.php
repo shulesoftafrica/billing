@@ -21,6 +21,10 @@ class PricePlan extends Model
         'setup_fee',
         'active',
         'rate',
+        // Wallet / credit product fields (product_type_id = 3)
+        'wallet_type',
+        'unit',
+        'units',
     ];
 
     protected $casts = [
@@ -30,6 +34,7 @@ class PricePlan extends Model
         'trial_period_days' => 'integer',
         'active' => 'boolean',
         'rate' => 'integer',
+        'units' => 'integer',
     ];
 
 
