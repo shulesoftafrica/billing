@@ -385,9 +385,7 @@ class WebhookController extends Controller
 
                     // Dispatch payment.failed webhook
                     try {
-                        app(WebhookDispatchService::class)->dispatchPaymentFailed(
-                            $failedPayment->load('customer.product')
-                        );
+                        app(WebhookDispatchService::class)->dispatchPaymentFailed($failedPayment);
                     } catch (\Exception $dispatchEx) {
                         Log::warning('[WebhookController] Failed to dispatch payment.failed webhook', [
                             'error' => $dispatchEx->getMessage(),

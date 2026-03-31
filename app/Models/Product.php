@@ -37,9 +37,21 @@ class Product extends Model
         return $this->hasMany(PricePlan::class);
     }
 
+    /**
+     * Customers who have at least one subscription to a price plan of this product.
+     *
+     * There is intentionally no product_id on the customers table — a customer can
+     * subscribe to many products.  Use this query scope when you need to list them:
+     *
+     *   $product->customers()  →  Customer query builder
+     *
+     * Example: $product->customers()->where('status', 'active')->get()
+     */
     public function customers()
     {
-        return $this->hasMany(Customer::class);
+        return Customer::whereHas('subscriptions', function ($q) {
+            $q->whereHas('pricePlan', fn ($pp) => $pp->where('product_id', $this->id));
+        });
     }
 
     public function webhooks()
