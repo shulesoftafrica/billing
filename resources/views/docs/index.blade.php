@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,6 +21,18 @@
     @include('docs.partials.styles')
 </head>
 <body>
+<nav class="top-navbar">
+    <a href="{{ url('/') }}" class="navbar-brand">API Billing</a>
+    <ul class="navbar-links">
+        <li><a href="{{ route('api.docs') }}">API Docs</a></li>
+        <li><a href="{{ route('organizations.register') }}">Register</a></li>
+        <li>
+            <button type="button" class="theme-toggle" id="themeToggle" title="Toggle dark/light mode">
+                <span id="themeIcon">🌙</span>
+            </button>
+        </li>
+    </ul>
+</nav>
 <div class="layout">
     @include('docs.partials.sidebar')
 

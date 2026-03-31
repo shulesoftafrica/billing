@@ -12,6 +12,8 @@ class Organization extends Model
         'name',
         'phone',
         'email',
+        'tin_number',
+        'registration_number',
         'currency',
         'country_id',
         'status',
@@ -85,5 +87,13 @@ class Organization extends Model
     public function apiKeys(): HasMany
     {
         return $this->hasMany(OrganizationApiKey::class);
+    }
+
+    /**
+     * Get all documents for this organization.
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(OrganizationDocument::class);
     }
 }
