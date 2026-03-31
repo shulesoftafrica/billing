@@ -57,9 +57,17 @@ class WebhookDelivery extends Model
     public function markAsFailed(string $error, ?int $statusCode, int $durationMs): void
     {
         $this->increment('attempt_count');
-        
+
+        // 4xx responses (except 429 Too Many Requests) are permanent client errors.
+        // The remote endpoint rejected the data — retrying will always produce the
+        // same result. Only 5xx server errors and network failures are worth retrying.
+        $isPermanentClientError = $statusCode !== null
+            && $statusCode >= 400
+            && $statusCode < 500
+            && $statusCode !== 429;
+
         $maxRetries = $this->customWebhook->retry_count ?? 3;
-        $shouldRetry = $this->attempt_count < $maxRetries;
+        $shouldRetry = !$isPermanentClientError && $this->attempt_count < $maxRetries;
 
         // Exponential backoff: 5min, 15min, 45min
         $retryDelayMinutes = $shouldRetry ? (5 * pow(3, $this->attempt_count - 1)) : null;

@@ -601,7 +601,11 @@ class RetryWebhooksCommand extends Command
         $query = CustomWebhook::with('product')
             ->where('status', 'active')
             ->where(function ($q) use ($eventType) {
+                // SQL NULL — no events column value stored at all
                 $q->whereNull('events')
+                  // JSON null or empty array stored in the column ([null], [], null)
+                  // These all mean "subscribe to ALL events" — no filter applied
+                  ->orWhereRaw("events::text IN ('null', '[]', '[null]')")
                   ->orWhereJsonContains('events', $eventType)
                   ->orWhereJsonContains('events', '*');
 
