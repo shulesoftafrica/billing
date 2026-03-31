@@ -1203,7 +1203,7 @@ class SubscriptionService
             // Dispatch subscription.created webhook
             try {
                 app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
-                    $newSubscription->load(['customer.product', 'pricePlan'])
+                    $newSubscription->load(['customer', 'pricePlan.product'])
                 );
             } catch (\Exception $e) {
                 Log::warning('[SubscriptionService] Failed to dispatch subscription.created webhook', [
@@ -1486,7 +1486,7 @@ class SubscriptionService
             // Dispatch subscription.upgraded webhook
             try {
                 app(WebhookDispatchService::class)->dispatchSubscriptionUpgraded(
-                    $subscription->fresh(['customer.product', 'pricePlan']),
+                    $subscription->fresh(['customer', 'pricePlan.product']),
                     $oldPlan,
                     $newPlan
                 );

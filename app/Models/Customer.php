@@ -8,9 +8,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Customer extends Model
 {
+    /**
+     * Customers are scoped to an organisation, NOT to a single product.
+     * The products a customer is associated with are derived through their
+     * subscriptions:  Customer → Subscription → PricePlan → Product.
+     */
     protected $fillable = [
-        'product_id',
-        'organization_id', // Restored for backward compatibility (derived from product)
+        'organization_id',
         'name',
         'username',
         'email',
@@ -24,15 +28,7 @@ class Customer extends Model
     ];
 
     /**
-     * Get the product this customer belongs to
-     */
-    public function product(): BelongsTo
-    {
-        return $this->belongsTo(Product::class);
-    }
-
-    /**
-     * Get the organization this customer belongs to
+     * Get the organization this customer belongs to.
      */
     public function organization(): BelongsTo
     {

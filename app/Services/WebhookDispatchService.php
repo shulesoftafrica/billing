@@ -206,7 +206,8 @@ class WebhookDispatchService
             ->toArray();
 
         // ── 2. Find all cleared payments for this product ──
-        $query = Payment::whereHas('customer', function ($q) use ($product) {
+        // Payments are linked to a product through their invoice → invoice items → price plan.
+        $query = Payment::whereHas('invoice.invoiceItems.pricePlan', function ($q) use ($product) {
                 $q->where('product_id', $product->id);
             })
             ->where('status', 'cleared')
@@ -448,8 +449,9 @@ class WebhookDispatchService
 
     public function dispatchPaymentFailed(Payment $payment): void
     {
-        $payment->loadMissing('customer.product');
-        $product = $payment->customer?->product;
+        // Derive the product through the payment's invoice → invoice items → price plan.
+        $payment->loadMissing('invoice.invoiceItems.pricePlan.product');
+        $product = $payment->invoice?->invoiceItems->first()?->pricePlan?->product;
         if (!$product) return;
 
         try {
@@ -464,8 +466,8 @@ class WebhookDispatchService
 
     public function dispatchSubscriptionCreated(Subscription $subscription): void
     {
-        $subscription->loadMissing('customer.product');
-        $product = $subscription->customer?->product;
+        $subscription->loadMissing('pricePlan.product');
+        $product = $subscription->pricePlan?->product;
         if (!$product) return;
 
         try {
@@ -484,8 +486,8 @@ class WebhookDispatchService
 
     public function dispatchSubscriptionRenewed(Subscription $subscription, ?Payment $payment = null): void
     {
-        $subscription->loadMissing('customer.product');
-        $product = $subscription->customer?->product;
+        $subscription->loadMissing('pricePlan.product');
+        $product = $subscription->pricePlan?->product;
         if (!$product) return;
 
         try {
@@ -504,8 +506,8 @@ class WebhookDispatchService
 
     public function dispatchSubscriptionCancelled(Subscription $subscription, ?string $reason = null): void
     {
-        $subscription->loadMissing('customer.product');
-        $product = $subscription->customer?->product;
+        $subscription->loadMissing('pricePlan.product');
+        $product = $subscription->pricePlan?->product;
         if (!$product) return;
 
         try {
@@ -524,8 +526,8 @@ class WebhookDispatchService
 
     public function dispatchSubscriptionExpired(Subscription $subscription): void
     {
-        $subscription->loadMissing('customer.product');
-        $product = $subscription->customer?->product;
+        $subscription->loadMissing('pricePlan.product');
+        $product = $subscription->pricePlan?->product;
         if (!$product) return;
 
         try {
@@ -544,8 +546,10 @@ class WebhookDispatchService
 
     public function dispatchCreditsPurchased(mixed $creditTransaction, ?Payment $payment = null): void
     {
-        $creditTransaction->loadMissing('customer.product');
-        $product = $creditTransaction->customer?->product;
+        // AdvancePayment has its own product_id — resolve the product directly from
+        // the transaction, not from the customer (customer has no product_id).
+        $creditTransaction->loadMissing('product');
+        $product = $creditTransaction->product;
         if (!$product) return;
 
         try {
@@ -563,8 +567,8 @@ class WebhookDispatchService
         mixed $oldPlan = null,
         mixed $newPlan = null
     ): void {
-        $subscription->loadMissing('customer.product');
-        $product = $subscription->customer?->product;
+        $subscription->loadMissing('pricePlan.product');
+        $product = $subscription->pricePlan?->product;
         if (!$product) return;
 
         try {

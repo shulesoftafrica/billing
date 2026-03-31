@@ -256,8 +256,8 @@ class RetryWebhooksCommand extends Command
 
         if (str_starts_with($eventType, 'subscription.') && $delivery->subscription_id) {
             $subscription = Subscription::with([
-                'customer.product.organization',
-                'pricePlan',
+                'customer.organization',
+                'pricePlan.product.organization',
             ])->find($delivery->subscription_id);
 
             if (!$subscription) {
@@ -309,7 +309,9 @@ class RetryWebhooksCommand extends Command
                 ->pluck('payment_id')
                 ->toArray();
 
-            $payments = Payment::whereHas('customer', fn ($q) => $q->where('product_id', $product->id))
+            // Payments belong to a product through invoice → invoice_items → price_plan.
+            // There is no product_id on the customers table.
+            $payments = Payment::whereHas('invoice.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->where('status', $paymentStatus)
                 ->whereNotIn('id', $sentPaymentIds)
                 ->orderBy('paid_at')
@@ -415,8 +417,10 @@ class RetryWebhooksCommand extends Command
                 ->pluck('subscription_id')
                 ->toArray();
 
-            $subscriptionQuery = Subscription::with(['customer.product.organization', 'pricePlan'])
-                ->whereHas('customer', fn ($q) => $q->where('product_id', $product->id))
+            // Subscriptions belong to a product through price_plan.
+            // There is no product_id on the customers table.
+            $subscriptionQuery = Subscription::with(['customer.organization', 'pricePlan'])
+                ->whereHas('pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->whereNotIn('id', $sentSubscriptionIds)
                 ->orderBy('created_at');
 

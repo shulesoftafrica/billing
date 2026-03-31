@@ -285,9 +285,7 @@ class StripeWebhookController extends Controller
                 ]);
             }
 
-            app(WebhookDispatchService::class)->dispatchPaymentFailed(
-                $payment->load('customer.product')
-            );
+            app(WebhookDispatchService::class)->dispatchPaymentFailed($payment);
         } catch (\Exception $e) {
             Log::warning('[STRIPE WEBHOOK] handleFailed dispatch error', [
                 'intent_id' => $intent->id,
