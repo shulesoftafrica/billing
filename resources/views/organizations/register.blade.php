@@ -191,7 +191,6 @@
 
             @if($errors->any())
                 <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
-                    <strong>Please fix the following errors:</strong>
                     <ul class="mb-0 mt-1">
                         @foreach($errors->all() as $error)
                             <li>{{ $error }}</li>
@@ -297,15 +296,19 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="addDocumentBtn">+ Add Document</button>
                         </div>
                         <p class="form-text mb-3">
-                            Upload supporting documents such as business license or certificates. Only <strong>PDF</strong> files, max 10 MB each.
+                            Upload supporting documents such as business license or certificates. Only <strong>PDF</strong> files, max 10 MB each. <strong class="required-star">At least one document is required.</strong>
                         </p>
 
                         <div id="documentsContainer"></div>
 
                         <div id="noDocumentsMsg" class="empty-docs">
                             <p class="mb-1" style="font-weight:500;">No documents added</p>
-                            <small>Click "Add Document" to attach PDF files.</small>
+                            <small>Click "Add Document" to attach at least one PDF file.</small>
                         </div>
+
+                        @error('document_files')
+                            <div class="text-danger mt-2" style="font-size:0.85rem;">{{ $message }}</div>
+                        @enderror
                     </div>
                 </div>
 
@@ -360,6 +363,15 @@
             placeholder: 'Select currencies',
             allowClear: true,
             width: '100%'
+        });
+
+        // Client-side check: at least one document required
+        document.getElementById('registrationForm').addEventListener('submit', function (e) {
+            if (container.querySelectorAll('.document-row').length === 0) {
+                e.preventDefault();
+                alert('Please add and upload at least one document before submitting.');
+                addBtn.focus();
+            }
         });
     });
 </script>

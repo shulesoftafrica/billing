@@ -39,11 +39,15 @@ class OrganizationRegistrationController extends Controller
             'currency'              => 'required|array|min:1',
             'currency.*'            => 'required|string|max:10',
             'country_id'            => 'required|exists:countries,id',
-            'document_names'        => 'nullable|array',
+            'document_names'        => 'required|array|min:1',
             'document_names.*'      => 'required|string|max:255',
-            'document_files'        => 'nullable|array',
+            'document_files'        => 'required|array|min:1',
             'document_files.*'      => 'required|file|mimes:pdf|max:10240', // 10MB max per file
         ], [
+            'document_names.required' => 'At least one document is required.',
+            'document_names.min'     => 'At least one document is required.',
+            'document_files.required' => 'At least one document must be uploaded.',
+            'document_files.min'     => 'At least one document must be uploaded.',
             'document_files.*.mimes' => 'Only PDF files are allowed.',
             'document_files.*.max'   => 'Each document must not exceed 10MB.',
             'currency.required'      => 'Please select at least one currency.',

@@ -30,6 +30,13 @@ class AuthController extends Controller
         // Find organization by email
         $organization = \App\Models\Organization::where('email', $validated['organization_email'])->firstOrFail();
 
+        // Ensure organization is active
+        if ($organization->status !== 'active') {
+            return response()->json([
+                'message' => 'Organization is not active. Current status: ' . $organization->status . '. Please contact support to activate your organization.',
+            ], 403);
+        }
+
         // Check for unique email within organization
         $existingUser = User::where('organization_id', $organization->id)
                             ->where('email', $validated['email'])
