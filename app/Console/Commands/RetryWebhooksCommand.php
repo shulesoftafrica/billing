@@ -341,8 +341,10 @@ class RetryWebhooksCommand extends Command
                 ->toArray();
 
             // Payments belong to a product through invoice → invoice_items → price_plan.
-            // There is no product_id on the customers table.
+            // Scope to the organization that owns the webhook's product so we never
+            // send another org's customer data to this webhook endpoint.
             $payments = Payment::whereHas('invoice.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
+                ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
                 ->where('status', $paymentStatus)
                 ->whereNotIn('id', $sentPaymentIds)
                 ->orderBy('paid_at')
@@ -464,9 +466,11 @@ class RetryWebhooksCommand extends Command
                 ->toArray();
 
             // Subscriptions belong to a product through price_plan.
-            // There is no product_id on the customers table.
+            // Scope to the organization that owns the webhook's product so we never
+            // send another org's customer data to this webhook endpoint.
             $subscriptionQuery = Subscription::with(['customer.organization', 'pricePlan'])
                 ->whereHas('pricePlan', fn ($q) => $q->where('product_id', $product->id))
+                ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
                 ->whereNotIn('id', $sentSubscriptionIds)
                 ->orderBy('created_at');
 
