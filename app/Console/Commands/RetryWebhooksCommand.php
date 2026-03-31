@@ -343,9 +343,12 @@ class RetryWebhooksCommand extends Command
             // Payments belong to a product through invoice → invoice_items → price_plan.
             // Scope to the organization that owns the webhook's product so we never
             // send another org's customer data to this webhook endpoint.
+            // Only sweep payments made ON OR AFTER the webhook was registered — there is no
+            // obligation to retroactively push pre-registration history to a webhook URL.
             $payments = Payment::whereHas('invoice.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
                 ->where('status', $paymentStatus)
+                ->where('paid_at', '>=', $webhook->created_at)
                 ->whereNotIn('id', $sentPaymentIds)
                 ->orderBy('paid_at')
                 ->get();
@@ -468,9 +471,12 @@ class RetryWebhooksCommand extends Command
             // Subscriptions belong to a product through price_plan.
             // Scope to the organization that owns the webhook's product so we never
             // send another org's customer data to this webhook endpoint.
+            // Only sweep subscriptions created ON OR AFTER the webhook was registered — there
+            // is no obligation to retroactively push pre-registration history to a webhook URL.
             $subscriptionQuery = Subscription::with(['customer.organization', 'pricePlan'])
                 ->whereHas('pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
+                ->where('created_at', '>=', $webhook->created_at)
                 ->whereNotIn('id', $sentSubscriptionIds)
                 ->orderBy('created_at');
 
