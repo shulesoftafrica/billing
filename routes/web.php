@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\PaymentPageController;
 use App\Http\Controllers\ApiDocumentationController;
+use App\Http\Controllers\OrganizationRegistrationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -31,3 +32,11 @@ Route::get('/billing/pay/{invoice}/complete', [PaymentPageController::class, 'co
     ->name('billing.payment.complete');
 
 Route::get('/api-docs', [ApiDocumentationController::class, 'index'])->name('api.docs');
+
+// Organization Registration
+Route::get('/organizations/register', [OrganizationRegistrationController::class, 'create'])
+    ->name('organizations.register');
+Route::post('/organizations/register', [OrganizationRegistrationController::class, 'store'])
+    ->name('organizations.register.store');
+Route::get('/organizations/register/success', [OrganizationRegistrationController::class, 'success'])
+    ->name('organizations.register.success');

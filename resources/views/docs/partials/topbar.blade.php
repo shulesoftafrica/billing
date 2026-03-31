@@ -2,12 +2,7 @@
     <div style="display:flex;align-items:center;gap:12px;">
         <button id="mobileMenuToggle" class="mobile-toggle" aria-label="Toggle sidebar">☰</button>
         <h1>API Reference</h1>
+        <span style="color:var(--text-soft);font-size:0.88rem;opacity:0.8;">Complete REST API documentation for the billing platform.</span>
     </div>
-    <div class="topbar-meta">
-        <span class="pill">Version 1.0</span>
-        <span class="pill">REST API</span>
-        <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme">
-            <span id="themeIcon">🌙</span>
-        </button>
-    </div>
+    <div class="topbar-meta"></div>
 </header>
