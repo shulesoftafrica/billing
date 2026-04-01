@@ -90,7 +90,8 @@ class PayloadBuilderService
             'event_id' => 'evt_' . uniqid(),
             'timestamp' => now()->toIso8601String(),
             'api_version' => '2026-03-24',
-            
+            'customer_id' => $customer->id,
+
             'product' => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'invoice' => $this->buildInvoiceData($invoice),
@@ -117,7 +118,8 @@ class PayloadBuilderService
             'event_id' => 'evt_' . uniqid(),
             'timestamp' => now()->toIso8601String(),
             'api_version' => '2026-03-24',
-            
+            'customer_id' => $customer->id,
+
             'product' => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'invoice' => $this->buildInvoiceData($invoice),
@@ -144,7 +146,8 @@ class PayloadBuilderService
             'event_id' => 'evt_' . uniqid(),
             'timestamp' => now()->toIso8601String(),
             'api_version' => '2026-03-24',
-            
+            'customer_id' => $customer->id,
+
             'product' => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'subscription' => $this->buildSubscriptionData($subscription),
