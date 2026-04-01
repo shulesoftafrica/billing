@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Payment;
 use App\Models\Invoice;
+use App\Models\PricePlan;
 use App\Models\Subscription;
 use App\Models\Product;
 
@@ -406,14 +407,20 @@ class PayloadBuilderService
         ];
     }
 
-    public function buildCreditsPurchasedPayload(mixed $creditTransaction, ?Payment $payment = null): array
+    public function buildCreditsPurchasedPayload(Invoice $invoice, PricePlan $pricePlan, ?Payment $payment = null): array
     {
-        // AdvancePayment has its own product_id — the product comes from the
-        // transaction itself, not from the customer's (now-removed) product_id.
-        $creditTransaction->loadMissing(['customer.organization', 'product.organization']);
-        $customer     = $creditTransaction->customer;
-        $product      = $creditTransaction->product;
+        $invoice->loadMissing(['customer.organization']);
+        $pricePlan->loadMissing(['product.organization']);
+
+        $customer     = $invoice->customer;
+        $product      = $pricePlan->product;
         $organization = $product?->organization ?? $customer->organization;
+
+        // Derive unit_price from plan amount ÷ units (if units defined)
+        $units     = $pricePlan->units;
+        $unitPrice = ($units && $units > 0)
+            ? round((float) $pricePlan->amount / $units, 6)
+            : null;
 
         return [
             'event'        => 'credits.purchased',
@@ -424,12 +431,18 @@ class PayloadBuilderService
             'product'      => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'customer'     => $this->buildCustomerData($customer),
-            'credits'      => [
-                'id'          => $creditTransaction->id,
-                'amount'      => $creditTransaction->amount,
-                'balance'     => $creditTransaction->balance ?? null,
-                'description' => $creditTransaction->description ?? null,
-                'purchased_at'=> $creditTransaction->created_at?->toIso8601String(),
+            'wallet_transaction' => [
+                'invoice_id'     => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'wallet_type'    => $pricePlan->wallet_type,
+                'unit'           => $pricePlan->unit,
+                'units'          => $units,
+                'unit_price'     => $unitPrice,
+                'amount'         => (float) $invoice->total,
+                'currency'       => $invoice->currency,
+                'plan_id'        => $pricePlan->id,
+                'plan_name'      => $pricePlan->name,
+                'purchased_at'   => $invoice->updated_at?->toIso8601String(),
             ],
             'payment'      => $payment ? $this->buildPaymentData($payment) : null,
             'metadata'     => $this->buildMetadata(),

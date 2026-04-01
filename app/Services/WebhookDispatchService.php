@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\CustomWebhook;
 use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PricePlan;
 use App\Models\Subscription;
 use App\Models\WebhookDelivery;
 use App\Models\Product;
@@ -544,20 +546,20 @@ class WebhookDispatchService
         }
     }
 
-    public function dispatchCreditsPurchased(mixed $creditTransaction, ?Payment $payment = null): void
+    public function dispatchCreditsPurchased(Invoice $invoice, PricePlan $pricePlan, ?Payment $payment = null): void
     {
-        // AdvancePayment has its own product_id — resolve the product directly from
-        // the transaction, not from the customer (customer has no product_id).
-        $creditTransaction->loadMissing('product');
-        $product = $creditTransaction->product;
+        $pricePlan->loadMissing('product');
+        $product = $pricePlan->product;
         if (!$product) return;
 
         try {
-            $payload = $this->payloadBuilder->buildCreditsPurchasedPayload($creditTransaction, $payment);
+            $payload = $this->payloadBuilder->buildCreditsPurchasedPayload($invoice, $pricePlan, $payment);
             $this->dispatchToProduct($product, 'credits.purchased', $payload);
         } catch (\Exception $e) {
             Log::warning('[WEBHOOK] dispatchCreditsPurchased failed', [
-                'transaction_id' => $creditTransaction->id, 'error' => $e->getMessage(),
+                'invoice_id' => $invoice->id,
+                'plan_id'    => $pricePlan->id,
+                'error'      => $e->getMessage(),
             ]);
         }
     }
