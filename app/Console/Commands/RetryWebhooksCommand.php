@@ -342,14 +342,18 @@ class RetryWebhooksCommand extends Command
                 ->pluck('payment_id')
                 ->toArray();
 
-            // Payments belong to a product through invoice → invoice_items → price_plan.
-            // Scope by customer → organization only. This covers all gateway types
-            // (UCN, Stripe, Flutterwave, etc.) regardless of whether the payment has
-            // an invoice_id or not. The webhook is already bound to a product that
-            // belongs to one organization, so any payment by any customer of that org
-            // is the correct and complete scope.
+            // Scope to payments actually linked to THIS product via the invoice chain:
+            // payments → invoice_payments → invoices → invoice_items → price_plans (product_id).
+            // This is the only correct scope — org-based scope is too broad because an
+            // organization can have multiple products and each product has its own webhook
+            // endpoint. We must never send Product A's payments to Product B's webhook.
+            //
+            // UCN payments (invoice_id=NULL on the payments row) are still covered:
+            // processByProductAndCustomer → enableSubscription creates the invoice_payments
+            // record synchronously before the payment is ever marked 'cleared'.
+            //
             // Only sweep payments made ON OR AFTER the webhook was registered.
-            $payments = Payment::whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
+            $payments = Payment::whereHas('invoices.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->where('status', $paymentStatus)
                 ->where('paid_at', '>=', $webhook->created_at)
                 ->whereNotIn('id', $sentPaymentIds)

@@ -209,11 +209,16 @@ class WebhookDispatchService
             ->pluck('payment_id')
             ->toArray();
 
-        // ── 2. Find all cleared payments for this org ──
-        // Scope by customer → organization_id only, covering all gateway types
-        // (UCN, Stripe, Flutterwave) regardless of whether invoice_id is set.
-        $query = Payment::whereHas('customer', function ($q) use ($product) {
-                $q->where('organization_id', $product->organization_id);
+        // ── 2. Find all cleared payments linked to THIS product via the invoice chain ──
+        // payments → invoice_payments → invoices → invoice_items → price_plans (product_id).
+        // This is the only correct scope — org-based scope would send payments for Product A
+        // to Product B's webhook if both belong to the same organization.
+        //
+        // UCN payments (invoice_id=NULL on the payments row) are covered: the
+        // enableSubscription flow creates the invoice_payments record synchronously
+        // before a payment is ever marked 'cleared'.
+        $query = Payment::whereHas('invoices.invoiceItems.pricePlan', function ($q) use ($product) {
+                $q->where('product_id', $product->id);
             })
             ->where('status', 'cleared')
             ->whereNotIn('id', $alreadySentPaymentIds)
