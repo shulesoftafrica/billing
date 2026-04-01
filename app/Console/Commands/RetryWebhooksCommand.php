@@ -356,12 +356,17 @@ class RetryWebhooksCommand extends Command
             // record synchronously before the payment is ever marked 'cleared'.
             //
             // Only sweep payments made ON OR AFTER the webhook was registered.
-            $payments = Payment::whereHas('invoices.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
+            $paymentsQuery = Payment::whereHas('invoices.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->where('status', $paymentStatus)
-                ->where('paid_at', '>=', $webhook->created_at)
-                ->whereNotIn('id', $sentPaymentIds)
-                ->orderBy('paid_at')
-                ->get();
+                ->whereNotIn('id', $sentPaymentIds);
+
+            // Only sweep payments made on or after the webhook was registered.
+            // Guard against null created_at to avoid "Illegal operator and value" error.
+            if ($webhook->created_at !== null) {
+                $paymentsQuery->where('paid_at', '>=', $webhook->created_at);
+            }
+
+            $payments = $paymentsQuery->orderBy('paid_at')->get();
 
             if ($payments->isEmpty()) {
                 $this->line("  ✔  Webhook #{$webhook->id} '{$webhook->name}' — all {$eventType} already delivered.");
@@ -488,9 +493,14 @@ class RetryWebhooksCommand extends Command
             $subscriptionQuery = Subscription::with(['customer.organization', 'pricePlan'])
                 ->whereHas('pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
-                ->where('created_at', '>=', $webhook->created_at)
                 ->whereNotIn('id', $sentSubscriptionIds)
                 ->orderBy('created_at');
+
+            // Only sweep subscriptions created on or after the webhook was registered.
+            // Guard against null created_at to avoid "Illegal operator and value" error.
+            if ($webhook->created_at !== null) {
+                $subscriptionQuery->where('created_at', '>=', $webhook->created_at);
+            }
 
             // Apply event-specific filter (e.g. where status = 'cancelled')
             $subscriptions = $queryFilter($subscriptionQuery)->get();
