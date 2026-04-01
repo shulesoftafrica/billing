@@ -332,10 +332,12 @@ class RetryWebhooksCommand extends Command
                 continue;
             }
 
-            // IDs already successfully sent for this event to THIS webhook
+            // IDs already with a terminal delivery for this event on THIS webhook.
+            // Include both 'sent' (success) and 'failed' (permanent failure, e.g. 4xx).
+            // Only items with NO delivery record at all should be swept.
             $sentPaymentIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
                 ->where('event_type', $eventType)
-                ->where('status', 'sent')
+                ->whereIn('status', ['sent', 'failed'])
                 ->whereNotNull('payment_id')
                 ->pluck('payment_id')
                 ->toArray();
@@ -460,10 +462,12 @@ class RetryWebhooksCommand extends Command
                 continue;
             }
 
-            // Subscription IDs already successfully delivered for this event to THIS webhook
+            // IDs already with a terminal delivery for this event on THIS webhook.
+            // Include both 'sent' (success) and 'failed' (permanent failure, e.g. 4xx).
+            // Only items with NO delivery record at all should be swept.
             $sentSubscriptionIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
                 ->where('event_type', $eventType)
-                ->where('status', 'sent')
+                ->whereIn('status', ['sent', 'failed'])
                 ->whereNotNull('subscription_id')
                 ->pluck('subscription_id')
                 ->toArray();
