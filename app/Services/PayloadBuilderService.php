@@ -258,19 +258,28 @@ class PayloadBuilderService
             return null;
         }
 
+        // start_date / end_date are set by enableSubscription when a payment activates
+        // the subscription. current_period_start/end are the "billing cycle" equivalents
+        // that may be set separately — fall back to start_date/end_date when null so
+        // receivers always get a usable date in current_period_start/end.
+        $periodStart = $subscription->current_period_start ?? $subscription->start_date;
+        $periodEnd   = $subscription->current_period_end   ?? $subscription->end_date;
+
         return [
-            'id' => $subscription->id,
-            'status' => $subscription->status,
-            'price_plan_id' => $subscription->price_plan_id,
-            'price_plan_name' => $subscription->pricePlan?->name,
-            'billing_interval' => $subscription->pricePlan?->billing_interval,
-            'amount' => (float) ($subscription->pricePlan?->amount ?? 0),
-            'currency' => $subscription->pricePlan?->currency ?? 'TZS',
-            'current_period_start' => $subscription->current_period_start?->toDateString(),
-            'current_period_end' => $subscription->current_period_end?->toDateString(),
-            'next_billing_date' => $subscription->next_billing_date?->toDateString(),
-            'trial_ends_at' => $subscription->trial_ends_at?->toIso8601String(),
-            'canceled_at' => $subscription->canceled_at?->toIso8601String(),
+            'id'                   => $subscription->id,
+            'status'               => $subscription->status,
+            'price_plan_id'        => $subscription->price_plan_id,
+            'price_plan_name'      => $subscription->pricePlan?->name,
+            'billing_interval'     => $subscription->pricePlan?->billing_interval,
+            'amount'               => (float) ($subscription->pricePlan?->amount ?? 0),
+            'currency'             => $subscription->pricePlan?->currency ?? 'TZS',
+            'starts_at'            => $subscription->start_date?->toDateString(),
+            'ends_at'              => $subscription->end_date?->toDateString(),
+            'current_period_start' => $periodStart?->toDateString(),
+            'current_period_end'   => $periodEnd?->toDateString(),
+            'next_billing_date'    => $subscription->next_billing_date?->toDateString(),
+            'trial_ends_at'        => $subscription->trial_ends_at?->toIso8601String(),
+            'canceled_at'          => $subscription->canceled_at?->toIso8601String(),
         ];
     }
 
