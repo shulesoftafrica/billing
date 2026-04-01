@@ -233,11 +233,10 @@ class RetryWebhooksCommand extends Command
          * @var array<string, \Closure>
          */
         $sweepMap = [
-            // Only sweep active subscriptions — a subscription is only set to 'active'
-            // by enableSubscription or getOneTimePendingInvoice AFTER a cleared payment.
-            // Pending subscriptions have no payment and the third-party app (e.g. SafariChat)
-            // has never heard of those customers, so sending them would always 422.
-            'subscription.created'   => fn ($q) => $q->where('status', 'active'),
+            // Only sweep subscriptions whose customer has at least one record in the payments
+            // table. If a customer never made any payment, the third-party app (e.g. SafariChat)
+            // has never heard of them and would return 422 customer_not_found.
+            'subscription.created'   => fn ($q) => $q->whereIn('customer_id', Payment::select('customer_id')->distinct()),
             'subscription.cancelled' => fn ($q) => $q->where('status', 'cancelled'),
             'subscription.expired'   => fn ($q) => $q->where('status', 'expired'),
             'subscription.upgraded'  => fn ($q) => $q->whereNotNull('previous_plan_id'),
