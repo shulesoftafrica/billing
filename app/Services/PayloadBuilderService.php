@@ -18,9 +18,27 @@ class PayloadBuilderService
         $invoice = $payment->invoice()
             ->with(['customer.organization', 'invoiceItems.pricePlan.product.organization', 'controlNumbers'])
             ->first();
-        $customer     = $invoice->customer;
-        $product      = $invoice->invoiceItems->first()?->pricePlan?->product;
-        $organization = $product?->organization ?? $customer->organization;
+
+        if ($invoice) {
+            $customer     = $invoice->customer;
+            $product      = $invoice->invoiceItems->first()?->pricePlan?->product;
+            $organization = $product?->organization ?? $customer->organization;
+        } else {
+            // Invoice-less payment (e.g. direct UCN payment with no linked invoice).
+            // Fall back to the customer directly recorded on the payment.
+            $customer     = $payment->customer()->with('organization')->first();
+            $organization = $customer->organization;
+            // Derive product from the customer's most recent subscription plan.
+            $latestSub = $customer->subscriptions()
+                ->with('pricePlan.product.organization')
+                ->latest()
+                ->first();
+            $product = $latestSub?->pricePlan?->product;
+            if ($product?->organization) {
+                $organization = $product->organization;
+            }
+        }
+
         $subscription = $payment->subscription ?? $customer->subscriptions()->latest()->first();
 
         return [
@@ -33,7 +51,7 @@ class PayloadBuilderService
             'product'         => $this->buildProductData($product),
             'organization'    => $this->buildOrganizationData($organization),
             'payment'         => $this->buildPaymentData($payment),
-            'invoice'         => $this->buildInvoiceData($invoice),
+            'invoice'         => $invoice ? $this->buildInvoiceData($invoice) : null,
             'customer'        => $this->buildCustomerData($customer),
             'subscription'    => $subscription ? $this->buildSubscriptionData($subscription) : null,
             'gateway_details' => $this->buildGatewayDetails($payment),

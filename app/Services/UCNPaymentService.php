@@ -13,8 +13,11 @@ use Carbon\Carbon;
 
 class UCNPaymentService
 {
-    public function __construct(private readonly WebhookPaymentProcessingService $webhookPaymentProcessingService)
-    {
+    public function __construct(
+        private readonly WebhookPaymentProcessingService $webhookPaymentProcessingService,
+        private readonly WebhookDispatchService $webhookDispatchService,
+        private readonly PayloadBuilderService $payloadBuilderService,
+    ) {
     }
 
     /**
@@ -131,6 +134,20 @@ class UCNPaymentService
                     $message .= 'Signature key not configured for this organization and payment gateway';
                 }
                 $this->webhookPaymentProcessingService->processByProductAndCustomer($product, $customer, $payment);
+
+                // Dispatch custom webhooks (payment.success) live for this product.
+                // UCN payments have invoice_id=NULL so the payload builder uses the
+                // customer directly from the payment record (null-invoice path).
+                try {
+                    $payment->refresh();
+                    $wcPayload = $this->payloadBuilderService->buildPaymentSuccessPayload($payment);
+                    $this->webhookDispatchService->dispatchToProduct($product, 'payment.success', $wcPayload);
+                } catch (\Exception $e) {
+                    Log::warning('[UCN] Failed to dispatch custom webhook', [
+                        'payment_id' => $payment->id,
+                        'error'      => $e->getMessage(),
+                    ]);
+                }
 
                 // Step 7: Create API request object
                 $notificationPayload = [

@@ -200,17 +200,20 @@ class WebhookDispatchService
             throw new \Exception('Webhook has no associated product.');
         }
 
-        // ── 1. Collect payment IDs already successfully delivered to this webhook ──
+        // ── 1. Collect payment IDs already with a terminal delivery to this webhook ──
+        // Exclude both 'sent' (success) and 'failed' (permanent 4xx) so we never
+        // replay a payment that has already been permanently rejected.
         $alreadySentPaymentIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
-            ->where('status', 'sent')
+            ->whereIn('status', ['sent', 'failed'])
             ->whereNotNull('payment_id')
             ->pluck('payment_id')
             ->toArray();
 
-        // ── 2. Find all cleared payments for this product ──
-        // Payments are linked to a product through their invoice → invoice items → price plan.
-        $query = Payment::whereHas('invoice.invoiceItems.pricePlan', function ($q) use ($product) {
-                $q->where('product_id', $product->id);
+        // ── 2. Find all cleared payments for this org ──
+        // Scope by customer → organization_id only, covering all gateway types
+        // (UCN, Stripe, Flutterwave) regardless of whether invoice_id is set.
+        $query = Payment::whereHas('customer', function ($q) use ($product) {
+                $q->where('organization_id', $product->organization_id);
             })
             ->where('status', 'cleared')
             ->whereNotIn('id', $alreadySentPaymentIds)

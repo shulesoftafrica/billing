@@ -343,12 +343,13 @@ class RetryWebhooksCommand extends Command
                 ->toArray();
 
             // Payments belong to a product through invoice → invoice_items → price_plan.
-            // Scope to the organization that owns the webhook's product so we never
-            // send another org's customer data to this webhook endpoint.
-            // Only sweep payments made ON OR AFTER the webhook was registered — there is no
-            // obligation to retroactively push pre-registration history to a webhook URL.
-            $payments = Payment::whereHas('invoice.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
-                ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
+            // Scope by customer → organization only. This covers all gateway types
+            // (UCN, Stripe, Flutterwave, etc.) regardless of whether the payment has
+            // an invoice_id or not. The webhook is already bound to a product that
+            // belongs to one organization, so any payment by any customer of that org
+            // is the correct and complete scope.
+            // Only sweep payments made ON OR AFTER the webhook was registered.
+            $payments = Payment::whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
                 ->where('status', $paymentStatus)
                 ->where('paid_at', '>=', $webhook->created_at)
                 ->whereNotIn('id', $sentPaymentIds)
