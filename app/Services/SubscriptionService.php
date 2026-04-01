@@ -569,6 +569,18 @@ class SubscriptionService
                     'end_date' => $endDate,
                 ]);
 
+                // Dispatch subscription.created now that the subscription is active and paid.
+                try {
+                    app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                        $subscription->load(['customer', 'pricePlan.product'])
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('[enableSubscription] Failed to dispatch subscription.created webhook', [
+                        'subscription_id' => $subscription->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 return true;
             } elseif ($totalPayments > $balance) {
                 // Greater: Activate subscription and handle excess
@@ -669,6 +681,19 @@ class SubscriptionService
                         'amount' => $excessAmount,
                     ]);
                 }
+
+                // Dispatch subscription.created now that the subscription is active and paid.
+                try {
+                    app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                        $subscription->load(['customer', 'pricePlan.product'])
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('[enableSubscription] Failed to dispatch subscription.created webhook', [
+                        'subscription_id' => $subscription->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 return true;
             } else {
                 // Allocate advance payments to invoice with remaining amount as reminder
