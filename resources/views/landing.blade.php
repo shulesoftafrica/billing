@@ -555,20 +555,6 @@
                             API</span>
                     </div>
                 </div>
-                <div class="col-lg-6">
-                    <div class="code-panel">
-                        <div class="code-panel-header">
-                            <div class="dot" style="background:#ff5f56;"></div>
-                            <div class="dot" style="background:#ffbd2e;"></div>
-                            <div class="dot" style="background:#27c93f;"></div>
-                            <span class="label">bash – get access token</span>
-                        </div>
-                        <pre><span class="cmt"># Step 1: Get your access token</span>
-<span class="cmt"># Step 2: Create an invoice</span>
-<span class="kw">curl</span> -X POST <span class="url">.../api/v1/invoices</span> \
-  -H <span class="str">"Authorization: Bearer token"</span></pre>
-                    </div>
-                </div>
             </div>
         </div>
     </section>
