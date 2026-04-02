@@ -17,6 +17,7 @@ class Organization extends Model
         'currency',
         'country_id',
         'status',
+        'account_type',
     ];
 
     protected $casts = [

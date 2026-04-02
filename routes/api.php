@@ -71,7 +71,7 @@ Route::prefix('v1/oauth')->group(function () {
 | - Organization scope validation (organization.scope)
 | - Rate limiting (throttle:60,1)
 */
-Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1'])->prefix('v1')->group(function () {
+Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1', 'api.logger'])->prefix('v1')->group(function () {
     // Core resource routes
     Route::apiResource('currencies', CurrencyController::class);
     Route::apiResource('countries', CountryController::class);

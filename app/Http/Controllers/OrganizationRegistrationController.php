@@ -39,18 +39,20 @@ class OrganizationRegistrationController extends Controller
             'currency'              => 'required|array|min:1',
             'currency.*'            => 'required|string|max:10',
             'country_id'            => 'required|exists:countries,id',
-            'document_names'        => 'required|array|min:1',
+            'account_type'          => 'required|in:organization,developer',
+            'document_names'        => 'required|array|size:4',
             'document_names.*'      => 'required|string|max:255',
-            'document_files'        => 'required|array|min:1',
+            'document_files'        => 'required|array|size:4',
             'document_files.*'      => 'required|file|mimes:pdf|max:10240', // 10MB max per file
         ], [
-            'document_names.required' => 'At least one document is required.',
-            'document_names.min'     => 'At least one document is required.',
-            'document_files.required' => 'At least one document must be uploaded.',
-            'document_files.min'     => 'At least one document must be uploaded.',
+            'document_files.required' => 'All four documents are required.',
+            'document_files.size'    => 'All four documents must be uploaded.',
+            'document_files.*.required' => 'Each document file is required.',
             'document_files.*.mimes' => 'Only PDF files are allowed.',
             'document_files.*.max'   => 'Each document must not exceed 10MB.',
             'currency.required'      => 'Please select at least one currency.',
+            'account_type.required'  => 'Please select your account type.',
+            'account_type.in'        => 'Invalid account type selected.',
         ]);
 
         if ($validator->fails()) {
@@ -73,6 +75,7 @@ class OrganizationRegistrationController extends Controller
                 'currency'            => $request->currency,
                 'country_id'          => $request->country_id,
                 'status'              => 'pending',
+                'account_type'        => $request->account_type,
             ]);
 
             // Handle document uploads
