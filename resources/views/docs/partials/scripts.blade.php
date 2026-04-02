@@ -2,6 +2,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Theme Toggle
     const themeToggle = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
     const html = document.documentElement;
     
     // Load saved theme or default to light
@@ -20,8 +21,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateThemeIcon() {
         const theme = html.getAttribute('data-theme');
-        if (themeToggle) {
-            themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+        if (themeIcon) {
+            themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
         }
     }
 

@@ -119,6 +119,8 @@ class ProductController extends Controller
             'price_plans.*.currency_id' => 'required|integer|exists:currencies,id',
             'price_plans.*.rate' => 'nullable|integer|min:1',
             'price_plans.*.active' => 'nullable|boolean',
+            'price_plans.*.metadata' => 'nullable|array',
+
         ]);
 
         // Additional validation: subscription_type not allowed for product_type_id = 1

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Payment;
 use App\Models\Invoice;
+use App\Models\PricePlan;
 use App\Models\Subscription;
 use App\Models\Product;
 
@@ -14,10 +15,30 @@ class PayloadBuilderService
      */
     public function buildPaymentSuccessPayload(Payment $payment): array
     {
-        $invoice = $payment->invoice()->with(['customer.product.organization', 'invoiceItems.pricePlan', 'controlNumbers'])->first();
-        $customer = $invoice->customer;
-        $product = $customer->product;
-        $organization = $product->organization;
+        $invoice = $payment->invoice()
+            ->with(['customer.organization', 'invoiceItems.pricePlan.product.organization', 'controlNumbers'])
+            ->first();
+
+        if ($invoice) {
+            $customer     = $invoice->customer;
+            $product      = $invoice->invoiceItems->first()?->pricePlan?->product;
+            $organization = $product?->organization ?? $customer->organization;
+        } else {
+            // Invoice-less payment (e.g. direct UCN payment with no linked invoice).
+            // Fall back to the customer directly recorded on the payment.
+            $customer     = $payment->customer()->with('organization')->first();
+            $organization = $customer->organization;
+            // Derive product from the customer's most recent subscription plan.
+            $latestSub = $customer->subscriptions()
+                ->with('pricePlan.product.organization')
+                ->latest()
+                ->first();
+            $product = $latestSub?->pricePlan?->product;
+            if ($product?->organization) {
+                $organization = $product->organization;
+            }
+        }
+
         $subscription = $payment->subscription ?? $customer->subscriptions()->latest()->first();
 
         return [
@@ -30,7 +51,7 @@ class PayloadBuilderService
             'product'         => $this->buildProductData($product),
             'organization'    => $this->buildOrganizationData($organization),
             'payment'         => $this->buildPaymentData($payment),
-            'invoice'         => $this->buildInvoiceData($invoice),
+            'invoice'         => $invoice ? $this->buildInvoiceData($invoice) : null,
             'customer'        => $this->buildCustomerData($customer),
             'subscription'    => $subscription ? $this->buildSubscriptionData($subscription) : null,
             'gateway_details' => $this->buildGatewayDetails($payment),
@@ -59,17 +80,18 @@ class PayloadBuilderService
      */
     public function buildInvoiceCreatedPayload(Invoice $invoice): array
     {
-        $invoice->load(['customer.product.organization', 'invoiceItems.pricePlan', 'controlNumbers']);
-        $customer = $invoice->customer;
-        $product = $customer->product;
-        $organization = $product->organization;
+        $invoice->load(['customer.organization', 'invoiceItems.pricePlan.product.organization', 'controlNumbers']);
+        $customer     = $invoice->customer;
+        $product      = $invoice->invoiceItems->first()?->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event' => 'invoice.created',
             'event_id' => 'evt_' . uniqid(),
             'timestamp' => now()->toIso8601String(),
             'api_version' => '2026-03-24',
-            
+            'customer_id' => $customer->id,
+
             'product' => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'invoice' => $this->buildInvoiceData($invoice),
@@ -86,17 +108,18 @@ class PayloadBuilderService
      */
     public function buildInvoicePaidPayload(Invoice $invoice, Payment $payment): array
     {
-        $invoice->load(['customer.product.organization', 'invoiceItems.pricePlan', 'controlNumbers', 'payments']);
-        $customer = $invoice->customer;
-        $product = $customer->product;
-        $organization = $product->organization;
+        $invoice->load(['customer.organization', 'invoiceItems.pricePlan.product.organization', 'controlNumbers', 'payments']);
+        $customer     = $invoice->customer;
+        $product      = $invoice->invoiceItems->first()?->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event' => 'invoice.paid',
             'event_id' => 'evt_' . uniqid(),
             'timestamp' => now()->toIso8601String(),
             'api_version' => '2026-03-24',
-            
+            'customer_id' => $customer->id,
+
             'product' => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'invoice' => $this->buildInvoiceData($invoice),
@@ -113,17 +136,18 @@ class PayloadBuilderService
      */
     public function buildSubscriptionCreatedPayload(Subscription $subscription): array
     {
-        $subscription->load(['customer.product.organization', 'pricePlan']);
-        $customer = $subscription->customer;
-        $product = $customer->product;
-        $organization = $product->organization;
+        $subscription->load(['customer.organization', 'pricePlan.product.organization']);
+        $customer     = $subscription->customer;
+        $product      = $subscription->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event' => 'subscription.created',
             'event_id' => 'evt_' . uniqid(),
             'timestamp' => now()->toIso8601String(),
             'api_version' => '2026-03-24',
-            
+            'customer_id' => $customer->id,
+
             'product' => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'subscription' => $this->buildSubscriptionData($subscription),
@@ -220,11 +244,10 @@ class PayloadBuilderService
     private function buildCustomerData($customer): array
     {
         return [
-            'id' => $customer->id,
-            'product_id' => $customer->product_id,
-            'name' => $customer->name,
-            'email' => $customer->email,
-            'phone' => $customer->phone,
+            'id'     => $customer->id,
+            'name'   => $customer->name,
+            'email'  => $customer->email,
+            'phone'  => $customer->phone,
             'status' => $customer->status,
         ];
     }
@@ -235,19 +258,28 @@ class PayloadBuilderService
             return null;
         }
 
+        // start_date / end_date are set by enableSubscription when a payment activates
+        // the subscription. current_period_start/end are the "billing cycle" equivalents
+        // that may be set separately — fall back to start_date/end_date when null so
+        // receivers always get a usable date in current_period_start/end.
+        $periodStart = $subscription->current_period_start ?? $subscription->start_date;
+        $periodEnd   = $subscription->current_period_end   ?? $subscription->end_date;
+
         return [
-            'id' => $subscription->id,
-            'status' => $subscription->status,
-            'price_plan_id' => $subscription->price_plan_id,
-            'price_plan_name' => $subscription->pricePlan?->name,
-            'billing_interval' => $subscription->pricePlan?->billing_interval,
-            'amount' => (float) ($subscription->pricePlan?->amount ?? 0),
-            'currency' => $subscription->pricePlan?->currency ?? 'TZS',
-            'current_period_start' => $subscription->current_period_start?->toDateString(),
-            'current_period_end' => $subscription->current_period_end?->toDateString(),
-            'next_billing_date' => $subscription->next_billing_date?->toDateString(),
-            'trial_ends_at' => $subscription->trial_ends_at?->toIso8601String(),
-            'canceled_at' => $subscription->canceled_at?->toIso8601String(),
+            'id'                   => $subscription->id,
+            'status'               => $subscription->status,
+            'price_plan_id'        => $subscription->price_plan_id,
+            'price_plan_name'      => $subscription->pricePlan?->name,
+            'billing_interval'     => $subscription->pricePlan?->billing_interval,
+            'amount'               => (float) ($subscription->pricePlan?->amount ?? 0),
+            'currency'             => $subscription->pricePlan?->currency ?? 'TZS',
+            'starts_at'            => $subscription->start_date?->toDateString(),
+            'ends_at'              => $subscription->end_date?->toDateString(),
+            'current_period_start' => $periodStart?->toDateString(),
+            'current_period_end'   => $periodEnd?->toDateString(),
+            'next_billing_date'    => $subscription->next_billing_date?->toDateString(),
+            'trial_ends_at'        => $subscription->trial_ends_at?->toIso8601String(),
+            'canceled_at'          => $subscription->canceled_at?->toIso8601String(),
         ];
     }
 
@@ -338,10 +370,10 @@ class PayloadBuilderService
 
     public function buildSubscriptionRenewedPayload(Subscription $subscription, ?Payment $payment = null): array
     {
-        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $subscription->loadMissing(['customer.organization', 'pricePlan.product.organization']);
         $customer     = $subscription->customer;
-        $product      = $customer->product;
-        $organization = $product->organization;
+        $product      = $subscription->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event'        => 'subscription.renewed',
@@ -360,10 +392,10 @@ class PayloadBuilderService
 
     public function buildSubscriptionCancelledPayload(Subscription $subscription, ?string $reason = null): array
     {
-        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $subscription->loadMissing(['customer.organization', 'pricePlan.product.organization']);
         $customer     = $subscription->customer;
-        $product      = $customer->product;
-        $organization = $product->organization;
+        $product      = $subscription->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event'        => 'subscription.cancelled',
@@ -385,10 +417,10 @@ class PayloadBuilderService
 
     public function buildSubscriptionExpiredPayload(Subscription $subscription): array
     {
-        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $subscription->loadMissing(['customer.organization', 'pricePlan.product.organization']);
         $customer     = $subscription->customer;
-        $product      = $customer->product;
-        $organization = $product->organization;
+        $product      = $subscription->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event'        => 'subscription.expired',
@@ -405,12 +437,20 @@ class PayloadBuilderService
         ];
     }
 
-    public function buildCreditsPurchasedPayload(mixed $creditTransaction, ?Payment $payment = null): array
+    public function buildCreditsPurchasedPayload(Invoice $invoice, PricePlan $pricePlan, ?Payment $payment = null): array
     {
-        $customer = $creditTransaction->customer;
-        $customer->loadMissing(['product.organization']);
-        $product      = $customer->product;
-        $organization = $product->organization;
+        $invoice->loadMissing(['customer.organization']);
+        $pricePlan->loadMissing(['product.organization']);
+
+        $customer     = $invoice->customer;
+        $product      = $pricePlan->product;
+        $organization = $product?->organization ?? $customer->organization;
+
+        // Derive unit_price from plan amount ÷ units (if units defined)
+        $units     = $pricePlan->units;
+        $unitPrice = ($units && $units > 0)
+            ? round((float) $pricePlan->amount / $units, 6)
+            : null;
 
         return [
             'event'        => 'credits.purchased',
@@ -421,12 +461,18 @@ class PayloadBuilderService
             'product'      => $this->buildProductData($product),
             'organization' => $this->buildOrganizationData($organization),
             'customer'     => $this->buildCustomerData($customer),
-            'credits'      => [
-                'id'          => $creditTransaction->id,
-                'amount'      => $creditTransaction->amount,
-                'balance'     => $creditTransaction->balance ?? null,
-                'description' => $creditTransaction->description ?? null,
-                'purchased_at'=> $creditTransaction->created_at?->toIso8601String(),
+            'wallet_transaction' => [
+                'invoice_id'     => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'wallet_type'    => $pricePlan->wallet_type,
+                'unit'           => $pricePlan->unit,
+                'units'          => $units,
+                'unit_price'     => $unitPrice,
+                'amount'         => (float) $invoice->total,
+                'currency'       => $invoice->currency,
+                'plan_id'        => $pricePlan->id,
+                'plan_name'      => $pricePlan->name,
+                'purchased_at'   => $invoice->updated_at?->toIso8601String(),
             ],
             'payment'      => $payment ? $this->buildPaymentData($payment) : null,
             'metadata'     => $this->buildMetadata(),
@@ -438,10 +484,10 @@ class PayloadBuilderService
         mixed $oldPlan = null,
         mixed $newPlan = null
     ): array {
-        $subscription->loadMissing(['customer.product.organization', 'pricePlan']);
+        $subscription->loadMissing(['customer.organization', 'pricePlan.product.organization']);
         $customer     = $subscription->customer;
-        $product      = $customer->product;
-        $organization = $product->organization;
+        $product      = $subscription->pricePlan?->product;
+        $organization = $product?->organization ?? $customer->organization;
 
         return [
             'event'        => 'subscription.upgraded',

@@ -19,6 +19,15 @@ class RetryWebhooksCommand extends Command
 
     protected $description = 'Retry failed webhook deliveries AND sweep all unsent events (payments + subscriptions) for every active webhook';
 
+    /** Microseconds to sleep between consecutive requests to the same endpoint. */
+    private const INTER_REQUEST_DELAY_US = 500_000; // 500 ms
+
+    /** Extra sleep (seconds) when a 429 is received before moving to the next webhook. */
+    private const RATE_LIMIT_BACKOFF_S = 10;
+
+    /** Track webhook IDs that returned 429 this run — skip remaining items for those. */
+    private array $rateLimitedWebhooks = [];
+
     public function __construct(
         private readonly WebhookDispatchService $dispatchService,
         private readonly PayloadBuilderService  $payloadBuilder,
@@ -81,6 +90,14 @@ class RetryWebhooksCommand extends Command
                 continue;
             }
 
+            // Skip webhooks that already hit a rate-limit this run
+            $webhookId = $delivery->custom_webhook_id;
+            if (isset($this->rateLimitedWebhooks[$webhookId])) {
+                $this->warn("  ⏭  Skipping {$label} — webhook #{$webhookId} is rate-limited this run.");
+                $bad++;
+                continue;
+            }
+
             try {
                 $freshPayload = $this->rebuildPayload($delivery);
 
@@ -96,6 +113,12 @@ class RetryWebhooksCommand extends Command
                     );
 
                     $delivery->update(['status' => 'superseded', 'next_retry_at' => null]);
+
+                    if ($newDelivery->http_status_code === 429) {
+                        $bad++;
+                        $this->handleRateLimit($webhookId, $label);
+                        continue;
+                    }
 
                     if ($newDelivery->status === 'sent') {
                         $ok++;
@@ -119,6 +142,12 @@ class RetryWebhooksCommand extends Command
                     // Cannot rebuild from DB — replay the stored payload as-is.
                     $result = $this->dispatchService->retryDelivery($delivery);
 
+                    if (($result['http_status'] ?? null) === 429) {
+                        $bad++;
+                        $this->handleRateLimit($webhookId, $label);
+                        continue;
+                    }
+
                     if ($result['success']) {
                         $ok++;
                         $this->line("  ✅ Retried {$label} (stored) — HTTP {$result['http_status']} ({$result['response_time']}ms)");
@@ -134,6 +163,8 @@ class RetryWebhooksCommand extends Command
                         ]);
                     }
                 }
+
+                usleep(self::INTER_REQUEST_DELAY_US);
             } catch (\Exception $e) {
                 $bad++;
                 $this->error("  ❌ Exception for {$label}: {$e->getMessage()}");
@@ -202,7 +233,10 @@ class RetryWebhooksCommand extends Command
          * @var array<string, \Closure>
          */
         $sweepMap = [
-            'subscription.created'   => fn ($q) => $q,
+            // Only sweep subscriptions whose customer has at least one record in the payments
+            // table. If a customer never made any payment, the third-party app (e.g. SafariChat)
+            // has never heard of them and would return 422 customer_not_found.
+            'subscription.created'   => fn ($q) => $q->whereIn('customer_id', Payment::select('customer_id')->distinct()),
             'subscription.cancelled' => fn ($q) => $q->where('status', 'cancelled'),
             'subscription.expired'   => fn ($q) => $q->where('status', 'expired'),
             'subscription.upgraded'  => fn ($q) => $q->whereNotNull('previous_plan_id'),
@@ -256,8 +290,8 @@ class RetryWebhooksCommand extends Command
 
         if (str_starts_with($eventType, 'subscription.') && $delivery->subscription_id) {
             $subscription = Subscription::with([
-                'customer.product.organization',
-                'pricePlan',
+                'customer.organization',
+                'pricePlan.product.organization',
             ])->find($delivery->subscription_id);
 
             if (!$subscription) {
@@ -301,19 +335,38 @@ class RetryWebhooksCommand extends Command
                 continue;
             }
 
-            // IDs already successfully sent for this event to THIS webhook
+            // IDs already with a terminal delivery for this event on THIS webhook.
+            // Include both 'sent' (success) and 'failed' (permanent failure, e.g. 4xx).
+            // Only items with NO delivery record at all should be swept.
             $sentPaymentIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
                 ->where('event_type', $eventType)
-                ->where('status', 'sent')
+                ->whereIn('status', ['sent', 'failed'])
                 ->whereNotNull('payment_id')
                 ->pluck('payment_id')
                 ->toArray();
 
-            $payments = Payment::whereHas('customer', fn ($q) => $q->where('product_id', $product->id))
+            // Scope to payments actually linked to THIS product via the invoice chain:
+            // payments → invoice_payments → invoices → invoice_items → price_plans (product_id).
+            // This is the only correct scope — org-based scope is too broad because an
+            // organization can have multiple products and each product has its own webhook
+            // endpoint. We must never send Product A's payments to Product B's webhook.
+            //
+            // UCN payments (invoice_id=NULL on the payments row) are still covered:
+            // processByProductAndCustomer → enableSubscription creates the invoice_payments
+            // record synchronously before the payment is ever marked 'cleared'.
+            //
+            // Only sweep payments made ON OR AFTER the webhook was registered.
+            $paymentsQuery = Payment::whereHas('invoices.invoiceItems.pricePlan', fn ($q) => $q->where('product_id', $product->id))
                 ->where('status', $paymentStatus)
-                ->whereNotIn('id', $sentPaymentIds)
-                ->orderBy('paid_at')
-                ->get();
+                ->whereNotIn('id', $sentPaymentIds);
+
+            // Only sweep payments made on or after the webhook was registered.
+            // Guard against null created_at to avoid "Illegal operator and value" error.
+            if ($webhook->created_at !== null) {
+                $paymentsQuery->where('paid_at', '>=', $webhook->created_at);
+            }
+
+            $payments = $paymentsQuery->orderBy('paid_at')->get();
 
             if ($payments->isEmpty()) {
                 $this->line("  ✔  Webhook #{$webhook->id} '{$webhook->name}' — all {$eventType} already delivered.");
@@ -333,12 +386,25 @@ class RetryWebhooksCommand extends Command
                     continue;
                 }
 
+                // Stop sending to this webhook if it already hit rate-limit
+                if (isset($this->rateLimitedWebhooks[$webhook->id])) {
+                    $this->warn("    ⏭  Skipping {$label} — rate-limited this run.");
+                    $bad++;
+                    continue;
+                }
+
                 try {
                     $payload = $eventType === 'payment.failed'
                         ? $this->payloadBuilder->buildPaymentFailedPayload($payment)
                         : $this->payloadBuilder->buildPaymentSuccessPayload($payment);
 
                     $delivery = $this->dispatchService->dispatch($webhook, $payload, $payment->id);
+
+                    if ($delivery->http_status_code === 429) {
+                        $bad++;
+                        $this->handleRateLimit($webhook->id, $label);
+                        continue;
+                    }
 
                     if ($delivery->status === 'sent') {
                         $ok++;
@@ -359,6 +425,8 @@ class RetryWebhooksCommand extends Command
                             'error'       => $delivery->error_message,
                         ]);
                     }
+
+                    usleep(self::INTER_REQUEST_DELAY_US);
                 } catch (\Exception $e) {
                     $bad++;
                     $this->error("    ❌ Exception for {$label}: {$e->getMessage()}");
@@ -407,18 +475,32 @@ class RetryWebhooksCommand extends Command
                 continue;
             }
 
-            // Subscription IDs already successfully delivered for this event to THIS webhook
+            // IDs already with a terminal delivery for this event on THIS webhook.
+            // Include both 'sent' (success) and 'failed' (permanent failure, e.g. 4xx).
+            // Only items with NO delivery record at all should be swept.
             $sentSubscriptionIds = WebhookDelivery::where('custom_webhook_id', $webhook->id)
                 ->where('event_type', $eventType)
-                ->where('status', 'sent')
+                ->whereIn('status', ['sent', 'failed'])
                 ->whereNotNull('subscription_id')
                 ->pluck('subscription_id')
                 ->toArray();
 
-            $subscriptionQuery = Subscription::with(['customer.product.organization', 'pricePlan'])
-                ->whereHas('customer', fn ($q) => $q->where('product_id', $product->id))
+            // Subscriptions belong to a product through price_plan.
+            // Scope to the organization that owns the webhook's product so we never
+            // send another org's customer data to this webhook endpoint.
+            // Only sweep subscriptions created ON OR AFTER the webhook was registered — there
+            // is no obligation to retroactively push pre-registration history to a webhook URL.
+            $subscriptionQuery = Subscription::with(['customer.organization', 'pricePlan'])
+                ->whereHas('pricePlan', fn ($q) => $q->where('product_id', $product->id))
+                ->whereHas('customer', fn ($q) => $q->where('organization_id', $product->organization_id))
                 ->whereNotIn('id', $sentSubscriptionIds)
                 ->orderBy('created_at');
+
+            // Only sweep subscriptions created on or after the webhook was registered.
+            // Guard against null created_at to avoid "Illegal operator and value" error.
+            if ($webhook->created_at !== null) {
+                $subscriptionQuery->where('created_at', '>=', $webhook->created_at);
+            }
 
             // Apply event-specific filter (e.g. where status = 'cancelled')
             $subscriptions = $queryFilter($subscriptionQuery)->get();
@@ -441,6 +523,13 @@ class RetryWebhooksCommand extends Command
                     continue;
                 }
 
+                // Stop sending to this webhook if it already hit rate-limit
+                if (isset($this->rateLimitedWebhooks[$webhook->id])) {
+                    $this->warn("    ⏭  Skipping {$label} — rate-limited this run.");
+                    $bad++;
+                    continue;
+                }
+
                 try {
                     $payload = match ($eventType) {
                         'subscription.created'   => $this->payloadBuilder->buildSubscriptionCreatedPayload($subscription),
@@ -457,6 +546,12 @@ class RetryWebhooksCommand extends Command
                     }
 
                     $delivery = $this->dispatchService->dispatch($webhook, $payload, null, $subscription->id);
+
+                    if ($delivery->http_status_code === 429) {
+                        $bad++;
+                        $this->handleRateLimit($webhook->id, $label);
+                        continue;
+                    }
 
                     if ($delivery->status === 'sent') {
                         $ok++;
@@ -477,6 +572,8 @@ class RetryWebhooksCommand extends Command
                             'error'           => $delivery->error_message,
                         ]);
                     }
+
+                    usleep(self::INTER_REQUEST_DELAY_US);
                 } catch (\Exception $e) {
                     $bad++;
                     $this->error("    ❌ Exception for {$label}: {$e->getMessage()}");
@@ -501,6 +598,21 @@ class RetryWebhooksCommand extends Command
     }
 
     /**
+     * Mark a webhook as rate-limited, back off, and log the event.
+     */
+    private function handleRateLimit(int $webhookId, string $label): void
+    {
+        $this->rateLimitedWebhooks[$webhookId] = true;
+        $this->warn("    🚫 429 Too Many Requests for {$label} — webhook #{$webhookId} paused for this run. Remaining items will retry next scheduled run.");
+        Log::warning('[webhooks:retry] Rate limited (429)', [
+            'webhook_id' => $webhookId,
+            'label'      => $label,
+        ]);
+        // Back off before continuing to the next webhook
+        sleep(self::RATE_LIMIT_BACKOFF_S);
+    }
+
+    /**
      * Return all active CustomWebhooks (with their product) that listen to
      * $eventType, optionally filtered to a single product.
      *
@@ -511,7 +623,11 @@ class RetryWebhooksCommand extends Command
         $query = CustomWebhook::with('product')
             ->where('status', 'active')
             ->where(function ($q) use ($eventType) {
+                // SQL NULL — no events column value stored at all
                 $q->whereNull('events')
+                  // JSON null or empty array stored in the column ([null], [], null)
+                  // These all mean "subscribe to ALL events" — no filter applied
+                  ->orWhereRaw("events::text IN ('null', '[]', '[null]')")
                   ->orWhereJsonContains('events', $eventType)
                   ->orWhereJsonContains('events', '*');
 

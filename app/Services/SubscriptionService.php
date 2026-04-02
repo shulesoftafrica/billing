@@ -522,9 +522,6 @@ class SubscriptionService
                     'end_date' => $endDate,
                 ]);
 
-                // Send webhook notification for subscription activation
-                $this->sendSubscriptionWebhook($subscription);
-
                 if ($hasCurrentPayment) {
                     $payment->update(['status' => 'cleared']);
                     // Record the payment allocation to invoice
@@ -572,6 +569,18 @@ class SubscriptionService
                     'end_date' => $endDate,
                 ]);
 
+                // Dispatch subscription.created now that the subscription is active and paid.
+                try {
+                    app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                        $subscription->load(['customer', 'pricePlan.product'])
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('[enableSubscription] Failed to dispatch subscription.created webhook', [
+                        'subscription_id' => $subscription->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 return true;
             } elseif ($totalPayments > $balance) {
                 // Greater: Activate subscription and handle excess
@@ -583,9 +592,6 @@ class SubscriptionService
                     'start_date' => $startDate,
                     'end_date' => $endDate,
                 ]);
-
-                // Send webhook notification for subscription activation
-                $this->sendSubscriptionWebhook($subscription);
 
                 // Allocate amount to invoice and track remaining amount for each payment
                 $remainingToAllocate = $balance;
@@ -675,6 +681,19 @@ class SubscriptionService
                         'amount' => $excessAmount,
                     ]);
                 }
+
+                // Dispatch subscription.created now that the subscription is active and paid.
+                try {
+                    app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                        $subscription->load(['customer', 'pricePlan.product'])
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('[enableSubscription] Failed to dispatch subscription.created webhook', [
+                        'subscription_id' => $subscription->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 return true;
             } else {
                 // Allocate advance payments to invoice with remaining amount as reminder
@@ -876,6 +895,18 @@ class SubscriptionService
                         'total_payments' => $totalPayments,
                         'invoiced_amount' => $invoicedAmount,
                     ]);
+
+                    // Dispatch credits.purchased webhook for wallet products
+                    if ($product->product_type_id == 3) {
+                        $walletPlan = $invoice->invoiceItems
+                            ->first(fn ($i) => $i->pricePlan?->product_id == $productId)
+                            ?->pricePlan;
+                        if ($walletPlan) {
+                            app(WebhookDispatchService::class)->dispatchCreditsPurchased(
+                                $invoice, $walletPlan, $pendingPayments->first()
+                            );
+                        }
+                    }
                 } elseif ($totalPayments > $invoicedAmount) {
                     // Greater: Handle excess
                     // Allocate amount to invoice and track remaining amount for each payment
@@ -937,6 +968,18 @@ class SubscriptionService
                             $p->update(['status' => 'cleared']);
                         }
                     });
+
+                    // Dispatch credits.purchased webhook for wallet products (overpaid → fully cleared)
+                    if ($product->product_type_id == 3) {
+                        $walletPlan = $invoice->invoiceItems
+                            ->first(fn ($i) => $i->pricePlan?->product_id == $productId)
+                            ?->pricePlan;
+                        if ($walletPlan) {
+                            app(WebhookDispatchService::class)->dispatchCreditsPurchased(
+                                $invoice, $walletPlan, $pendingPayments->first()
+                            );
+                        }
+                    }
                 } else {
                     // Allocate advance payments to invoice with remaining amount as reminder
                     $advancePayments->each(function ($ap) use ($invoice_id) {
@@ -1203,76 +1246,13 @@ class SubscriptionService
             // Dispatch subscription.created webhook
             try {
                 app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
-                    $newSubscription->load(['customer.product', 'pricePlan'])
+                    $newSubscription->load(['customer', 'pricePlan.product'])
                 );
             } catch (\Exception $e) {
                 Log::warning('[SubscriptionService] Failed to dispatch subscription.created webhook', [
                     'error' => $e->getMessage(),
                 ]);
             }
-        }
-    }
-
-    /**
-     * Send webhook notification when subscription is activated
-     * Sends subscription details to external API for further processing
-     *
-     * @param Subscription $subscription
-     * @return void
-     */
-    private function sendSubscriptionWebhook(Subscription $subscription): void
-    {
-        try {
-            // Load subscription with relationships
-            $subscription->load(['customer', 'pricePlan.product']);
-
-            // Get customer to check organization_id
-            $customer = $subscription->customer;
-
-            // Only send webhook if organization_id is 1
-            if ($customer->organization_id !== 1) {
-                return;
-            }
-            $base = config('app.webhook_base_url');
-
-            $url = $base ? rtrim($base, '/') : "https://{$customer->username}.shulesoft.africa/api";
-
-            $webhookUrl = $url . '/billing/subscriptionWebhook';
-
-
-            // Prepare subscription details payload
-            $payload = [
-                'subscription_id' => $subscription->id,
-                'customer_id' => $subscription->customer_id,
-                'customer_name' => $customer->name,
-                'customer_email' => $customer->email,
-                'price_plan_id' => $subscription->price_plan_id,
-                'price_plan_name' => $subscription->pricePlan->name,
-                'product_id' => $subscription->pricePlan->product_id,
-                'product_name' => $subscription->pricePlan->product->name,
-                'status' => $subscription->status,
-                'start_date' => $subscription->start_date,
-                'end_date' => $subscription->end_date,
-                'created_at' => $subscription->created_at,
-                'organization_id' => $customer->organization_id,
-            ];
-
-            // Send HTTP POST request to webhook endpoint
-            $response = Http::post($webhookUrl, $payload);
-
-            Log::info('Subscription webhook sent successfully', [
-                'subscription_id' => $subscription->id,
-                'customer_id' => $subscription->customer_id,
-                'webhook_url' => $webhookUrl,
-                'response_status' => $response->status(),
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to send subscription webhook', [
-                'subscription_id' => $subscription->id,
-                'customer_id' => $subscription->customer_id,
-                'error' => $e->getMessage(),
-            ]);
-            // Don't throw exception - webhook failure shouldn't break subscription activation
         }
     }
 
@@ -1486,7 +1466,7 @@ class SubscriptionService
             // Dispatch subscription.upgraded webhook
             try {
                 app(WebhookDispatchService::class)->dispatchSubscriptionUpgraded(
-                    $subscription->fresh(['customer.product', 'pricePlan']),
+                    $subscription->fresh(['customer', 'pricePlan.product']),
                     $oldPlan,
                     $newPlan
                 );
