@@ -127,7 +127,7 @@
                 <li><i class="bi bi-check-circle-fill"></i> Real-time webhooks & comprehensive logs</li>
             </ul>
         </div>
-        <div class="copyright">© {{ date('Y') }} SafariBank Africa Ltd. All rights reserved.</div>
+        <div class="copyright">© {{ date('Y') }} ShuleSoft Ltd. All rights reserved.</div>
     </div>
 
     <!-- Right form panel -->

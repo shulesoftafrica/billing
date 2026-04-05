@@ -144,7 +144,7 @@
             <li><i class="bi bi-check-circle-fill"></i> Secure KYC document workflow</li>
         </ul>
     </div>
-    <div class="copyright">© {{ date('Y') }} SafariBank Africa Ltd.</div>
+    <div class="copyright">© {{ date('Y') }} ShuleSoft Ltd.</div>
 </div>
 
 <div class="auth-right">
@@ -199,22 +199,12 @@
                     <select class="form-select @error('country_id') is-invalid @enderror" id="country_id" name="country_id" required>
                         <option value="">Select country</option>
                         @foreach($countries as $country)
-                            <option value="{{ $country->id }}" {{ old('country_id') == $country->id ? 'selected' : '' }}>{{ $country->name }}</option>
+                            <option value="{{ $country->id }}" {{ old('country_id') == $country->id ? 'selected' : '' }}>
+                                {{ $country->name }}
+                            </option>
                         @endforeach
                     </select>
                     @error('country_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                </div>
-
-                <div class="col-md-6">
-                    <label for="currency" class="form-label">Currency <span class="required-star">*</span></label>
-                    <select class="form-select @error('currency') is-invalid @enderror" id="currency" name="currency[]" multiple required style="height:108px;">
-                        @php $oldCurrencies = old('currency', []); @endphp
-                        @foreach($currencies as $currency)
-                            <option value="{{ $currency->code }}" {{ in_array($currency->code, $oldCurrencies) ? 'selected' : '' }}>{{ $currency->code }} — {{ $currency->name }}</option>
-                        @endforeach
-                    </select>
-                    <div class="form-text">Hold Ctrl/Cmd to select multiple currencies.</div>
-                    @error('currency')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
             </div>
 
@@ -240,12 +230,23 @@
                 All four documents are mandatory. Only PDF files are accepted (maximum 10MB each).
             </div>
 
+            @if($errors->any())
+            <div class="d-flex align-items-start gap-2 p-2 mb-3 rounded" style="background:#fffbeb;color:#92400e;font-size:.82rem;border:1px solid #fcd34d;">
+                <i class="bi bi-arrow-repeat flex-shrink-0 mt-1"></i>
+                <span>Your information above has been kept. Please <strong>re-select your PDF documents</strong> below — browsers do not retain uploaded files after a page reload.</span>
+            </div>
+            @endif
+
             <div class="document-row">
                 <div class="doc-label">1. TIN Certificate <span class="required-star">*</span></div>
                 <div class="doc-desc">Tax Identification Number certificate issued by TRA.</div>
                 <input type="hidden" name="document_names[]" value="TIN Certificate">
                 <input type="file" class="form-control @error('document_files.0') is-invalid @enderror" name="document_files[]" accept="application/pdf,.pdf" required>
-                @error('document_files.0')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                @error('document_files.0')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @else
+                    @if($errors->any())<div class="form-text text-warning-emphasis"><i class="bi bi-arrow-repeat me-1"></i>Please re-select this file.</div>@endif
+                @enderror
             </div>
 
             <div class="document-row">
@@ -253,7 +254,11 @@
                 <div class="doc-desc">Valid business license issued by the relevant authority.</div>
                 <input type="hidden" name="document_names[]" value="Business License">
                 <input type="file" class="form-control @error('document_files.1') is-invalid @enderror" name="document_files[]" accept="application/pdf,.pdf" required>
-                @error('document_files.1')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                @error('document_files.1')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @else
+                    @if($errors->any())<div class="form-text text-warning-emphasis"><i class="bi bi-arrow-repeat me-1"></i>Please re-select this file.</div>@endif
+                @enderror
             </div>
 
             <div class="document-row">
@@ -261,7 +266,11 @@
                 <div class="doc-desc">Certificate issued by BRELA.</div>
                 <input type="hidden" name="document_names[]" value="Certificate of Incorporation (BRELA)">
                 <input type="file" class="form-control @error('document_files.2') is-invalid @enderror" name="document_files[]" accept="application/pdf,.pdf" required>
-                @error('document_files.2')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                @error('document_files.2')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @else
+                    @if($errors->any())<div class="form-text text-warning-emphasis"><i class="bi bi-arrow-repeat me-1"></i>Please re-select this file.</div>@endif
+                @enderror
             </div>
 
             <div class="document-row">
@@ -269,7 +278,11 @@
                 <div class="doc-desc">Agreement proving physical operating location.</div>
                 <input type="hidden" name="document_names[]" value="Lease Agreement">
                 <input type="file" class="form-control @error('document_files.3') is-invalid @enderror" name="document_files[]" accept="application/pdf,.pdf" required>
-                @error('document_files.3')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                @error('document_files.3')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @else
+                    @if($errors->any())<div class="form-text text-warning-emphasis"><i class="bi bi-arrow-repeat me-1"></i>Please re-select this file.</div>@endif
+                @enderror
             </div>
 
             @error('document_files')
@@ -307,6 +320,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    // ─── Account type hint ───────────────────────────────────────────────────
     const accountType = document.getElementById('account_type');
     const hint = document.getElementById('accountTypeHint');
     const hints = {

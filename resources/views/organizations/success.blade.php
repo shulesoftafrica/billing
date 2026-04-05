@@ -152,7 +152,7 @@
             <li><i class="bi bi-check-circle-fill"></i> Developer/API onboarding ready</li>
         </ul>
     </div>
-    <div class="copyright">© {{ date('Y') }} SafariBank Africa Ltd.</div>
+    <div class="copyright">© {{ date('Y') }} ShuleSoft Ltd.</div>
 </div>
 
 <div class="auth-right">

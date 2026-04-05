@@ -73,7 +73,7 @@
                 <i class="bi bi-currency-dollar"></i> Earn 1% commission on float deposits
             </div>
         </div>
-        <div class="copyright">© {{ date('Y') }} SafariBank Africa Ltd.</div>
+        <div class="copyright">© {{ date('Y') }} ShuleSoft Ltd.</div>
     </div>
 
     <!-- Right panel -->

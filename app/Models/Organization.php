@@ -15,7 +15,9 @@ class Organization extends Model
         'tin_number',
         'registration_number',
         'currency',
+        'currency_id',
         'country_id',
+        'timezone',
         'status',
         'account_type',
     ];
