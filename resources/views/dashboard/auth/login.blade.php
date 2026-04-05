@@ -194,7 +194,7 @@
 
             <div class="mt-3 text-center" style="font-size:.83rem;color:#64748b;">
                 Don't have an account?
-                <a href="{{ route('dashboard.register') }}" style="color:var(--primary);font-weight:500;">Create one →</a>
+                <a href="{{ route('organizations.register') }}" style="color:var(--primary);font-weight:500;">Create one →</a>
             </div>
             <div class="mt-2 text-center" style="font-size:.8rem;color:#94a3b8;">
                 <a href="{{ route('landing') }}" style="color:#64748b;text-decoration:none;">
