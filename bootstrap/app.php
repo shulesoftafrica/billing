@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'app.access.token' => AppAccessTokenMiddleware::class,
             'auth.multi' => MultiAuthMiddleware::class,
             'organization.scope' => EnsureOrganizationScope::class,
+            'api.logger' => \App\Http\Middleware\ApiRequestLogger::class,
         ]);
         
         // Register CORS middleware for API routes

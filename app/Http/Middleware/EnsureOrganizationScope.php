@@ -27,6 +27,21 @@ class EnsureOrganizationScope
         }
 
         $user = $request->user();
+
+        if (($user->status ?? 'active') !== 'active') {
+            return response()->json([
+                'error' => 'Forbidden',
+                'message' => 'Your account is pending approval or inactive.',
+            ], 403);
+        }
+
+        if (!$user->organization || $user->organization->status !== 'active') {
+            return response()->json([
+                'error' => 'Forbidden',
+                'message' => 'Your organization is not active.',
+            ], 403);
+        }
+
         $userOrgId = $user->organization_id;
 
         // Check if organization_id exists in route parameters

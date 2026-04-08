@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -19,7 +22,9 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'organization_email' => 'required|email|exists:organizations,email',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+            'organization_link' => 'nullable|string|max:500',
+            'organization_email' => 'nullable|email|max:255',
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255',
             'password' => 'required|string|min:8|confirmed',
@@ -27,8 +32,19 @@ class AuthController extends Controller
             'sex' => 'nullable|string|in:male,female,other,m,f,o,M,F,O',
         ]);
 
-        // Find organization by email
-        $organization = \App\Models\Organization::where('email', $validated['organization_email'])->firstOrFail();
+        if (empty($validated['organization_id']) && empty($validated['organization_link']) && empty($validated['organization_email'])) {
+            return response()->json([
+                'message' => 'organization_id, organization_email or organization_link is required.',
+            ], 422);
+        }
+
+        $organization = $this->resolveOrganizationFromInput($validated);
+
+        if (!$organization) {
+            return response()->json([
+                'message' => 'Organization not found from provided organization_id/email/link.',
+            ], 404);
+        }
 
         // Ensure organization is active
         if ($organization->status !== 'active') {
@@ -55,36 +71,23 @@ class AuthController extends Controller
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'] ?? 'user',
             'sex' => strtoupper(substr($validated['sex'] ?? 'O', 0, 1)), // Convert to single uppercase char (M/F/O)
+            'status' => 'pending',
         ]);
 
-        // Get token expiration from config (30 days default for user tokens)
-        $expirationMinutes = config('sanctum.user_token_expiration', 43200);
-        $expiresAt = now()->addMinutes($expirationMinutes);
-
-        // Create token with expiration
-        $token = $user->createToken(
-            'auth_token',
-            ['*'],
-            $expiresAt
-        )->plainTextToken;
-
-        // Log IP and User Agent
-        $this->logTokenAudit($user, $request);
+        $this->sendDeveloperApprovalEmail($organization, $user);
 
         return response()->json([
-            'message' => 'User registered successfully',
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-            'expires_in' => $expirationMinutes * 60, // Convert to seconds
-            'expires_at' => $expiresAt->toIso8601String(),
+            'message' => 'Registration submitted. The organization has been emailed to verify this developer request.',
+            'status' => 'pending_organization_approval',
             'user' => [
                 'id' => $user->id,
                 'organization_id' => $user->organization_id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'status' => $user->status,
             ],
-        ], 201);
+        ], 202);
     }
 
     /**
@@ -106,6 +109,19 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
+        }
+
+        if (($user->status ?? 'active') !== 'active') {
+            return response()->json([
+                'message' => 'Account pending approval. Please ask your organization to verify your developer request.',
+            ], 403);
+        }
+
+        $user->loadMissing('organization');
+        if (!$user->organization || $user->organization->status !== 'active') {
+            return response()->json([
+                'message' => 'Organization is not active. Access denied.',
+            ], 403);
         }
 
         // Token Rotation: Revoke all previous tokens for security
@@ -137,8 +153,101 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'status' => $user->status,
             ],
         ], 200);
+    }
+
+    private function resolveOrganizationFromInput(array $validated): ?Organization
+    {
+        if (!empty($validated['organization_id'])) {
+            return Organization::where('id', (int) $validated['organization_id'])->first();
+        }
+
+        $candidate = $validated['organization_email'] ?? $validated['organization_link'] ?? null;
+        if (!$candidate) {
+            return null;
+        }
+
+        $candidate = trim($candidate);
+
+        if (filter_var($candidate, FILTER_VALIDATE_EMAIL)) {
+            return Organization::where('email', $candidate)->first();
+        }
+
+        if (is_numeric($candidate)) {
+            return Organization::where('id', (int) $candidate)->first();
+        }
+
+        if (filter_var($candidate, FILTER_VALIDATE_URL)) {
+            $parsed = parse_url($candidate);
+
+            $query = [];
+            parse_str($parsed['query'] ?? '', $query);
+
+            foreach (['organization_email', 'org_email', 'email', 'organization', 'org'] as $key) {
+                if (!empty($query[$key])) {
+                    $value = trim((string) $query[$key]);
+
+                    if (filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                        return Organization::where('email', $value)->first();
+                    }
+
+                    if (is_numeric($value)) {
+                        return Organization::where('id', (int) $value)->first();
+                    }
+                }
+            }
+
+            $path = trim($parsed['path'] ?? '', '/');
+            $segments = $path !== '' ? explode('/', $path) : [];
+
+            foreach (array_reverse($segments) as $segment) {
+                $segment = trim($segment);
+                if ($segment === '') {
+                    continue;
+                }
+
+                if (is_numeric($segment)) {
+                    $org = Organization::where('id', (int) $segment)->first();
+                    if ($org) {
+                        return $org;
+                    }
+                }
+
+                if (str_contains($segment, '%40')) {
+                    $decoded = urldecode($segment);
+                    if (filter_var($decoded, FILTER_VALIDATE_EMAIL)) {
+                        $org = Organization::where('email', $decoded)->first();
+                        if ($org) {
+                            return $org;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function sendDeveloperApprovalEmail(Organization $organization, User $developer): void
+    {
+        $verificationUrl = URL::temporarySignedRoute(
+            'dashboard.developer.verify',
+            now()->addHours(48),
+            ['user' => $developer->id]
+        );
+
+        Mail::send('emails.developer-approval-request', [
+            'organizationName' => $organization->name,
+            'developerName' => $developer->name,
+            'developerEmail' => $developer->email,
+            'requestedAt' => now()->format('d M Y H:i'),
+            'verificationUrl' => $verificationUrl,
+        ], function ($message) use ($organization, $developer) {
+            $message->to($organization->email)
+                ->subject('Developer Approval Request: ' . $developer->email);
+        });
     }
 
     /**
@@ -177,6 +286,11 @@ class AuthController extends Controller
             ], 401);
         }
 
+        $activeCheck = $this->validateActiveContext($request->user());
+        if ($activeCheck !== true) {
+            return $activeCheck;
+        }
+
         // Revoke all tokens
         $request->user()->tokens()->delete();
 
@@ -198,6 +312,11 @@ class AuthController extends Controller
                 'message' => 'No authenticated user context available.',
                 'user' => null,
             ], 401);
+        }
+
+        $activeCheck = $this->validateActiveContext($request->user());
+        if ($activeCheck !== true) {
+            return $activeCheck;
         }
 
         return response()->json([
@@ -241,6 +360,11 @@ class AuthController extends Controller
         ]);
 
         $user = $request->user();
+
+        $activeCheck = $this->validateActiveContext($user);
+        if ($activeCheck !== true) {
+            return $activeCheck;
+        }
         
         // Calculate expiration
         $expirationDays = $validated['expires_in_days'] ?? 30;
@@ -282,6 +406,11 @@ class AuthController extends Controller
     public function listTokens(Request $request)
     {
         $user = $request->user();
+
+        $activeCheck = $this->validateActiveContext($user);
+        if ($activeCheck !== true) {
+            return $activeCheck;
+        }
         
         $tokens = $user->tokens()->latest('created_at')->get()->map(function ($token) {
             return [
@@ -311,6 +440,11 @@ class AuthController extends Controller
     public function revokeToken(Request $request, int $id)
     {
         $user = $request->user();
+
+        $activeCheck = $this->validateActiveContext($user);
+        if ($activeCheck !== true) {
+            return $activeCheck;
+        }
         
         $token = $user->tokens()->where('id', $id)->first();
 
@@ -329,5 +463,29 @@ class AuthController extends Controller
             'message' => 'Token revoked successfully',
             'token_name' => $tokenName,
         ], 200);
+    }
+
+    private function validateActiveContext(?User $user)
+    {
+        if (!$user) {
+            return response()->json([
+                'message' => 'No authenticated user context available.',
+            ], 401);
+        }
+
+        if (($user->status ?? 'active') !== 'active') {
+            return response()->json([
+                'message' => 'Account pending approval or inactive.',
+            ], 403);
+        }
+
+        $user->loadMissing('organization');
+        if (!$user->organization || $user->organization->status !== 'active') {
+            return response()->json([
+                'message' => 'Organization is not active.',
+            ], 403);
+        }
+
+        return true;
     }
 }
