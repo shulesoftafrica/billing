@@ -202,10 +202,8 @@ class InvoiceController extends Controller
 
             // Step 2: Check if customer exists in the organization by phone or email
             $customer = Customer::where('organization_id', $organizationId)
-                ->where(function ($query) use ($customerData) {
-                    $query->where('email', $customerData['email'])
-                        ->orWhere('phone', $customerData['phone']);
-                })
+                ->where('email', $customerData['email'])
+                ->where('phone', $customerData['phone'])
                 ->first();
 
             // If customer doesn't exist, create a new one
