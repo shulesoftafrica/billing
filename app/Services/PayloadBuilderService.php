@@ -15,7 +15,7 @@ class PayloadBuilderService
      */
     public function buildPaymentSuccessPayload(Payment $payment): array
     {
-        $invoice = $payment->invoice()
+        $invoice = $payment->invoices()
             ->with(['customer.organization', 'invoiceItems.pricePlan.product.organization', 'controlNumbers'])
             ->first();
 
