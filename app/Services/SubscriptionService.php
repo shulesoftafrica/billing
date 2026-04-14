@@ -397,7 +397,7 @@ class SubscriptionService
     {
         return DB::transaction(function () use ($subscriptionId) {
             $subscription = Subscription::lockForUpdate()->find($subscriptionId);
-            
+
             if (!$subscription) {
                 throw new \Exception('Subscription not found');
             }
@@ -423,9 +423,9 @@ class SubscriptionService
                         $payment = Payment::find($invoicePayment->payment_id);
                         if ($payment && $payment->amount == $invoicePayment->amount) {
                             $payment->update(['status' => 'pending']);
-                        }else{
+                        } else {
                             // recognize it as advance payment
-                             AdvancePayment::create([
+                            AdvancePayment::create([
                                 'payment_id' => $payment->id,
                                 'customer_id' =>  $subscription->customer_id,
                                 'product_id' => $subscription->pricePlan->product_id,
@@ -499,15 +499,16 @@ class SubscriptionService
             // Step 5: Check the total payments against the invoiced amount
             $totalPaid = InvoicePayment::where('invoice_id', $invoice_id)->sum('amount');
             $balance = $invoicedAmount - $totalPaid;
-             Log:info('Calculating total payments for subscription enablement', [
+            Log:
+            info('Calculating total payments for subscription enablement', [
                 'customer_id' => $customerId,
                 'product_id' => $productId,
                 'pending_payments_sum' => $pendingPaymentsSum,
                 'advance_payments_sum' => $advancePaymentsSum,
                 'total_payments' => $totalPayments,
                 'invoiced_amount' => $invoicedAmount,
-                'balance'=>$balance,
-                'payment'=>$payment
+                'balance' => $balance,
+                'payment' => $payment
             ]);
             // Now use $balance as the invoiced amount
             // Step 6: Compare and execute logic
@@ -764,10 +765,11 @@ class SubscriptionService
             // Step 3: Find all invoice_items where price_plan_id matches
             $priceplanIds = $pricePlans->pluck('id')->toArray();
             $invoiceItems = InvoiceItem::whereIn('price_plan_id', $priceplanIds)
-                ->whereNotIn('invoice_id', function ($query) {
+                ->whereIn('invoice_id', function ($query) use ($customerId) {
                     $query->select('id')
                         ->from('invoices')
-                        ->where('status', '=', 'cancelled');
+                        ->where('customer_id', $customerId)
+                        ->where('status', '!=', 'cancelled');
                 })
                 ->get();
 
@@ -899,11 +901,13 @@ class SubscriptionService
                     // Dispatch credits.purchased webhook for wallet products
                     if ($product->product_type_id == 3) {
                         $walletPlan = $invoice->invoiceItems
-                            ->first(fn ($i) => $i->pricePlan?->product_id == $productId)
+                            ->first(fn($i) => $i->pricePlan?->product_id == $productId)
                             ?->pricePlan;
                         if ($walletPlan) {
                             app(WebhookDispatchService::class)->dispatchCreditsPurchased(
-                                $invoice, $walletPlan, $pendingPayments->first()
+                                $invoice,
+                                $walletPlan,
+                                $pendingPayments->first()
                             );
                         }
                     }
@@ -972,11 +976,13 @@ class SubscriptionService
                     // Dispatch credits.purchased webhook for wallet products (overpaid → fully cleared)
                     if ($product->product_type_id == 3) {
                         $walletPlan = $invoice->invoiceItems
-                            ->first(fn ($i) => $i->pricePlan?->product_id == $productId)
+                            ->first(fn($i) => $i->pricePlan?->product_id == $productId)
                             ?->pricePlan;
                         if ($walletPlan) {
                             app(WebhookDispatchService::class)->dispatchCreditsPurchased(
-                                $invoice, $walletPlan, $pendingPayments->first()
+                                $invoice,
+                                $walletPlan,
+                                $pendingPayments->first()
                             );
                         }
                     }
@@ -1267,41 +1273,41 @@ class SubscriptionService
     public function calculateUpgradeProration(Subscription $subscription, PricePlan $newPlan): array
     {
         $organizationTz = $subscription->customer->organization->timezone ?? 'UTC';
-        
+
         // Get billing cycle dates
         $billingCycleStart = Carbon::parse($subscription->current_period_start ?? $subscription->start_date, $organizationTz);
         $billingCycleEnd = Carbon::parse($subscription->current_period_end ?? $subscription->next_billing_date, $organizationTz);
         $upgradeDate = Carbon::now($organizationTz);
-        
+
         // Calculate days
         $billingCycleLength = $billingCycleStart->diffInDays($billingCycleEnd);
         $daysUsed = $billingCycleStart->diffInDays($upgradeDate);
         $daysRemaining = $billingCycleLength - $daysUsed;
-        
+
         // Handle edge cases
         if ($daysRemaining <= 0) {
             $daysRemaining = 1; // At least charge for 1 day
         }
-        
+
         if ($billingCycleLength <= 0) {
             throw new \Exception('Invalid billing cycle dates');
         }
-        
+
         // Get current plan
         $oldPlan = $subscription->pricePlan;
-        
+
         // Calculate daily rates
         $oldPlanDailyRate = $oldPlan->amount / $billingCycleLength;
         $newPlanDailyRate = $newPlan->amount / $billingCycleLength;
-        
+
         // Calculate proration
         $unusedCredit = $oldPlanDailyRate * $daysRemaining;
         $newPlanCharge = $newPlanDailyRate * $daysRemaining;
         $amountToCharge = $newPlanCharge - $unusedCredit;
-        
+
         // Ensure non-negative amount (shouldn't happen in upgrades, but safety check)
         $amountToCharge = max(0, $amountToCharge);
-        
+
         return [
             'amount_to_charge' => round($amountToCharge, 2),
             'old_plan_daily_rate' => round($oldPlanDailyRate, 2),
@@ -1333,39 +1339,39 @@ class SubscriptionService
     public function calculateDowngradeCredit(Subscription $subscription, PricePlan $newPlan): array
     {
         $organizationTz = $subscription->customer->organization->timezone ?? 'UTC';
-        
+
         // Get billing cycle dates
         $billingCycleStart = Carbon::parse($subscription->current_period_start ?? $subscription->start_date, $organizationTz);
         $billingCycleEnd = Carbon::parse($subscription->current_period_end ?? $subscription->next_billing_date, $organizationTz);
         $downgradeDate = Carbon::now($organizationTz);
-        
+
         // Calculate days
         $billingCycleLength = $billingCycleStart->diffInDays($billingCycleEnd);
         $daysUsed = $billingCycleStart->diffInDays($downgradeDate);
         $daysRemaining = $billingCycleLength - $daysUsed;
-        
+
         if ($daysRemaining <= 0) {
             return [
                 'credit_amount' => 0,
                 'message' => 'No credit available - billing cycle ending',
             ];
         }
-        
+
         // Get current plan
         $oldPlan = $subscription->pricePlan;
-        
+
         // Calculate daily rates
         $oldPlanDailyRate = $oldPlan->amount / $billingCycleLength;
         $newPlanDailyRate = $newPlan->amount / $billingCycleLength;
-        
+
         // Calculate credit (unused value from higher plan minus lower plan cost)
         $unusedValue = $oldPlanDailyRate * $daysRemaining;
         $newPlanCost = $newPlanDailyRate * $daysRemaining;
         $creditAmount = $unusedValue - $newPlanCost;
-        
+
         // Ensure non-negative credit
         $creditAmount = max(0, $creditAmount);
-        
+
         return [
             'credit_amount' => round($creditAmount, 2),
             'unused_value' => round($unusedValue, 2),
@@ -1403,7 +1409,7 @@ class SubscriptionService
             $subscription = Subscription::with(['customer', 'pricePlan'])
                 ->lockForUpdate()
                 ->findOrFail($subscriptionId);
-            
+
             // If subscription is not active, create a new subscription instead of upgrading
             if ($subscription->status !== 'active') {
                 Log::info('Subscription not active, creating new subscription instead of upgrading', [
@@ -1411,50 +1417,50 @@ class SubscriptionService
                     'current_status' => $subscription->status,
                     'new_price_plan_id' => $newPricePlanId,
                 ]);
-                
+
                 // Cancel the old subscription if it's pending or in trial
                 if (in_array($subscription->status, ['pending', 'trial', 'trialing'])) {
                     $subscription->update(['status' => 'cancelled']);
                 }
-                
+
                 // Create new subscription with the desired plan
                 $invoice = $this->createSubscriptionsWithInvoice(
                     $subscription->customer_id,
                     [$newPricePlanId]
                 );
-                
+
                 return $invoice;
             }
-            
+
             // Get new price plan
             $newPlan = PricePlan::where('id', $newPricePlanId)
                 ->firstOrFail();
-            
+
             $oldPlan = $subscription->pricePlan;
-            
+
             // Validate it's an upgrade (higher price)
             if ($newPlan->amount <= $oldPlan->amount) {
                 throw new \Exception('New plan must have a higher price than current plan. Use downgrade endpoint for lower-tier plans.');
             }
-            
+
             // Validate same product
             if ($newPlan->product_id !== $oldPlan->product_id) {
                 throw new \Exception('Cannot upgrade to a plan from a different product');
             }
-            
+
             // Calculate proration
             $prorationDetails = $this->calculateUpgradeProration($subscription, $newPlan);
-            
+
             // Create upgrade invoice
             $invoice = $this->createUpgradeInvoice($subscription, $newPlan, $prorationDetails, $gatewayConfig);
-            
+
             // Update subscription with new plan
             $subscription->update([
                 'previous_plan_id' => $oldPlan->id,
                 'price_plan_id' => $newPlan->id,
                 'last_upgrade_proration' => $prorationDetails['amount_to_charge'],
             ]);
-            
+
             Log::info('Subscription upgraded successfully', [
                 'subscription_id' => $subscription->id,
                 'old_plan_id' => $oldPlan->id,
@@ -1475,7 +1481,7 @@ class SubscriptionService
                     'error' => $e->getMessage(),
                 ]);
             }
-            
+
             return $invoice->load(['invoiceItems.pricePlan', 'customer']);
         });
     }
@@ -1496,7 +1502,7 @@ class SubscriptionService
             $subscription = Subscription::with(['customer', 'pricePlan'])
                 ->lockForUpdate()
                 ->findOrFail($subscriptionId);
-            
+
             // If subscription is not active, create a new subscription instead of downgrading
             if ($subscription->status !== 'active') {
                 Log::info('Subscription not active, creating new subscription instead of downgrading', [
@@ -1504,25 +1510,25 @@ class SubscriptionService
                     'current_status' => $subscription->status,
                     'new_price_plan_id' => $newPricePlanId,
                 ]);
-                
+
                 // Cancel the old subscription if it's pending or in trial
                 if (in_array($subscription->status, ['pending', 'trial', 'trialing'])) {
                     $subscription->update(['status' => 'cancelled']);
                 }
-                
+
                 // Create new subscription with the desired plan
                 $invoice = $this->createSubscriptionsWithInvoice(
                     $subscription->customer_id,
                     [$newPricePlanId]
                 );
-                
+
                 // Get the newly created subscription
                 $newSubscription = Subscription::where('customer_id', $subscription->customer_id)
                     ->where('price_plan_id', $newPricePlanId)
                     ->where('status', 'pending')
                     ->latest()
                     ->first();
-                
+
                 return [
                     'success' => true,
                     'subscription' => $newSubscription->load(['customer', 'pricePlan']),
@@ -1537,32 +1543,32 @@ class SubscriptionService
                     'message' => 'New subscription created with selected plan',
                 ];
             }
-            
+
             // Get new price plan
             $newPlan = PricePlan::where('id', $newPricePlanId)
                 ->firstOrFail();
-            
+
             $oldPlan = $subscription->pricePlan;
-            
+
             // Validate it's a downgrade (lower price)
             if ($newPlan->amount >= $oldPlan->amount) {
                 throw new \Exception('New plan must have a lower price than current plan. Use upgrade endpoint for higher-tier plans.');
             }
-            
+
             // Validate same product
             if ($newPlan->product_id !== $oldPlan->product_id) {
                 throw new \Exception('Cannot downgrade to a plan from a different product');
             }
-            
+
             // Calculate credit
             $creditDetails = $this->calculateDowngradeCredit($subscription, $newPlan);
-            
+
             // Update subscription with new plan
             $subscription->update([
                 'previous_plan_id' => $oldPlan->id,
                 'price_plan_id' => $newPlan->id,
             ]);
-            
+
             // Apply credit to customer wallet if requested
             $creditApplied = false;
             if ($applyCredit && $creditDetails['credit_amount'] > 0) {
@@ -1574,11 +1580,11 @@ class SubscriptionService
                     'credit_amount' => $creditDetails['credit_amount'],
                 ]);
                 $creditApplied = true;
-                
+
                 // TODO: Integrate with ProductUsageController to credit wallet
                 // $this->productUsageService->credit($subscription->customer_id, $creditDetails['credit_amount']);
             }
-            
+
             Log::info('Subscription downgraded successfully', [
                 'subscription_id' => $subscription->id,
                 'old_plan_id' => $oldPlan->id,
@@ -1586,7 +1592,7 @@ class SubscriptionService
                 'credit_amount' => $creditDetails['credit_amount'],
                 'credit_applied' => $creditApplied,
             ]);
-            
+
             return [
                 'success' => true,
                 'subscription' => $subscription->load(['customer', 'pricePlan']),
@@ -1613,10 +1619,10 @@ class SubscriptionService
         array $gatewayConfig
     ): Invoice {
         $customer = $subscription->customer;
-        
+
         // Generate invoice number
         $invoiceNumber = 'INV-' . date('Y') . '-' . str_pad(Invoice::count() + 1, 6, '0', STR_PAD_LEFT);
-        
+
         // Create invoice
         $invoice = Invoice::create([
             'customer_id' => $customer->id,
@@ -1640,7 +1646,7 @@ class SubscriptionService
             ]),
             'issued_at' => now(),
         ]);
-        
+
         // Create invoice item
         InvoiceItem::create([
             'invoice_id' => $invoice->id,
@@ -1650,7 +1656,7 @@ class SubscriptionService
             'unit_price' => $prorationDetails['amount_to_charge'],
             'total' => $prorationDetails['amount_to_charge'],
         ]);
-        
+
         return $invoice;
     }
 }
