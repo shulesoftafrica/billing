@@ -339,6 +339,43 @@ class SubscriptionService
     }
 
     /**
+     * Determine activation start date for a subscription.
+     * If there is an active subscription for the same customer/product with a future end date,
+     * use that end date so renewals continue after the current period.
+     *
+     * @param int $customerId
+     * @param int $productId
+     * @param int|null $excludeSubscriptionId
+     * @return Carbon
+     */
+    private function resolveSubscriptionStartDate(int $customerId, int $productId, ?int $excludeSubscriptionId = null): Carbon
+    {
+        $today = Carbon::now()->toDateString();
+
+        $activeSubscriptionQuery = Subscription::where('customer_id', $customerId)
+            ->where('status', 'active')
+            ->whereNotNull('end_date')
+            ->whereDate('end_date', '>=', $today)
+            ->whereHas('pricePlan', function ($query) use ($productId) {
+                $query->where('product_id', $productId);
+            })
+            ->orderByDesc('end_date')
+            ->lockForUpdate();
+
+        if ($excludeSubscriptionId) {
+            $activeSubscriptionQuery->where('id', '!=', $excludeSubscriptionId);
+        }
+
+        $activeSubscription = $activeSubscriptionQuery->first();
+
+        if ($activeSubscription) {
+            return Carbon::parse($activeSubscription->end_date);
+        }
+
+        return Carbon::now();
+    }
+
+    /**
      * Get all subscriptions with optional filtering
      *
      * @param array $filters
@@ -514,7 +551,11 @@ class SubscriptionService
             // Step 6: Compare and execute logic
             if ($totalPayments == $balance) {
                 // Equal: Activate subscription and clear all payments
-                $startDate = Carbon::now();
+                $startDate = $this->resolveSubscriptionStartDate(
+                    $customerId,
+                    $productId,
+                    $subscription->id
+                );
                 $endDate = $this->calculateEndDate($startDate, $subscription->pricePlan);
 
                 $subscription->update([
@@ -585,7 +626,11 @@ class SubscriptionService
                 return true;
             } elseif ($totalPayments > $balance) {
                 // Greater: Activate subscription and handle excess
-                $startDate = Carbon::now();
+                $startDate = $this->resolveSubscriptionStartDate(
+                    $customerId,
+                    $productId,
+                    $subscription->id
+                );
                 $endDate = $this->calculateEndDate($startDate, $subscription->pricePlan);
 
                 $subscription->update([
@@ -1297,14 +1342,16 @@ class SubscriptionService
         // Create product purchase for excess amount
         $quantity = $amount / $rate;
         if ($quantity >= 1) {
+            $startDate = $this->resolveSubscriptionStartDate($customerId, $productId);
+            $endDate = $this->calculateEndDate($startDate, $pricePlan);
 
             // Create new subscription
             $newSubscription = Subscription::create([
                 'customer_id' => $customerId,
                 'price_plan_id' => $pricePlan->id,
                 'status' => 'active',
-                'start_date' => null,
-                'end_date' => null,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
                 'next_billing_date' => null,
             ]);
 
