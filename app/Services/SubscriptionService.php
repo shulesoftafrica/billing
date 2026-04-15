@@ -1071,6 +1071,105 @@ class SubscriptionService
             }
 
             if (!$targetInvoice) {
+                if (!$payment) {
+                    return true;
+                }
+
+                $lastInvoiceItem = InvoiceItem::with('pricePlan')
+                    ->whereHas('invoice', function ($query) use ($customerId) {
+                        $query->where('customer_id', $customerId)
+                            ->where('status', '!=', 'cancelled');
+                    })
+                    ->whereHas('pricePlan', function ($query) use ($productId) {
+                        $query->where('product_id', $productId);
+                    })
+                    ->orderByDesc('id')
+                    ->first();
+
+                $pricePlan = $lastInvoiceItem?->pricePlan;
+
+                if (!$pricePlan) {
+                    $pricePlan = PricePlan::where('product_id', $productId)
+                        ->orderBy('id')
+                        ->first();
+                }
+
+                if (!$pricePlan) {
+                    Log::warning('[SubscriptionService] createProductPurchase: No price plan found', [
+                        'customer_id' => $customerId,
+                        'product_id' => $productId,
+                        'payment_id' => $payment->id,
+                    ]);
+                    return true;
+                }
+
+                $pendingPayments = Payment::where('customer_id', $customerId)
+                    ->where('status', 'pending')
+                    ->whereIn('payment_reference', ControlNumber::where('customer_id', $customerId)->where('product_id', $productId)->get()->pluck('reference'))
+                    ->where('id', '!=', $payment->id)
+                    ->get();
+
+                $pendingPaymentsSum = $pendingPayments->sum('amount');
+                $currentPaymentAmount = (float) $payment->amount;
+                $totalPaidAmount = (float) $pendingPaymentsSum + $currentPaymentAmount;
+                $rate = $pricePlan->rate ?? 1;
+                if ((float) $rate <= 0) {
+                    $rate = 1;
+                }
+                $quantity = $totalPaidAmount / $rate;
+
+                $invoice = Invoice::create([
+                    'customer_id' => $customerId,
+                    'invoice_number' => $this->generateInvoiceNumber(),
+                    'currency' => strtoupper((string) ($pricePlan->currency ?? 'TZS')),
+                    'status' => 'issued',
+                    'description' => 'Auto-generated usage/wallet invoice from received payment',
+                    'subtotal' => $totalPaidAmount,
+                    'tax_total' => 0,
+                    'total' => $totalPaidAmount,
+                    'due_date' => Carbon::now()->toDateString(),
+                    'issued_at' => Carbon::now(),
+                ]);
+
+                InvoiceItem::create([
+                    'invoice_id' => $invoice->id,
+                    'price_plan_id' => $pricePlan->id,
+                    'quantity' => 1,
+                    'unit_price' => $totalPaidAmount,
+                    'total' => $totalPaidAmount,
+                ]);
+
+                ProductPurchase::create([
+                    'product_id' => $productId,
+                    'customer_id' => $customerId,
+                    'quantity' => $quantity,
+                ]);
+
+                InvoicePayment::create([
+                    'invoice_id' => $invoice->id,
+                    'payment_id' => $payment->id,
+                    'amount' => $payment->amount,
+                ]);
+                $payment->update(['status' => 'cleared']);
+
+                $pendingPayments->each(function ($p) use ($invoice) {
+                    InvoicePayment::create([
+                        'invoice_id' => $invoice->id,
+                        'payment_id' => $p->id,
+                        'amount' => $p->amount,
+                    ]);
+                    $p->update(['status' => 'cleared']);
+                });
+
+                Log::info('Auto-created invoice and purchase for usage/wallet payment', [
+                    'invoice_id' => $invoice->id,
+                    'product_id' => $productId,
+                    'customer_id' => $customerId,
+                    'payment_id' => $payment->id,
+                    'total_paid_amount' => $totalPaidAmount,
+                    'quantity' => $quantity,
+                ]);
+
                 return true;
             }
 
