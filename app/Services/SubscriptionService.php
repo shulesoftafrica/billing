@@ -411,11 +411,15 @@ class SubscriptionService
      * @param string|null $status
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    public function getCustomerSubscriptions(int $customerId, ?string $status = null)
+    public function getCustomerSubscriptions(int $customerId, ?string $status = null, $productId = null)
     {
-        $query = Subscription::with(['pricePlan.product'])
+        $query = Subscription::with(['pricePlan.product', 'invoice_item.invoice'])
             ->where('customer_id', $customerId);
-
+        if ($productId) {
+            $query->whereHas('pricePlan', function ($q) use ($productId) {
+                $q->where('product_id', $productId);
+            });
+        }
         if ($status) {
             $query->where('status', $status);
         }

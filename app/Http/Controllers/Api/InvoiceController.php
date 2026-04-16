@@ -182,6 +182,7 @@ class InvoiceController extends Controller
         }
 
         try {
+            $grandTotal = 0; // initialize grand total variable to calculate total invoice amount including taxes
             DB::beginTransaction();
 
             $organizationId = $request->organization_id;
@@ -242,7 +243,7 @@ class InvoiceController extends Controller
                 if ($product->product_type_id != 1 && $product->product_type_id != 3) {
                     // Check if ANY subscription already exists with pending status for this product
                     $existingSubscription = Subscription::where('customer_id', $customer->id)
-                        ->whereHas('pricePlan', function($q) use ($product) {
+                        ->whereHas('pricePlan', function ($q) use ($product) {
                             $q->where('product_id', $product->id);
                         })
                         ->where('status', 'pending')
@@ -257,7 +258,7 @@ class InvoiceController extends Controller
                                 ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
                                 ->where('status', '!=', 'cancelled')
                                 ->first();
-                            
+
                             if ($existingInvoice) {
                                 $existingInvoiceToReturn = $existingInvoice;
                                 // Log only for subscription products, not for wallets
@@ -278,21 +279,21 @@ class InvoiceController extends Controller
                                 'new_price_plan_id' => $pricePlan->id,
                                 'subscription_id' => $existingSubscription->id
                             ]);
-                            
+
                             // Cancel the old subscription
                             $existingSubscription->update(['status' => 'cancelled']);
-                            
+
                             // Cancel the old invoice if it exists
                             $oldInvoice = Invoice::where('customer_id', $customer->id)
                                 ->whereIn('id', InvoiceItem::where('subscription_id', $existingSubscription->id)->pluck('invoice_id'))
                                 ->where('status', '!=', 'cancelled')
                                 ->first();
-                            
+
                             if ($oldInvoice) {
                                 $oldInvoice->update(['status' => 'cancelled']);
                                 Log::info('Cancelled old invoice', ['invoice_id' => $oldInvoice->id]);
                             }
-                            
+
                             // Create new subscription for the new plan
                             $subscription = Subscription::create([
                                 'customer_id' => $customer->id,
@@ -381,16 +382,16 @@ class InvoiceController extends Controller
                     'customer_id' => $customer->id,
                     'existing_invoice_id' => $existingInvoiceToReturn?->id ?? null
                 ]);
-                
+
                 $existingInvoiceToReturn = null;
-                
+
                 // Rebuild invoice items for wallet products even if they were skipped
                 if (empty($invoiceItems)) {
                     $totalAmount = 0;
                     foreach ($productsData as $productData) {
                         $pricePlan = PricePlan::with('product')->findOrFail($productData['price_plan_id']);
                         $product = $pricePlan->product;
-                        
+
                         if ($product->product_type_id == 3) {
                             $invoiceItems[] = [
                                 'price_plan_id' => $pricePlan->id,
@@ -478,21 +479,22 @@ class InvoiceController extends Controller
             }
 
             $gatewayJobs = [];
+            if ($grandTotal > 0) {
+                foreach ($products as $product) {
+                    foreach ($organizationGateways as $orgGateway) {
+                        $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
 
-            foreach ($products as $product) {
-                foreach ($organizationGateways as $orgGateway) {
-                    $gatewayName = strtolower(trim((string) $orgGateway->paymentGateway->name));
-
-                    if (
-                        $gatewayName === 'universal control number'
-                        || $gatewayName === 'flutterwave'
-                        || $gatewayName === 'stripe'
-                    ) {
-                        $gatewayJobs[] = [
-                            'product_id' => $product->id,
-                            'organization_gateway_id' => $orgGateway->id,
-                            'gateway_name' => $gatewayName,
-                        ];
+                        if (
+                            $gatewayName === 'universal control number'
+                            || $gatewayName === 'flutterwave'
+                            || $gatewayName === 'stripe'
+                        ) {
+                            $gatewayJobs[] = [
+                                'product_id' => $product->id,
+                                'organization_gateway_id' => $orgGateway->id,
+                                'gateway_name' => $gatewayName,
+                            ];
+                        }
                     }
                 }
             }
@@ -848,7 +850,7 @@ class InvoiceController extends Controller
         })->values()->all();
     }
 
-    private function buildControlNumbersMap($invoices): array
+    public function buildControlNumbersMap($invoices): array
     {
         $invoiceCollection = collect($invoices);
 
@@ -1097,7 +1099,7 @@ class InvoiceController extends Controller
     /**
      * Format invoice response for detail view
      */
-    private function formatInvoiceDetailResponse($invoice, array $controlNumbersMap = [])
+    public function formatInvoiceDetailResponse($invoice, array $controlNumbersMap = [], $includePaymentGateways = true, $includeSubscriptions = true, $includePricePlans = true)
     {
         $grandTotal = $invoice->total;
         $paid = $invoice->payments->sum('pivot.amount');
@@ -1118,11 +1120,11 @@ class InvoiceController extends Controller
 
         // Build price_plans data first to extract control numbers
         $pricePlansData = $invoice->invoiceItems
-                ->filter(function ($item) {
-                    // Skip items with null pricePlan or null product
-                    return $item->pricePlan !== null && $item->pricePlan->product !== null;
-                })
-                ->map(function ($item) use ($invoice, $controlNumbersMap) {
+            ->filter(function ($item) {
+                // Skip items with null pricePlan or null product
+                return $item->pricePlan !== null && $item->pricePlan->product !== null;
+            })
+            ->map(function ($item) use ($invoice, $controlNumbersMap) {
                 $product = $item->pricePlan->product;
                 $customerId = $invoice->customer->id;
                 $mapKey = $this->controlNumbersMapKey($customerId, $product->id);
@@ -1210,12 +1212,12 @@ class InvoiceController extends Controller
             'issued_at' => $invoice->issued_at,
             'created_at' => $invoice->created_at,
             'updated_at' => $invoice->updated_at,
-            
+
             // Backward compatibility fields for external applications
-            'ucn' => $primaryUcn,
-            'control_number' => $primaryUcn,
-            'control_numbers' => $allControlNumbers,
-            
+            ...($includePaymentGateways ? ['ucn' => $primaryUcn] : []),
+            ...($includePaymentGateways ? ['control_number' => $primaryUcn] : []),
+            ...($includePaymentGateways ? ['control_numbers' => $allControlNumbers] : []),
+
             'customer' => [
                 'id' => $invoice->customer->id,
                 'name' => $invoice->customer->name,
@@ -1224,11 +1226,11 @@ class InvoiceController extends Controller
                 'organization_id' => $invoice->customer->organization_id,
             ],
 
-            'price_plans' => $pricePlansData->toArray(),
-            'subscriptions' => $invoice->invoiceItems
+            ...($includePricePlans ? ['price_plans' => $pricePlansData->toArray()] : []),
+            ...($includeSubscriptions ? ['subscriptions' => $invoice->invoiceItems
                 ->filter(function ($item) {
                     // Skip items without subscription, pricePlan, or product
-                    return $item->subscription !== null 
+                    return $item->subscription !== null
                         && $item->subscription->pricePlan !== null
                         && $item->subscription->pricePlan->product !== null;
                 })
@@ -1252,7 +1254,8 @@ class InvoiceController extends Controller
                     ];
                 })
                 ->unique('id')
-                ->values(),
+                ->values()] : []),
+
         ];
     }
 
@@ -1672,7 +1675,7 @@ class InvoiceController extends Controller
                 // Convert TZS to USD (approximate rate: 1 USD = 2,550 TZS)
                 $amountForStripe = round($originalAmount / 2550, 2);
                 $stripeCurrency = 'usd';
-                
+
                 Log::info('Converting TZS to USD for Stripe', [
                     'invoice_id' => $invoice->id,
                     'original_amount' => $originalAmount,

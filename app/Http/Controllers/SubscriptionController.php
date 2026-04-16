@@ -51,7 +51,7 @@ class SubscriptionController extends Controller
         try {
             // Remove duplicate plan IDs
             $planIds = array_unique($request->input('plan_ids'));
-            
+
             $invoice = $this->subscriptionService->createSubscriptionsWithInvoice(
                 $request->input('customer_id'),
                 $planIds
@@ -174,7 +174,7 @@ class SubscriptionController extends Controller
                         ];
                     })->values(),
                 'control_numbers' => $controlNumbersMap,
-                'payment_message' => count($controlNumbersMap) > 0 
+                'payment_message' => count($controlNumbersMap) > 0
                     ? 'Control numbers and payment links are being generated. You will receive them shortly.'
                     : 'Payment gateway is not configured for this organization.',
             ];
@@ -310,13 +310,21 @@ class SubscriptionController extends Controller
     public function getCustomerSubscriptions(int $customerId, Request $request): JsonResponse
     {
         try {
+            Log::info('requst', $request->all());
             $status = $request->input('status');
+            $product_id = $request->input('product_id');
+            Log::info("Fetching subscriptions for customer_id: $customerId with status: $status and product_id: $product_id");
 
-            $subscriptions = $this->subscriptionService->getCustomerSubscriptions($customerId, $status);
+            $subscriptions = $this->subscriptionService->getCustomerSubscriptions($customerId, $status, $product_id);
 
             return response()->json([
                 'success' => true,
                 'data' => $subscriptions->map(function ($subscription) {
+                    $invoiceItem = $subscription->invoice_item;
+                    $invoice = $invoiceItem?->invoice;
+                    $invoiceController = app(InvoiceController::class);
+                     $controlNumbersMap = $invoiceController->buildControlNumbersMap(collect([$invoice]));
+                    $formatedInvoice = $invoiceController->formatInvoiceDetailResponse($invoice, $controlNumbersMap, false, false, true);
                     return [
                         'id' => $subscription->id,
                         'status' => $subscription->status,
@@ -327,13 +335,14 @@ class SubscriptionController extends Controller
                         'price_plan' => [
                             'id' => $subscription->pricePlan->id,
                             'name' => $subscription->pricePlan->name,
-                            'amount' => $subscription->invoice_item->total, // Use total from invoice item for accurate amount
+                            'amount' => $invoiceItem?->total ?? $subscription->pricePlan->amount,
                             'billing_interval' => $subscription->pricePlan->billing_interval,
                             'product' => [
                                 'id' => $subscription->pricePlan->product->id,
                                 'name' => $subscription->pricePlan->product->name,
                             ],
                         ],
+                        'invoice' => $formatedInvoice ? $formatedInvoice : null,
                     ];
                 }),
             ], 200);
@@ -391,9 +400,9 @@ class SubscriptionController extends Controller
     {
         try {
             $subscription = \App\Models\Subscription::with([
-                'customer', 
-                'pricePlan.product', 
-                'invoices' => function($query) {
+                'customer',
+                'pricePlan.product',
+                'invoices' => function ($query) {
                     $query->orderBy('created_at', 'desc')->take(5);
                 }
             ])->findOrFail($id);
@@ -449,7 +458,6 @@ class SubscriptionController extends Controller
                     }),
                 ],
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
