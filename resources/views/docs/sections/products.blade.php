@@ -1,5 +1,5 @@
 <section class="api-section" id="products-section">
-    <h2>📦 Products</h2>
+    <h2>Products</h2>
     <p>Manage your product catalog including subscriptions, one-time products, and usage-based services.</p>
 
     {{-- List All Products --}}

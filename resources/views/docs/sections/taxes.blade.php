@@ -1,5 +1,5 @@
 <section class="api-section" id="taxes-section">
-    <h2>📊 Tax Rates</h2>
+    <h2>Tax Rates</h2>
     <p>Manage tax rates for different products and regions.</p>
 
     <x-docs.endpoint

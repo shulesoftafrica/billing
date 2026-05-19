@@ -6,15 +6,15 @@
         {{-- Authentication Section --}}
         <div class="nav-section">
             <a href="#authentication-guide" class="nav-section-toggle">
-                <span>🔐 Authentication</span>
-                <span>→</span>
+                <span>Authentication</span>
+                <span>></span>
             </a>
         </div>
 
         {{-- Products Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>📦 Products</span>
+                <span> Products</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -36,7 +36,7 @@
         {{-- Invoices Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>📄 Invoices</span>
+                <span> Invoices</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -62,7 +62,7 @@
         {{-- Subscriptions Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>🔄 Subscriptions</span>
+                <span> Subscriptions</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -96,7 +96,7 @@
         {{-- Customers Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>👥 Customers</span>
+                <span> Customers</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -122,7 +122,7 @@
         {{-- Payments Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>💳 Payments</span>
+                <span> Payments</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -144,7 +144,7 @@
         {{-- Taxes Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>📊 Tax Rates</span>
+                <span> Tax Rates</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -166,7 +166,7 @@
         {{-- Webhooks Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>🔔 Webhooks</span>
+                <span> Webhooks</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -212,7 +212,7 @@
         {{-- Organizations Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>🏢 Organizations</span>
+                <span> Organizations</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">
@@ -234,7 +234,7 @@
         {{-- Wallets Section --}}
         <div class="nav-section">
             <button class="nav-section-toggle" type="button">
-                <span>💰 Wallets & Usage</span>
+                <span> Wallets & Usage</span>
                 <span>▼</span>
             </button>
             <div class="nav-links">

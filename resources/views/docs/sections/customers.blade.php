@@ -1,5 +1,5 @@
 <section class="api-section" id="customers-section">
-    <h2>👥 Customers</h2>
+    <h2> Customers</h2>
     <p>Manage your customer database and their information.</p>
 
     <x-docs.endpoint

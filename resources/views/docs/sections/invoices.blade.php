@@ -1,5 +1,5 @@
 <section class="api-section" id="invoices-section">
-    <h2>📄 Invoices</h2>
+    <h2> Invoices</h2>
     <p>Create, manage, and track invoices for your customers.</p>
 
     {{-- List All Invoices --}}
@@ -58,7 +58,7 @@
 
         <x-slot name="requestBody">
             <div style="background: var(--surface-soft); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                <h4 style="margin-top: 0;">📋 Required Parameters:</h4>
+                <h4 style="margin-top: 0;"> Required Parameters:</h4>
                 <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
                   
                     <li><strong>customer</strong> (object) - Customer details:
@@ -77,7 +77,7 @@
                     <li><strong>currency</strong> (string) - 3-letter currency code (e.g., "TZS", "USD")</li>
                 </ul>
                 <br/>
-                <h4>💡 Optional Parameters:</h4>
+                <h4> Optional Parameters:</h4>
                 <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
                       <li><strong>organization_id</strong> (integer) - Your organization ID</li>
                     <li><strong>description</strong> (string) - Invoice description</li>
@@ -236,7 +236,7 @@
 
         <x-slot name="requestBody">
             <div style="background: var(--surface-soft); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                <h4 style="margin-top: 0;">⚠️ Important Notes:</h4>
+                <h4 style="margin-top: 0;">Important Notes:</h4>
                 <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
                     <li>No request body is required for this endpoint</li>
                     <li>Cannot cancel invoices with <strong>active subscriptions</strong></li>

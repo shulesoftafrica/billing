@@ -1,43 +1,51 @@
 <section class="api-section" id="webhooks-section">
-    <h2>🔔 Webhooks</h2>
-    <p>Configure webhook endpoints to receive <strong>real-time event notifications FROM this billing platform TO your application</strong> when billing events occur.</p>
+    <h2>Webhooks</h2>
+    <p>Configure webhook endpoints to receive <strong>real-time event notifications FROM this billing platform TO your
+            application</strong> when billing events occur.</p>
 
     {{-- Overview Section --}}
-    <div id="webhook-overview" style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-bottom: 32px;">
-        <h3 style="margin-top: 0; color: var(--text-primary);">📋 How Webhooks Work</h3>
-        
+    <div id="webhook-overview"
+        style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-bottom: 32px;">
+
         <div style="margin-bottom: 24px;">
-            <h4 style="color: var(--text-primary);">🎯 What Are Webhooks?</h4>
-            <p>Webhooks are HTTP callbacks that the billing platform sends <strong>TO your application</strong> when specific events occur. They allow you to receive real-time notifications about payments, invoices, and subscriptions.</p>
+            <h4 style="color: var(--text-primary);">Note the following related to our Webhooks</h4>
             <ul>
-                <li><strong>Product-Level Isolation:</strong> Each webhook is configured per product (e.g., separate webhooks for Hospital Management vs Hotel Management)</li>
-                <li><strong>Event-Driven:</strong> Webhooks fire immediately when events occur (no polling required)</li>
-                <li><strong>Automatic Retry:</strong> Failed deliveries are automatically retried with exponential backoff</li>
+                <li><strong>Product-Level Isolation:</strong> Each webhook is configured per product (e.g., separate
+                    webhooks for Hospital Management vs Hotel Management)</li>
+                <li><strong>Event-Driven:</strong> Webhooks fire immediately when events occur (no polling required)
+                </li>
+                <li><strong>Automatic Retry:</strong> Failed deliveries are automatically retried with exponential
+                    backoff</li>
                 <li><strong>Secure:</strong> All webhook deliveries include HMAC SHA256 signatures for verification</li>
             </ul>
         </div>
 
-        <div style="background: rgba(23, 162, 184, 0.1); border-left: 4px solid #17a2b8; padding: 16px; margin-bottom: 24px; border-radius: 4px;">
+        <div
+            style="background: rgba(23, 162, 184, 0.1); border-left: 4px solid #17a2b8; padding: 16px; margin-bottom: 24px; border-radius: 4px;">
             <h4 style="margin-top: 0;">💡 Understanding URL Parameters</h4>
             <p style="margin-bottom: 8px;"><strong>What does <code>{product}</code> mean in the URL?</strong></p>
-            <p style="margin-bottom: 12px;">In all webhook endpoints like <code>/api/v1/products/{product}/webhooks</code>, the <code>{product}</code> placeholder refers to the <strong>Product ID</strong> (numeric value).</p>
+            <p style="margin-bottom: 12px;">In all webhook endpoints like
+                <code>/api/v1/products/{product}/webhooks</code>, the <code>{product}</code> placeholder refers to the
+                <strong>Product ID</strong> (numeric value).</p>
             <p style="margin-bottom: 8px;"><strong>Example:</strong></p>
             <ul style="margin: 0; padding-left: 20px;">
                 <li>If your product has ID = <code>1</code>, use: <code>/api/v1/products/1/webhooks</code></li>
                 <li>If your product has ID = <code>42</code>, use: <code>/api/v1/products/42/webhooks</code></li>
             </ul>
-            <p style="margin-top: 12px; margin-bottom: 0;"><strong>How to get your Product ID:</strong> Use the <a href="#list-all-products" style="text-decoration: underline;">List Products endpoint</a> to retrieve all your products with their IDs.</p>
+            <p style="margin-top: 12px; margin-bottom: 0;"><strong>How to get your Product ID:</strong> Use the <a
+                    href="#list-all-products" style="text-decoration: underline;">List Products endpoint</a> to retrieve
+                all your products with their IDs.</p>
         </div>
 
         <div style="margin-bottom: 24px;">
-            <h4 style="color: var(--text-primary);">📅 Available Event Types</h4>
+            <h4 style="color: var(--text-primary);"> Available Event Types</h4>
             <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                     <tr style="border-bottom: 2px solid var(--border-primary);">
                         <th style="text-align: left; padding: 8px;">Event Type</th>
                         <th style="text-align: left; padding: 8px;">Description</th>
                         <th style="text-align: left; padding: 8px;">When It Fires</th>
-                        <th style="text-align: left; padding: 8px;">Sweep Recovery</th>
+                        {{-- <th style="text-align: left; padding: 8px;">Sweep Recovery</th> --}}
                     </tr>
                 </thead>
                 <tbody>
@@ -45,9 +53,9 @@
                         <td style="padding: 8px;"><code>payment.success</code></td>
                         <td style="padding: 8px;">Payment cleared</td>
                         <td style="padding: 8px;">When a payment is confirmed as cleared by the gateway</td>
-                        <td style="padding: 8px; color: #28a745;">✓ Phase 2</td>
+                        {{-- <td style="padding: 8px; color: #28a745;">✓ Phase 2</td> --}}
                     </tr>
-                    <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    {{-- <tr style="border-bottom: 1px solid var(--border-secondary);">
                         <td style="padding: 8px;"><code>payment.failed</code></td>
                         <td style="padding: 8px;">Payment rejected</td>
                         <td style="padding: 8px;">When a payment attempt is rejected by the gateway</td>
@@ -100,10 +108,10 @@
                         <td style="padding: 8px;">Invoice paid</td>
                         <td style="padding: 8px;">When an invoice is fully paid</td>
                         <td style="padding: 8px; color: #dc3545;">✗ Live-only</td>
-                    </tr>
+                    </tr> --}}
                 </tbody>
             </table>
-            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"><strong style="color: #28a745;">✓ Sweep Recovery</strong> — if this event fails to deliver, the <code>webhooks:retry</code> command can recover and resend it from the database. <strong style="color: #dc3545;">✗ Live-only</strong> — only fired at the moment it occurs; not recoverable via sweep.</p>
+            {{-- <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"><strong style="color: #28a745;">✓ Sweep Recovery</strong> — if this event fails to deliver, the <code>webhooks:retry</code> command can recover and resend it from the database. <strong style="color: #dc3545;">✗ Live-only</strong> — only fired at the moment it occurs; not recoverable via sweep.</p>
             <p style="margin-top: 12px;"><strong>💡 Wildcard Support:</strong></p>
             <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
                 <thead>
@@ -119,10 +127,10 @@
                     <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>*</code></td><td style="padding: 8px;">Every event</td></tr>
                     <tr><td style="padding: 8px;"><em>empty array</em></td><td style="padding: 8px;">Every event</td></tr>
                 </tbody>
-            </table>
+            </table> --}}
         </div>
 
-        <div style="margin-bottom: 24px;">
+        {{-- <div style="margin-bottom: 24px;">
             <h4 style="color: var(--text-primary);">⏱️ Retry Logic &amp; Delivery Lifecycle</h4>
             <p>Each webhook delivery goes through the following states:</p>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
@@ -164,23 +172,25 @@
             <div style="background: rgba(255,193,7,0.1); border-left: 4px solid #ffc107; padding: 12px; border-radius: 4px; margin-top: 8px;">
                 <p style="margin: 0;"><strong>⚠️ 429 Too Many Requests:</strong> When a <code>429</code> is received, the platform backs off for <strong>10 seconds</strong> and then skips all remaining deliveries for that webhook endpoint for the current sweep run. They will be retried in the next scheduled run.</p>
             </div>
-        </div>
+        </div> --}}
 
         <div>
-            <h4 style="color: var(--text-primary);">✅ What Acknowledgement is Expected?</h4>
+            <h4 style="color: var(--text-primary);"> What Acknowledgement is Expected?</h4>
             <p>Your webhook endpoint must:</p>
             <ul>
-                <li><strong>Return HTTP 2xx status code</strong> (200, 201, 202, 204) within 30 seconds to acknowledge receipt</li>
-                <li><strong>Verify the HMAC signature</strong> in the <code>X-Webhook-Signature</code> header before processing</li>
-                <li><strong>Process events idempotently</strong> using the delivery ID to prevent duplicate processing</li>
-                <li><strong>Respond quickly</strong> - Process events asynchronously; don't keep the connection open</li>
+                <li><strong>Return HTTP 2xx status code</strong> (200, 201, 202, 204) within 30 seconds to acknowledge
+                    receipt</li>
+                <li><strong>Verify the HMAC signature</strong> in the <code>X-Webhook-Signature</code> header before
+                    processing</li>
+                {{-- <li><strong>Process events idempotently</strong> using the delivery ID to prevent duplicate processing</li> --}}
+                {{-- <li><strong>Respond quickly</strong> - Process events asynchronously; don't keep the connection open</li> --}}
             </ul>
-            <p><strong>⚠️ Non-2xx responses</strong> (4xx, 5xx) or timeouts trigger automatic retry.</p>
+            {{-- <p><strong> Non-2xx responses</strong> (4xx, 5xx) or timeouts trigger automatic retry.</p> --}}
         </div>
     </div>
 
     {{-- Event Firing Mechanics --}}
-    <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-bottom: 32px;">
+    {{-- <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-bottom: 32px;">
         <h3 style="margin-top: 0; color: var(--text-primary);">⚡ How Each Event is Fired</h3>
         <p style="margin-bottom: 20px;">Every event is dispatched synchronously at the moment it occurs using <code>WebhookDispatchService</code>. The platform fans out to <strong>all active webhooks</strong> registered for that product and event type. A <code>webhook_deliveries</code> record is created for every attempt.</p>
 
@@ -280,10 +290,10 @@
             <p style="margin: 0; font-weight: 600;">Product-level isolation</p>
             <p style="margin: 4px 0 0 0;">Each webhook only receives events from <strong>its own product</strong>. A payment is scoped to a product via the chain: <code>payments → invoice_payments → invoices → invoice_items → price_plans.product_id</code>. A subscription is scoped via <code>subscriptions → price_plans.product_id</code>. This means an organization with two products (A and B) will never receive product A's customer events on product B's webhook endpoint.</p>
         </div>
-    </div>
+    </div> --}}
 
     {{-- Sweep & Recovery --}}
-    <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-bottom: 32px;">
+    {{-- <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-bottom: 32px;">
         <h3 style="margin-top: 0; color: var(--text-primary);">🔄 Sweep &amp; Recovery — <code>webhooks:retry</code></h3>
         <p>Beyond automatic retries, a scheduled command (<code>php artisan webhooks:retry</code>) runs periodically to ensure <strong>no event is permanently lost</strong>. It runs three phases in sequence:</p>
 
@@ -340,10 +350,11 @@
         <div style="background: rgba(40,167,69,0.1); border-left: 4px solid #28a745; padding: 12px; margin-top: 16px; border-radius: 4px;">
             <p style="margin: 0;"><strong>💡 Rate-limit handling during sweep:</strong> If your endpoint returns <code>429</code>, the sweep immediately pauses for <strong>10 seconds</strong> and then skips all remaining items for that webhook in the current run. They will be picked up again in the next run. Use this as a signal to increase your endpoint's capacity or reduce webhook throughput requirements.</p>
         </div>
-    </div>
+    </div> --}}
 
     {{-- Security & Headers --}}
-    <div style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 24px; margin-bottom: 32px; border-radius: 4px;">
+    <div
+        style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 24px; margin-bottom: 32px; border-radius: 4px;">
         <h4 style="margin-top: 0;">🔐 Request Headers &amp; Signature Verification</h4>
         <p style="margin-bottom: 16px;">Every webhook delivery includes these HTTP headers:</p>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
@@ -355,71 +366,93 @@
                 </tr>
             </thead>
             <tbody>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Webhook-Signature</code></td><td style="padding: 8px;"><code>a3f9d2...</code></td><td style="padding: 8px;">HMAC-SHA256 of the raw request body — <strong>verify this first</strong></td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Event-Type</code></td><td style="padding: 8px;"><code>payment.success</code></td><td style="padding: 8px;">The event name — use this to route your handler logic</td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Webhook-ID</code></td><td style="padding: 8px;"><code>7</code></td><td style="padding: 8px;">ID of the webhook configuration that triggered this</td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>X-Delivery-ID</code></td><td style="padding: 8px;"><code>142</code></td><td style="padding: 8px;">Unique delivery attempt ID — use for deduplication</td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>Content-Type</code></td><td style="padding: 8px;"><code>application/json</code></td><td style="padding: 8px;">Always JSON</td></tr>
-                <tr><td style="padding: 8px;"><code>User-Agent</code></td><td style="padding: 8px;"><code>BillingPlatform-Webhook/1.0</code></td><td style="padding: 8px;">Fixed identifier</td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>X-Webhook-Signature</code></td>
+                    <td style="padding: 8px;"><code>a3f9d2...</code></td>
+                    <td style="padding: 8px;">HMAC-SHA256 of the raw request body — <strong>verify this first</strong>
+                    </td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>X-Event-Type</code></td>
+                    <td style="padding: 8px;"><code>payment.success</code></td>
+                    <td style="padding: 8px;">The event name — use this to route your handler logic</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>X-Webhook-ID</code></td>
+                    <td style="padding: 8px;"><code>7</code></td>
+                    <td style="padding: 8px;">ID of the webhook configuration that triggered this</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>X-Delivery-ID</code></td>
+                    <td style="padding: 8px;"><code>142</code></td>
+                    <td style="padding: 8px;">Unique delivery attempt ID — use for deduplication</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>Content-Type</code></td>
+                    <td style="padding: 8px;"><code>application/json</code></td>
+                    <td style="padding: 8px;">Always JSON</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px;"><code>User-Agent</code></td>
+                    <td style="padding: 8px;"><code>BillingPlatform-Webhook/1.0</code></td>
+                    <td style="padding: 8px;">Fixed identifier</td>
+                </tr>
             </tbody>
         </table>
-        <p style="margin-bottom: 12px;"><strong>Signature formula:</strong> <code>HMAC-SHA256(raw_request_body, webhook_secret)</code>. Compute this over the <strong>raw bytes</strong> before any JSON parsing.</p>
+        <p style="margin-bottom: 12px;"><strong>Signature formula:</strong> <code>HMAC-SHA256(raw_request_body,
+                webhook_secret)</code>. Compute this over the <strong>raw bytes</strong> before any JSON parsing.</p>
         <x-docs.code-block language="php">
-// PHP — verify before processing
-$rawBody  = file_get_contents('php://input');
-$received = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
-$computed = hash_hmac('sha256', $rawBody, $webhookSecret);
+            // PHP — verify before processing
+            $rawBody = file_get_contents('php://input');
+            $received = $_SERVER['HTTP_X_WEBHOOK_SIGNATURE'];
+            $computed = hash_hmac('sha256', $rawBody, $webhookSecret);
 
-if (!hash_equals($computed, $received)) {
-    http_response_code(401);
-    exit('Invalid signature');
-}
+            if (!hash_equals($computed, $received)) {
+            http_response_code(401);
+            exit('Invalid signature');
+            }
 
-$event = json_decode($rawBody, true);
-http_response_code(200); // always respond 2xx
+            $event = json_decode($rawBody, true);
+            http_response_code(200); // always respond 2xx
         </x-docs.code-block>
         <x-docs.code-block language="javascript">
-// Node.js (Express) — use express.raw() to get raw bytes
-const crypto = require('crypto');
+            // Node.js (Express) — use express.raw() to get raw bytes
+            const crypto = require('crypto');
 
-app.post('/webhooks/billing', express.raw({ type: 'application/json' }), (req, res) => {
-    const computed = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(req.body)               // Buffer — before JSON.parse
-        .digest('hex');
+            app.post('/webhooks/billing', express.raw({ type: 'application/json' }), (req, res) => {
+            const computed = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(req.body) // Buffer — before JSON.parse
+            .digest('hex');
 
-    if (!crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(req.headers['x-webhook-signature']))) {
-        return res.status(401).send('Invalid signature');
-    }
+            if (!crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(req.headers['x-webhook-signature']))) {
+            return res.status(401).send('Invalid signature');
+            }
 
-    const event = JSON.parse(req.body);
-    // handle event...
-    res.status(200).json({ received: true });
-});
+            const event = JSON.parse(req.body);
+            // handle event...
+            res.status(200).json({ received: true });
+            });
         </x-docs.code-block>
         <x-docs.code-block language="python">
-# Python / Django
-import hmac, hashlib
+            # Python / Django
+            import hmac, hashlib
 
-raw_body = request.body                 # bytes, before any parsing
-received = request.headers.get('X-Webhook-Signature', '')
-computed  = hmac.new(webhook_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+            raw_body = request.body # bytes, before any parsing
+            received = request.headers.get('X-Webhook-Signature', '')
+            computed = hmac.new(webhook_secret.encode(), raw_body, hashlib.sha256).hexdigest()
 
-if not hmac.compare_digest(computed, received):
-    return HttpResponse(status=401)
+            if not hmac.compare_digest(computed, received):
+            return HttpResponse(status=401)
 
-event = json.loads(raw_body)
+            event = json.loads(raw_body)
         </x-docs.code-block>
     </div>
 
     {{-- List Webhooks --}}
-    <x-docs.endpoint
-        id="list-webhooks"
-        method="GET"
-        url="/api/v1/products/{product}/webhooks"
-        title="List Webhooks"
+    <x-docs.endpoint id="list-webhooks" method="GET" url="/api/v1/products/{product}/webhooks" title="List Webhooks"
         description="Get all webhook configurations for a specific product">
-        
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -438,43 +471,39 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">200 OK</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "product_id": 1,
-      "name": "Production Payment Webhook",
-      "url": "https://your-app.com/webhooks/billing",
-      "status": "active",
-      "events": ["payment.success", "invoice.paid"],
-      "http_method": "POST",
-      "timeout": 30,
-      "retry_count": 3,
-      "verify_ssl": true,
-      "last_triggered_at": "2026-03-24T14:00:00+00:00",
-      "delivery_stats": {
-        "total": 150,
-        "successful": 145,
-        "failed": 5
-      },
-      "created_at": "2026-03-20T10:00:00+00:00",
-      "updated_at": "2026-03-24T15:30:00+00:00"
-    }
-  ]
-}
+                {
+                "success": true,
+                "data": [
+                {
+                "id": 1,
+                "product_id": 1,
+                "name": "Production Payment Webhook",
+                "url": "https://your-app.com/webhooks/billing",
+                "status": "active",
+                "events": ["payment.success", "invoice.paid"],
+                "http_method": "POST",
+                "timeout": 30,
+                "retry_count": 3,
+                "verify_ssl": true,
+                "last_triggered_at": "2026-03-24T14:00:00+00:00",
+                "delivery_stats": {
+                "total": 150,
+                "successful": 145,
+                "failed": 5
+                },
+                "created_at": "2026-03-20T10:00:00+00:00",
+                "updated_at": "2026-03-24T15:30:00+00:00"
+                }
+                ]
+                }
             </x-docs.code-block>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Create Webhook --}}
-    <x-docs.endpoint
-        id="create-webhook"
-        method="POST"
-        url="/api/v1/products/{product}/webhooks"
-        title="Create Webhook"
+    <x-docs.endpoint id="create-webhook" method="POST" url="/api/v1/products/{product}/webhooks" title="Create Webhook"
         description="Register a new webhook endpoint to receive event notifications for a product">
-        
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -489,20 +518,20 @@ event = json.loads(raw_body)
 
         <x-slot name="requestBody">
             <x-docs.code-block language="json" label="request">
-{
-  "name": "Production Payment Webhook",
-  "url": "https://your-app.com/webhooks/billing",
-  "events": ["payment.success", "invoice.paid"],
-  "status": "active",
-  "http_method": "POST",
-  "headers": {
-    "X-Custom-Header": "custom-value",
-    "X-API-Key": "your-internal-api-key"
-  },
-  "timeout": 30,
-  "retry_count": 3,
-  "verify_ssl": true
-}
+                {
+                "name": "Production Payment Webhook",
+                "url": "https://your-app.com/webhooks/billing",
+                "events": ["payment.success", "invoice.paid"],
+                "status": "active",
+                "http_method": "POST",
+                "headers": {
+                "X-Custom-Header": "custom-value",
+                "X-API-Key": "your-internal-api-key"
+                },
+                "timeout": 30,
+                "retry_count": 3,
+                "verify_ssl": true
+                }
             </x-docs.code-block>
             <h4>Request Parameters</h4>
             <table>
@@ -569,51 +598,47 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">201 Created</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "message": "Webhook created successfully",
-  "data": {
-    "id": 1,
-    "product_id": 1,
-    "name": "Production Payment Webhook",
-    "url": "https://your-app.com/webhooks/billing",
-    "secret": "whsec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
-    "status": "active",
-    "events": ["payment.success", "invoice.paid"],
-    "http_method": "POST",
-    "headers": {
-      "X-Custom-Header": "custom-value"
-    },
-    "timeout": 30,
-    "retry_count": 3,
-    "verify_ssl": true,
-    "created_at": "2026-03-24T15:30:00+00:00"
-  }
-}
+                {
+                "success": true,
+                "message": "Webhook created successfully",
+                "data": {
+                "id": 1,
+                "product_id": 1,
+                "name": "Production Payment Webhook",
+                "url": "https://your-app.com/webhooks/billing",
+                "secret": "whsec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+                "status": "active",
+                "events": ["payment.success", "invoice.paid"],
+                "http_method": "POST",
+                "headers": {
+                "X-Custom-Header": "custom-value"
+                },
+                "timeout": 30,
+                "retry_count": 3,
+                "verify_ssl": true,
+                "created_at": "2026-03-24T15:30:00+00:00"
+                }
+                }
             </x-docs.code-block>
             <div class="response-head">
                 <span class="response-title">Error Response</span>
                 <span class="status-badge status-4xx">422 Unprocessable Entity</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "errors": {
-    "url": ["The url field must be a valid URL."],
-    "events": ["The events field must contain valid event types."]
-  }
-}
+                {
+                "errors": {
+                "url": ["The url field must be a valid URL."],
+                "events": ["The events field must contain valid event types."]
+                }
+                }
             </x-docs.code-block>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Get Webhook --}}
-    <x-docs.endpoint
-        id="get-webhook"
-        method="GET"
-        url="/api/v1/products/{product}/webhooks/{webhook}"
-        title="Get Webhook Details"
-        description="Get details of a specific webhook configuration">
-        
+    <x-docs.endpoint id="get-webhook" method="GET" url="/api/v1/products/{product}/webhooks/{webhook}"
+        title="Get Webhook Details" description="Get details of a specific webhook configuration">
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -638,38 +663,34 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">200 OK</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "product_id": 1,
-    "name": "Production Payment Webhook",
-    "url": "https://your-app.com/webhooks/billing",
-    "secret": "whsec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
-    "status": "active",
-    "events": ["payment.success", "invoice.paid"],
-    "http_method": "POST",
-    "headers": {"X-Custom-Header": "custom-value"},
-    "timeout": 30,
-    "retry_count": 3,
-    "verify_ssl": true,
-    "last_triggered_at": "2026-03-24T14:00:00+00:00",
-    "created_at": "2026-03-20T10:00:00+00:00",
-    "updated_at": "2026-03-24T15:30:00+00:00"
-  }
-}
+                {
+                "success": true,
+                "data": {
+                "id": 1,
+                "product_id": 1,
+                "name": "Production Payment Webhook",
+                "url": "https://your-app.com/webhooks/billing",
+                "secret": "whsec_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+                "status": "active",
+                "events": ["payment.success", "invoice.paid"],
+                "http_method": "POST",
+                "headers": {"X-Custom-Header": "custom-value"},
+                "timeout": 30,
+                "retry_count": 3,
+                "verify_ssl": true,
+                "last_triggered_at": "2026-03-24T14:00:00+00:00",
+                "created_at": "2026-03-20T10:00:00+00:00",
+                "updated_at": "2026-03-24T15:30:00+00:00"
+                }
+                }
             </x-docs.code-block>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Update Webhook --}}
-    <x-docs.endpoint
-        id="update-webhook"
-        method="PUT"
-        url="/api/v1/products/{product}/webhooks/{webhook}"
-        title="Update Webhook"
-        description="Update webhook configuration">
-        
+    <x-docs.endpoint id="update-webhook" method="PUT" url="/api/v1/products/{product}/webhooks/{webhook}"
+        title="Update Webhook" description="Update webhook configuration">
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -690,14 +711,15 @@ event = json.loads(raw_body)
 
         <x-slot name="requestBody">
             <x-docs.code-block language="json" label="request">
-{
-  "name": "Updated Webhook Name",
-  "url": "https://your-app.com/webhooks/billing-v2",
-  "events": ["payment.*", "invoice.*"],
-  "status": "active"
-}
+                {
+                "name": "Updated Webhook Name",
+                "url": "https://your-app.com/webhooks/billing-v2",
+                "events": ["payment.*", "invoice.*"],
+                "status": "active"
+                }
             </x-docs.code-block>
-            <p style="margin-top: 8px; color: var(--text-secondary);">All fields are optional. Only send fields you want to update.</p>
+            <p style="margin-top: 8px; color: var(--text-secondary);">All fields are optional. Only send fields you
+                want to update.</p>
         </x-slot>
 
         <x-slot name="responses">
@@ -706,29 +728,25 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">200 OK</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "message": "Webhook updated successfully",
-  "data": {
-    "id": 1,
-    "name": "Updated Webhook Name",
-    "url": "https://your-app.com/webhooks/billing-v2",
-    "events": ["payment.*", "invoice.*"],
-    "updated_at": "2026-03-24T16:00:00+00:00"
-  }
-}
+                {
+                "success": true,
+                "message": "Webhook updated successfully",
+                "data": {
+                "id": 1,
+                "name": "Updated Webhook Name",
+                "url": "https://your-app.com/webhooks/billing-v2",
+                "events": ["payment.*", "invoice.*"],
+                "updated_at": "2026-03-24T16:00:00+00:00"
+                }
+                }
             </x-docs.code-block>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Delete Webhook --}}
-    <x-docs.endpoint
-        id="delete-webhook"
-        method="DELETE"
-        url="/api/v1/products/{product}/webhooks/{webhook}"
-        title="Delete Webhook"
-        description="Delete a webhook configuration">
-        
+    <x-docs.endpoint id="delete-webhook" method="DELETE" url="/api/v1/products/{product}/webhooks/{webhook}"
+        title="Delete Webhook" description="Delete a webhook configuration">
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -753,16 +771,16 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">200 OK</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "message": "Webhook deleted successfully"
-}
+                {
+                "success": true,
+                "message": "Webhook deleted successfully"
+                }
             </x-docs.code-block>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Test Webhook --}}
-    <x-docs.endpoint
+    {{-- <x-docs.endpoint
         id="test-webhook"
         method="POST"
         url="/api/v1/products/{product}/webhooks/{webhook}/test"
@@ -810,16 +828,13 @@ event = json.loads(raw_body)
                 <p style="margin: 0;">💡 <strong>Test payload:</strong> A real <code>payment.success</code> payload is built from your product's most recent cleared payment and sent to your endpoint — the same schema you will receive in production. If no payment exists yet, a synthetic sample is used. This means your signature verification, field parsing, and routing logic are tested against the actual payload structure.</p>
             </div>
         </x-slot>
-    </x-docs.endpoint>
+    </x-docs.endpoint> --}}
 
     {{-- Webhook Deliveries --}}
-    <x-docs.endpoint
-        id="webhook-deliveries"
-        method="GET"
-        url="/api/v1/products/{product}/webhooks/{webhook}/deliveries"
-        title="Webhook Delivery History"
+    <x-docs.endpoint id="webhook-deliveries" method="GET"
+        url="/api/v1/products/{product}/webhooks/{webhook}/deliveries" title="Webhook Delivery History"
         description="View delivery history and retry status for a webhook">
-        
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -865,55 +880,52 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">200 OK</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "data": [
-    {
-      "id": 5001,
-      "webhook_id": 10,
-      "event_type": "payment.success",
-      "status": "sent",
-      "attempt_count": 1,
-      "http_status_code": 200,
-      "response_body": "{\"received\": true}",
-      "duration_ms": 234,
-      "sent_at": "2026-03-24T15:00:00+00:00",
-      "next_retry_at": null,
-      "created_at": "2026-03-24T15:00:00+00:00"
-    },
-    {
-      "id": 5002,
-      "webhook_id": 10,
-      "event_type": "invoice.paid",
-      "status": "failed",
-      "attempt_count": 3,
-      "http_status_code": 500,
-      "error_message": "Connection timeout",
-      "duration_ms": 30000,
-      "sent_at": "2026-03-24T14:00:00+00:00",
-      "next_retry_at": "2026-03-24T14:45:00+00:00",
-      "created_at": "2026-03-24T14:00:00+00:00"
-    }
-  ],
-  "pagination": {
-    "current_page": 1,
-    "per_page": 15,
-    "total": 150,
-    "last_page": 10
-  }
-}
+                {
+                "success": true,
+                "data": [
+                {
+                "id": 5001,
+                "webhook_id": 10,
+                "event_type": "payment.success",
+                "status": "sent",
+                "attempt_count": 1,
+                "http_status_code": 200,
+                "response_body": "{\"received\": true}",
+                "duration_ms": 234,
+                "sent_at": "2026-03-24T15:00:00+00:00",
+                "next_retry_at": null,
+                "created_at": "2026-03-24T15:00:00+00:00"
+                },
+                {
+                "id": 5002,
+                "webhook_id": 10,
+                "event_type": "invoice.paid",
+                "status": "failed",
+                "attempt_count": 3,
+                "http_status_code": 500,
+                "error_message": "Connection timeout",
+                "duration_ms": 30000,
+                "sent_at": "2026-03-24T14:00:00+00:00",
+                "next_retry_at": "2026-03-24T14:45:00+00:00",
+                "created_at": "2026-03-24T14:00:00+00:00"
+                }
+                ],
+                "pagination": {
+                "current_page": 1,
+                "per_page": 15,
+                "total": 150,
+                "last_page": 10
+                }
+                }
             </x-docs.code-block>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Regenerate Secret --}}
-    <x-docs.endpoint
-        id="regenerate-secret"
-        method="POST"
-        url="/api/v1/products/{product}/webhooks/{webhook}/regenerate-secret"
-        title="Regenerate Webhook Secret"
+    <x-docs.endpoint id="regenerate-secret" method="POST"
+        url="/api/v1/products/{product}/webhooks/{webhook}/regenerate-secret" title="Regenerate Webhook Secret"
         description="Generate a new secret for webhook signature verification. The old secret will be immediately invalidated.">
-        
+
         <x-slot name="parameters">
             <h4>Path Parameters</h4>
             <table>
@@ -938,26 +950,30 @@ event = json.loads(raw_body)
                 <span class="status-badge status-2xx">200 OK</span>
             </div>
             <x-docs.code-block language="json">
-{
-  "success": true,
-  "message": "Webhook secret regenerated successfully",
-  "data": {
-    "id": 1,
-    "secret": "whsec_z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"
-  }
-}
+                {
+                "success": true,
+                "message": "Webhook secret regenerated successfully",
+                "data": {
+                "id": 1,
+                "secret": "whsec_z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4"
+                }
+                }
             </x-docs.code-block>
-            <div style="background: var(--warning-bg, #fff3cd); border-left: 4px solid var(--warning, #ffc107); padding: 12px; margin-top: 16px; border-radius: 4px;">
-                <p style="margin: 0; color: var(--warning-dark, #856404);">⚠️ <strong>Warning:</strong> Update your webhook verification code with the new secret before regenerating, otherwise webhook deliveries will fail verification.</p>
+            <div
+                style="background: var(--warning-bg, #fff3cd); border-left: 4px solid var(--warning, #ffc107); padding: 12px; margin-top: 16px; border-radius: 4px;">
+                <p style="margin: 0; color: var(--warning-dark, #856404);"><strong>Warning:</strong> Update your
+                    webhook verification code with the new secret before regenerating, otherwise webhook deliveries will
+                    fail verification.</p>
             </div>
         </x-slot>
     </x-docs.endpoint>
 
     {{-- Payload Reference --}}
     <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-top: 32px;">
-        <h3 style="margin-top: 0; color: var(--text-primary);">📦 Payload Reference</h3>
+        <h3 style="margin-top: 0; color: var(--text-primary);"> Payload Reference</h3>
 
-        <p>All events share a common envelope. Fields that don't apply to a given event are sent as <code>null</code>.</p>
+        <p>All events share a common envelope. Fields that don't apply to a given event are sent as <code>null</code>.
+        </p>
 
         <h4 style="color: var(--text-primary);">Common Envelope Fields</h4>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
@@ -969,402 +985,148 @@ event = json.loads(raw_body)
                 </tr>
             </thead>
             <tbody>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>event</code></td><td style="padding: 8px;">string</td><td style="padding: 8px;">Event name — route your handler on this field</td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>event_id</code></td><td style="padding: 8px;">string</td><td style="padding: 8px;">Globally unique ID — use for deduplication</td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>timestamp</code></td><td style="padding: 8px;">ISO 8601</td><td style="padding: 8px;">When the event was triggered</td></tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);"><td style="padding: 8px;"><code>api_version</code></td><td style="padding: 8px;">string</td><td style="padding: 8px;">Payload schema version (<code>2026-03-24</code>)</td></tr>
-                <tr><td style="padding: 8px;"><code>customer_id</code></td><td style="padding: 8px;">integer</td><td style="padding: 8px;">Shortcut to the customer — also present inside <code>customer.id</code></td></tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>event</code></td>
+                    <td style="padding: 8px;">string</td>
+                    <td style="padding: 8px;">Event name — route your handler on this field</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>event_id</code></td>
+                    <td style="padding: 8px;">string</td>
+                    <td style="padding: 8px;">Globally unique ID — use for deduplication</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>timestamp</code></td>
+                    <td style="padding: 8px;">ISO 8601</td>
+                    <td style="padding: 8px;">When the event was triggered</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--border-secondary);">
+                    <td style="padding: 8px;"><code>api_version</code></td>
+                    <td style="padding: 8px;">string</td>
+                    <td style="padding: 8px;">Payload schema version (<code>2026-03-24</code>)</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px;"><code>customer_id</code></td>
+                    <td style="padding: 8px;">integer</td>
+                    <td style="padding: 8px;">Shortcut to the customer — also present inside <code>customer.id</code>
+                    </td>
+                </tr>
             </tbody>
         </table>
 
         <h4 style="color: var(--text-primary);">Complete <code>payment.success</code> Example</h4>
         <x-docs.code-block language="json">
-{
-  "event":       "payment.success",
-  "event_id":    "evt_68026f3a4b1e2",
-  "timestamp":   "2026-03-29T10:15:00+00:00",
-  "api_version": "2026-03-24",
-  "customer_id": 42,
+            {
+            "event": "payment.success",
+            "event_id": "evt_68026f3a4b1e2",
+            "timestamp": "2026-03-29T10:15:00+00:00",
+            "api_version": "2026-03-24",
+            "customer_id": 42,
 
-  "product": {
-    "id": 3,
-    "name": "School Management System",
-    "product_code": "SMS-001",
-    "organization_id": 1,
-    "status": "active"
-  },
+            "product": {
+            "id": 3,
+            "name": "School Management System",
+            "product_code": "SMS-001",
+            "organization_id": 1,
+            "status": "active"
+            },
 
-  "organization": {
-    "id": 1,
-    "name": "Shule Soft Africa"
-  },
+            "organization": {
+            "id": 1,
+            "name": "Shule Soft Africa"
+            },
 
-  "payment": {
-    "id":                187,
-    "transaction_id":    "pi_3OqXyz",
-    "amount":            150000.00,
-    "currency":          "TZS",
-    "status":            "success",
-    "payment_method":    "card",
-    "gateway":           "stripe",
-    "gateway_reference": "pi_3OqXyz",
-    "gateway_fee":       4500.00,
-    "net_amount":        145500.00,
-    "description":       "Invoice INV-2026-0042 payment",
-    "paid_at":           "2026-03-29T10:14:58+00:00",
-    "created_at":        "2026-03-29T10:14:50+00:00"
-  },
+            "payment": {
+            "id": 187,
+            "transaction_id": "pi_3OqXyz",
+            "amount": 150000.00,
+            "currency": "TZS",
+            "status": "success",
+            "payment_method": "card",
+            "gateway": "stripe",
+            "gateway_reference": "pi_3OqXyz",
+            "gateway_fee": 4500.00,
+            "net_amount": 145500.00,
+            "description": "Invoice INV-2026-0042 payment",
+            "paid_at": "2026-03-29T10:14:58+00:00",
+            "created_at": "2026-03-29T10:14:50+00:00"
+            },
 
-  "invoice": {
-    "id":             99,
-    "invoice_number": "INV-2026-0042",
-    "subtotal":       130435.00,
-    "tax_total":      19565.00,
-    "total":          150000.00,
-    "amount_paid":    150000.00,
-    "amount_due":     0.00,
-    "currency":       "TZS",
-    "status":         "paid",
-    "due_date":       "2026-04-05",
-    "issued_at":      "2026-03-29T08:00:00+00:00",
-    "paid_at":        "2026-03-29T10:14:58+00:00",
-    "items": [
-      {
-        "id":              201,
-        "description":     "Term 1 Fees",
-        "quantity":        1,
-        "unit_price":      130435.00,
-        "total":           130435.00,
-        "price_plan_id":   5,
-        "price_plan_name": "Standard Term Plan"
-      }
-    ],
-    "ucn":             "9920240001234",
-    "control_number":  "9920240001234",
-    "control_numbers": ["9920240001234"]
-  },
+            "invoice": {
+            "id": 99,
+            "invoice_number": "INV-2026-0042",
+            "subtotal": 130435.00,
+            "tax_total": 19565.00,
+            "total": 150000.00,
+            "amount_paid": 150000.00,
+            "amount_due": 0.00,
+            "currency": "TZS",
+            "status": "paid",
+            "due_date": "2026-04-05",
+            "issued_at": "2026-03-29T08:00:00+00:00",
+            "paid_at": "2026-03-29T10:14:58+00:00",
+            "items": [
+            {
+            "id": 201,
+            "description": "Term 1 Fees",
+            "quantity": 1,
+            "unit_price": 130435.00,
+            "total": 130435.00,
+            "price_plan_id": 5,
+            "price_plan_name": "Standard Term Plan"
+            }
+            ],
+            "ucn": "9920240001234",
+            "control_number": "9920240001234",
+            "control_numbers": ["9920240001234"]
+            },
 
-  "customer": {
-    "id":         42,
-    "product_id": 3,
-    "name":       "Mwanafunzi Primary School",
-    "email":      "accounts@mwanafunzi.ac.tz",
-    "phone":      "+255712345678",
-    "status":     "active"
-  },
+            "customer": {
+            "id": 42,
+            "product_id": 3,
+            "name": "Mwanafunzi Primary School",
+            "email": "accounts@mwanafunzi.ac.tz",
+            "phone": "+255712345678",
+            "status": "active"
+            },
 
-  "subscription": {
-    "id":                   18,
-    "status":               "active",
-    "price_plan_id":        5,
-    "price_plan_name":      "Standard Term Plan",
-    "billing_interval":     "quarterly",
-    "amount":               150000.00,
-    "currency":             "TZS",
-    "current_period_start": "2026-01-01",
-    "current_period_end":   "2026-03-31",
-    "next_billing_date":    "2026-04-01",
-    "trial_ends_at":        null,
-    "canceled_at":          null
-  },
+            "subscription": {
+            "id": 18,
+            "status": "active",
+            "price_plan_id": 5,
+            "price_plan_name": "Standard Term Plan",
+            "billing_interval": "quarterly",
+            "amount": 150000.00,
+            "currency": "TZS",
+            "current_period_start": "2026-01-01",
+            "current_period_end": "2026-03-31",
+            "next_billing_date": "2026-04-01",
+            "trial_ends_at": null,
+            "canceled_at": null
+            },
 
-  "gateway_details": {
-    "stripe": {
-      "payment_intent_id":  "pi_3OqXyz",
-      "charge_id":          "ch_3OqXyz",
-      "payment_method_id":  "pm_3OqXyz",
-      "customer_id":        "cus_Stripe123",
-      "last4":              "4242",
-      "brand":              "visa",
-      "country":            "TZ",
-      "receipt_url":        "https://pay.stripe.com/receipts/..."
-    },
-    "flutterwave": null,
-    "ucn": null
-  },
+            "gateway_details": {
+            "stripe": {
+            "payment_intent_id": "pi_3OqXyz",
+            "charge_id": "ch_3OqXyz",
+            "payment_method_id": "pm_3OqXyz",
+            "customer_id": "cus_Stripe123",
+            "last4": "4242",
+            "brand": "visa",
+            "country": "TZ",
+            "receipt_url": "https://pay.stripe.com/receipts/..."
+            },
+            "flutterwave": null,
+            "ucn": null
+            },
 
-  "metadata": {
-    "ip_address":           "41.75.200.10",
-    "user_agent":           "Mozilla/5.0...",
-    "webhook_triggered_at": "2026-03-29T10:15:00+00:00"
-  }
-}
+            "metadata": {
+            "ip_address": "41.75.200.10",
+            "user_agent": "Mozilla/5.0...",
+            "webhook_triggered_at": "2026-03-29T10:15:00+00:00"
+            }
+            }
         </x-docs.code-block>
 
-        <div style="background: rgba(23,162,184,0.1); border-left: 4px solid #17a2b8; padding: 12px; margin: 16px 0; border-radius: 4px;">
-            <p style="margin: 0;">💡 <strong><code>payment.status</code> values:</strong> <code>success</code> (cleared), <code>pending</code>, <code>failed</code>, <code>cancelled</code>, <code>refunded</code>. The system stores payments internally as <code>cleared</code> but always sends <code>success</code> in the webhook payload.</p>
-        </div>
-
-        {{-- Per-Event Payload Reference --}}
-        <h4 style="color: var(--text-primary); margin-top: 28px;">📋 Per-Event Payload Reference</h4>
-        <p>All events share the same top-level envelope (<code>event</code>, <code>event_id</code>, <code>timestamp</code>, <code>api_version</code>, <code>customer_id</code>, <code>product</code>, <code>organization</code>, <code>customer</code>, <code>metadata</code>). The table below shows which additional blocks are <strong>present</strong>, <strong>optional</strong>, or <strong>absent</strong> per event.</p>
-
-        <div style="overflow-x: auto; margin-bottom: 24px;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
-            <thead>
-                <tr style="border-bottom: 2px solid var(--border-primary);">
-                    <th style="text-align: left; padding: 8px; white-space: nowrap;">Block</th>
-                    <th style="padding: 8px; text-align: center;">payment.success</th>
-                    <th style="padding: 8px; text-align: center;">payment.failed</th>
-                    <th style="padding: 8px; text-align: center;">subscription.created</th>
-                    <th style="padding: 8px; text-align: center;">subscription.renewed</th>
-                    <th style="padding: 8px; text-align: center;">subscription.cancelled</th>
-                    <th style="padding: 8px; text-align: center;">subscription.expired</th>
-                    <th style="padding: 8px; text-align: center;">subscription.upgraded</th>
-                    <th style="padding: 8px; text-align: center;">credits.purchased</th>
-                    <th style="padding: 8px; text-align: center;">invoice.created</th>
-                    <th style="padding: 8px; text-align: center;">invoice.paid</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>payment</code></td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓ + errors</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #fd7e14;">optional</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #fd7e14;">optional</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>invoice</code></td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓ ¹</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓ ¹</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>subscription</code></td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓ ²</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓ ²</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓ (new plan)</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">null</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>gateway_details</code></td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">all null</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">all null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">all null</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">all null</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #999;">all null</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>cancellation</code></td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>expired_at</code></td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--border-secondary);">
-                    <td style="padding: 8px; font-weight: 600;"><code>upgrade</code></td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px; font-weight: 600;"><code>wallet_transaction</code></td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #28a745;">✓</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                    <td style="padding: 8px; text-align: center; color: #dc3545;">—</td>
-                </tr>
-            </tbody>
-        </table>
-        </div>
-        <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 24px;">
-            <strong>✓</strong> = always present &nbsp;|&nbsp;
-            <strong style="color: #fd7e14;">optional</strong> = present only when applicable &nbsp;|&nbsp;
-            <strong style="color: #999;">null</strong> = key sent with <code>null</code> value &nbsp;|&nbsp;
-            <strong style="color: #dc3545;">—</strong> = key not included in payload<br>
-            ¹ <code>invoice</code> in payment events: resolved via <code>invoice_payments</code> join for UCN payments; null only if no invoice chain exists.<br>
-            ² <code>subscription</code> in payment events: customer's most recent active subscription at time of payment.
-        </p>
-
-        {{-- Individual Event Payloads --}}
-        <h4 style="color: var(--text-primary);">Event-specific payload examples</h4>
-
-        <p><strong><code>payment.failed</code></strong> — identical to <code>payment.success</code> with two extra fields on the <code>payment</code> object:</p>
-        <x-docs.code-block language="json">
-"payment": {
-  "status":        "failed",
-  "error_code":    "card_declined",
-  "error_message": "Your card was declined."
-}
-        </x-docs.code-block>
-
-        <p style="margin-top: 20px;"><strong><code>subscription.created</code></strong> — <code>invoice</code>, <code>payment</code>, and <code>gateway_details</code> are all <code>null</code>. The event fires once per subscription record, immediately when the subscription is created:</p>
-        <x-docs.code-block language="json">
-{
-  "event":       "subscription.created",
-  "event_id":    "evt_68026f3a4b1e7",
-  "timestamp":   "2026-04-01T08:00:00+00:00",
-  "api_version": "2026-03-24",
-  "customer_id": 42,
-  "product":        { "id": 3, "name": "School Management System", ... },
-  "organization":   { "id": 1, "name": "Shule Soft Africa" },
-  "customer":       { "id": 42, "name": "Mwanafunzi Primary School", ... },
-  "subscription": {
-    "id":                   18,
-    "status":               "active",
-    "price_plan_id":        5,
-    "price_plan_name":      "Standard Term Plan",
-    "billing_interval":     "monthly",
-    "amount":               75000.00,
-    "currency":             "TZS",
-    "starts_at":            "2026-04-01",
-    "ends_at":              "2026-05-01",
-    "current_period_start": "2026-04-01",
-    "current_period_end":   "2026-05-01",
-    "next_billing_date":    "2026-05-01",
-    "trial_ends_at":        null,
-    "canceled_at":          null
-  },
-  "invoice":          null,
-  "payment":          null,
-  "gateway_details":  { "stripe": null, "flutterwave": null, "ucn": null },
-  "metadata":         { ... }
-}
-        </x-docs.code-block>
-
-        <p style="margin-top: 20px;"><strong><code>subscription.renewed</code></strong> — <code>invoice</code> and <code>gateway_details</code> are <strong>not included</strong> in this event. <code>payment</code> is optional — present only when a payment was captured as part of the renewal:</p>
-        <x-docs.code-block language="json">
-{
-  "event":        "subscription.renewed",
-  "subscription": { "id": 18, "status": "active", "current_period_start": "2026-05-01", "current_period_end": "2026-06-01", ... },
-  "payment":      { "id": 201, "amount": 75000.00, ... },
-  "metadata":     { ... }
-  // NOTE: "invoice" and "gateway_details" are NOT present in this event
-}
-        </x-docs.code-block>
-
-        <p style="margin-top: 20px;"><strong><code>subscription.cancelled</code></strong> — adds a <code>cancellation</code> block. <code>invoice</code>, <code>payment</code>, <code>gateway_details</code> are all <code>null</code>:</p>
-        <x-docs.code-block language="json">
-"cancellation": {
-  "reason":       "Customer requested cancellation",
-  "cancelled_at": "2026-03-29T10:15:00+00:00"
-}
-        </x-docs.code-block>
-
-        <p style="margin-top: 20px;"><strong><code>subscription.expired</code></strong> — adds a top-level <code>expired_at</code> date. <code>invoice</code>, <code>payment</code>, <code>gateway_details</code> are all <code>null</code>:</p>
-        <x-docs.code-block language="json">
-"expired_at": "2026-03-31"
-        </x-docs.code-block>
-
-        <p style="margin-top: 20px;"><strong><code>subscription.upgraded</code></strong> — <code>subscription</code> reflects the <strong>new</strong> plan. Adds an <code>upgrade</code> block showing old vs new plan. <code>invoice</code>, <code>payment</code>, <code>gateway_details</code> are all <code>null</code>:</p>
-        <x-docs.code-block language="json">
-"upgrade": {
-  "previous_plan": { "id": 5, "name": "Standard Term Plan",   "amount": 150000.00, "interval": "quarterly" },
-  "new_plan":      { "id": 7, "name": "Premium Annual Plan",  "amount": 500000.00, "interval": "yearly" },
-  "upgraded_at":   "2026-03-29T10:15:00+00:00"
-}
-        </x-docs.code-block>
-
-        <p style="margin-top: 20px;"><strong><code>credits.purchased</code></strong> — replaces <code>invoice</code>, <code>subscription</code>, and <code>gateway_details</code> with a <code>wallet_transaction</code> block. <code>payment</code> is optional:</p>
-        <x-docs.code-block language="json">
-{
-  "event":   "credits.purchased",
-  "wallet_transaction": {
-    "invoice_id":     55,
-    "invoice_number": "INV-2026-0055",
-    "wallet_type":    "sms",
-    "unit":           "SMS",
-    "units":          1000,
-    "unit_price":     0.05,
-    "amount":         50000.00,
-    "currency":       "TZS",
-    "plan_id":        12,
-    "plan_name":      "SMS Credit Pack - 1000 units",
-    "purchased_at":   "2026-03-29T10:15:00+00:00"
-  },
-  "payment": { "id": 188, "amount": 50000.00, ... },
-  // NOTE: "invoice", "subscription", "gateway_details" are NOT present in this event
-  "metadata": { ... }
-}
-        </x-docs.code-block>
-
-        <h4 style="color: var(--text-primary); margin-top: 24px;"><code>gateway_details</code> by gateway</h4>
-        <p>Only the key matching the active gateway is populated; others are <code>null</code>. This block is sent on <code>payment.success</code>, <code>payment.failed</code>, and <code>invoice.paid</code> only.</p>
-        <x-docs.code-block language="json">
-// Flutterwave
-"gateway_details": {
-  "stripe": null,
-  "flutterwave": {
-    "transaction_id": 123456789,
-    "flw_ref":        "FLW-MOCK-abc",
-    "tx_ref":         "billing-187",
-    "payment_type":   "mobilemoneyuganda",
-    "card_brand":     null,
-    "last4":          null
-  },
-  "ucn": null
-}
-
-// UCN (bank / control-number transfer)
-"gateway_details": {
-  "stripe": null,
-  "flutterwave": null,
-  "ucn": {
-    "control_number":  "9920240001234",
-    "bill_id":         "BILL-99",
-    "payer_name":      "JOHN DOE",
-    "payer_phone":     "+255712345678",
-    "payment_channel": "bank_transfer",
-    "sp_code":         "SP001"
-  }
-}
-        </x-docs.code-block>
-    </div>
+      
 </section>
