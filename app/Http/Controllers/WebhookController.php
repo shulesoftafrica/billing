@@ -9,7 +9,6 @@ use App\Services\WebhookDispatchService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\PaymentGateway;
@@ -326,7 +325,6 @@ class WebhookController extends Controller
             }
 
             $payment = Payment::create([
-                'invoice_id' => $invoice->id,
                 'gateway_reference' => $gatewayReference,
                 'gateway_id' => $gateway->id,
                 'customer_id' => $customerId,
@@ -367,7 +365,6 @@ class WebhookController extends Controller
                 if ($invoice) {
                     $failedPayment = Payment::updateOrCreate(
                         [
-                            'invoice_id' => $invoice->id,
                             'gateway_reference' => $charge['id']
                         ],
                         [

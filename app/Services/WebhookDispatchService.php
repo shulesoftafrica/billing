@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\CustomWebhook;
-use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PricePlan;
@@ -459,9 +458,9 @@ class WebhookDispatchService
 
     public function dispatchPaymentFailed(Payment $payment): void
     {
-        // Derive the product through the payment's invoice → invoice items → price plan.
-        $payment->loadMissing('invoice.invoiceItems.pricePlan.product');
-        $product = $payment->invoice?->invoiceItems->first()?->pricePlan?->product;
+        // Derive the product through the payment's invoices pivot chain.
+        $payment->loadMissing('invoices.invoiceItems.pricePlan.product');
+        $product = $payment->invoices->first()?->invoiceItems->first()?->pricePlan?->product;
         if (!$product) return;
 
         try {

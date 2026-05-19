@@ -101,7 +101,6 @@ class UCNPaymentService
 
                 // Step 5: Record payment
                 $payment = Payment::create([
-                    'invoice_id' => null,
                     'gateway_id' => $paymentGateway->id,
                     'customer_id' => $customer->id,
                     'amount' => $amountPaid,
@@ -136,8 +135,8 @@ class UCNPaymentService
                 $this->webhookPaymentProcessingService->processByProductAndCustomer($product, $customer, $payment);
 
                 // Dispatch custom webhooks (payment.success) live for this product.
-                // UCN payments have invoice_id=NULL so the payload builder uses the
-                // customer directly from the payment record (null-invoice path).
+                // UCN payments may be invoice-less at creation time, so the payload
+                // builder can use the customer directly from the payment record.
                 try {
                     $payment->refresh();
                     $wcPayload = $this->payloadBuilderService->buildPaymentSuccessPayload($payment);

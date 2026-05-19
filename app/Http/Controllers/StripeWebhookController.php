@@ -8,8 +8,6 @@ use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\WebhookLog;
-use App\Services\Stripe\StripeAmountHelper;
-use App\Services\SubscriptionService;
 use App\Services\WebhookPaymentProcessingService;
 use App\Services\PayloadBuilderService;
 use App\Services\WebhookDispatchService;
@@ -238,7 +236,6 @@ class StripeWebhookController extends Controller
 
         $stripeAmount =  $originalAmount; // StripeAmountHelper::fromStripeAmount((int) $originalAmount, (string) $originalCurrency); // since we used original amount no need to convert it back to cents
         $payment = Payment::create([
-            'invoice_id' => $invoice->id,
             'gateway_reference' => $gatewayReference,
             'gateway_id' => $gateway->id,
             'customer_id' => $customerId,

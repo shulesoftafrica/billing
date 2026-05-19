@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Payment extends Model
 {
     protected $fillable = [
-        'invoice_id',
         'gateway_id',
         'customer_id',
         'amount',
@@ -33,14 +32,6 @@ class Payment extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
-    }
-
-    /**
-     * Primary invoice this payment is for (via invoice_id FK).
-     */
-    public function invoice(): BelongsTo
-    {
-        return $this->belongsTo(Invoice::class);
     }
 
     /**

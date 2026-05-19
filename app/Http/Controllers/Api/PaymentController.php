@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\BaseApiController;
+use App\Models\Customer;
 use Illuminate\Http\Request;
 use App\Models\Payment;
 use App\Services\Stripe\PaymentIntentService;
@@ -12,8 +13,7 @@ class PaymentController extends BaseApiController
 {
     public function __construct(
         private readonly PaymentIntentService $paymentIntentService
-    ) {
-    }
+    ) {}
 
     /**
      * Get all payments for a given invoice ID
@@ -37,11 +37,12 @@ class PaymentController extends BaseApiController
         ])
             ->whereHas('invoices', function ($query) use ($invoice_id, $organizationId) {
                 $query->where('invoices.id', $invoice_id)
-                      ->where('invoices.organization_id', $organizationId);
+                    ->whereHas('customer', function ($customerQuery) use ($organizationId) {
+                        $customerQuery->where('organization_id', $organizationId);
+                    });
             })
-            ->orderBy('created_at', 'desc')
+            ->latest()
             ->get();
-
         return response()->json([
             'success' => true,
             'data' => $this->formatPaymentsResponse($payments)
@@ -103,7 +104,7 @@ class PaymentController extends BaseApiController
                 'paid_at' => $payment->paid_at,
                 'created_at' => $payment->created_at,
                 'updated_at' => $payment->updated_at,
-                                'customer' => $payment->customer,
+                'customer' => $payment->customer,
 
             ];
         })->values();

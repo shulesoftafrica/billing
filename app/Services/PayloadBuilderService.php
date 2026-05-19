@@ -6,7 +6,6 @@ use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\PricePlan;
 use App\Models\Subscription;
-use App\Models\Product;
 
 class PayloadBuilderService
 {
@@ -342,8 +341,8 @@ class PayloadBuilderService
         $response = is_array($payment->gateway_response) 
             ? $payment->gateway_response 
             : json_decode($payment->gateway_response, true);
-        
-        $invoice = $payment->invoice;
+
+        $invoice = $payment->invoices()->with('controlNumbers')->first();
         
         return [
             'control_number' => $invoice?->controlNumbers->first()?->control_number,
