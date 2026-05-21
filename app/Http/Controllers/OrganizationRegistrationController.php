@@ -141,9 +141,8 @@ class OrganizationRegistrationController extends Controller
                 <p>Hello <strong>{$orgName}</strong>,</p>
                 <p>Your organization has been successfully registered on <strong>{$appName}</strong>.</p>
                 <p><strong>Login Email:</strong> {$user->email}<br>
-                <strong>Temporary Password:</strong> {$tempPassword}</p>
+                <strong>Password:</strong> {$tempPassword}</p>
                 <p><a href='{$loginUrl}'>Click here to login</a></p>
-                <p> Please change your password after your first login.</p>
                 <p>Welcome aboard,<br>The {$appName} Team</p>
             ";
 
@@ -153,10 +152,8 @@ class OrganizationRegistrationController extends Controller
             $whatsappMessage = "Hello {$orgName}!\n\n"
                 . "Your {$appName} account is ready.\n\n"
                 . "Login Email: {$user->email}\n"
-                . "Temporary Password: {$tempPassword}\n\n"
-                . "Login here: {$loginUrl}\n\n"
-                . "Please change your password after first login.";
-
+                . "Password: {$tempPassword}\n\n"
+                . "Login here: {$loginUrl}\n\n";
             $whatsappSent = $notifier->sendWhatsApp($request->phone, $whatsappMessage);
 
             Log::info('Welcome notifications dispatched', [

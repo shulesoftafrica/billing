@@ -186,11 +186,7 @@
 
             <div class="divider">or</div>
 
-            <div class="hint-box">
-                <strong>🔑 API-only access?</strong>
-                Use <code>POST /api/v1/auth/login</code> or OAuth2 client credentials.<br>
-                <a href="{{ route('api.docs') }}" target="_blank" style="color:#0369a1;">View API Docs →</a>
-            </div>
+            
 
             <div class="mt-3 text-center" style="font-size:.83rem;color:#64748b;">
                 Don't have an account?
