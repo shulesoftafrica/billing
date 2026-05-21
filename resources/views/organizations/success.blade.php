@@ -205,7 +205,7 @@
 
             <div class="notice mb-3">
                 <i class="bi bi-info-circle me-1"></i>
-                Save <strong>Organization ID: {{ $org->id }}</strong> and <strong>Organization Email: {{ $org->email }}</strong>. You’ll need these when creating users via API after activation.
+                Save <strong>Organization ID: {{ $org->id }}</strong> and <strong>Organization Email: {{ $org->email }}</strong>. You’ll need these when creating users via API. Login credentials for the dashboard has been sent to the registered email address. If you don't receive it within the next few minutes, please check your spam folder or contact support.
             </div>
         @endif
 
