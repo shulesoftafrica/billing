@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Safari API – Payments for East Africa</title>
+    <title>Billing App</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -942,7 +942,7 @@
         <div class="container">
             <div class="d-flex align-items-center justify-content-between">
                 <a href="{{ route('landing') }}" class="navbar-brand-text">
-                    <i class="bi bi-lightning-charge-fill"></i> Safari API
+                    <i class="bi bi-lightning-charge-fill"></i> Billing App
                 </a>
                 <div class="d-none d-md-flex align-items-center gap-1">
                     <a href="{{ route('api.docs') }}" class="nav-link-light">API Docs</a>
