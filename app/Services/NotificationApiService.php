@@ -25,7 +25,7 @@ class NotificationApiService
     {
         return $this->dispatch([
             'channel'     => 'email',
-            'provider'    => 'sendgrid',
+            'provider'    => 'resend',
             'to'          => $to,
             'subject'     => $subject,
             'message'     => $message,
@@ -49,6 +49,7 @@ class NotificationApiService
             'provider' => 'wasender',
             'to'       => $phone,
             'message'  => $message,
+            'type'     => 'wasender',
             'priority' => 'high',
         ]);
     }
@@ -59,12 +60,12 @@ class NotificationApiService
     private function dispatch(array $payload): bool
     {
         $payload['schema_name'] = $this->schemaName;
+        $endpoint = $this->endpoint.'/notifications/send';
 
         try {
             $response = Http::withHeaders([
                 'Content-Type' => 'application/json',
-                'X-API-Key'    => $this->apiKey,
-            ])->timeout(10)->post($this->endpoint, $payload);
+            ])->withToken($this->apiKey)->timeout(10)->post($endpoint, $payload);
 
             if ($response->successful()) {
                 return true;

@@ -15,7 +15,7 @@ class OrganizationController extends Controller
     public function index()
     {
         $user = Auth::user();
-        $org  = $user->organization;
+        $org  = $user->organization()->withCount('users')->first();
 
         // Fetch OAuth credentials for this organization
         $oauthClient = OAuthClient::where('organization_id', $org->id)
@@ -25,12 +25,18 @@ class OrganizationController extends Controller
 
         // Developer view: show all organizations they can manage
         // (For now, a "developer" account_type user sees all orgs)
-        $managedOrgs = null;
-        if ($org->account_type === 'developer') {
-            $managedOrgs = Organization::withCount([
-                'users',
-            ])->orderBy('name')->paginate(20);
-        }
+        $managedOrgs = $org;
+        // if ($org->account_type === 'developer') {
+        //     $managedOrgs = Organization::withCount([
+        //         'users',
+        //     ])
+        //     ->whereIn('id', function ($query) use ($org) {
+        //         $query->select('organization_id')
+        //             ->from('users')
+        //             ->where('organization_id', $org->id);
+        //     })
+        //     ->orderBy('name')->paginate(5);
+        // }
 
         $countries  = Country::orderBy('name')->get();
         $currencies = Currency::orderBy('name')->get();

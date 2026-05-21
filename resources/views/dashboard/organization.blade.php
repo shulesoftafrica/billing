@@ -208,36 +208,36 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @forelse($managedOrgs as $mo)
+                        @if($managedOrgs)
                         <tr>
                             <td>
-                                <div style="font-size:.875rem;font-weight:500;">{{ $mo->name }}</div>
-                                <div style="font-size:.75rem;color:#94a3b8;">{{ $mo->email }}</div>
+                                <div style="font-size:.875rem;font-weight:500;">{{ $managedOrgs->name }}</div>
+                                <div style="font-size:.75rem;color:#94a3b8;">{{ $managedOrgs->email }}</div>
                             </td>
                             <td>
-                                @if($mo->status === 'active')
+                                @if($managedOrgs->status === 'active')
                                     <span class="badge-success">Active</span>
-                                @elseif($mo->status === 'pending')
+                                @elseif($managedOrgs->status === 'pending')
                                     <span class="badge-warning">Pending</span>
                                 @else
-                                    <span class="badge-danger">{{ ucfirst($mo->status) }}</span>
+                                    <span class="badge-danger">{{ ucfirst($managedOrgs->status) }}</span>
                                 @endif
                             </td>
-                            <td class="mono" style="font-size:.83rem;">{{ $mo->users_count }}</td>
+                            <td class="mono" style="font-size:.83rem;">{{ $managedOrgs->users_count }}</td>
                         </tr>
-                        @empty
+                        @else
                         <tr>
                             <td colspan="3" class="text-center py-3" style="color:#94a3b8;font-size:.83rem;">
                                 No organizations yet.
                             </td>
                         </tr>
-                        @endforelse
+                        @endif
                     </tbody>
                 </table>
             </div>
-            @if($managedOrgs->hasPages())
+            {{-- @if($managedOrgs->hasPages())
             <div class="p-2 border-top">{{ $managedOrgs->links('pagination::bootstrap-5') }}</div>
-            @endif
+            @endif --}}
         </div>
         @endif
 

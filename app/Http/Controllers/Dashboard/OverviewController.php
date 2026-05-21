@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\Customer;
 use App\Models\ApiRequestLog;
 use Illuminate\Support\Facades\Auth;
 
@@ -19,7 +18,7 @@ class OverviewController extends Controller
 
         // Stats
         $totalApiCalls  = ApiRequestLog::where('organization_id', $orgId)->count();
-        $totalCollected = Payment::whereHas('invoice', function ($q) use ($orgId) {
+        $totalCollected = Payment::whereHas('invoices', function ($q) use ($orgId) {
             $q->whereHas('customer', function ($q2) use ($orgId) {
                 $q2->where('organization_id', $orgId);
             });
@@ -33,7 +32,7 @@ class OverviewController extends Controller
             $q->where('organization_id', $orgId);
         })->where('status', 'pending')->count();
 
-        $todaysCollected = Payment::whereHas('invoice', function ($q) use ($orgId) {
+        $todaysCollected = Payment::whereHas('invoices', function ($q) use ($orgId) {
             $q->whereHas('customer', function ($q2) use ($orgId) {
                 $q2->where('organization_id', $orgId);
             });
