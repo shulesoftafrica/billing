@@ -46,7 +46,7 @@
         method="POST"
         url="/api/v1/invoices"
         title="Create Invoice"
-        description="Create a new invoice for a customer. Pass customer details directly without requiring pre-existing customer_id.">
+      description="Create a new invoice using either an existing customer_id or a new customer object.">
         
         <x-slot name="headers">
             <x-docs.parameter-table :parameters="[
@@ -60,12 +60,17 @@
             <div style="background: var(--surface-soft); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
                 <h4 style="margin-top: 0;"> Required Parameters:</h4>
                 <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                  
-                    <li><strong>customer</strong> (object) - Customer details:
+                  <li><strong>organization_id</strong> (integer) - Organization ID</li>
+                  <li><strong>customer source</strong> (one required):
                         <ul style="padding-left: 20px;">
-                            <li><code>name</code> (string) - Customer's full name</li>
-                            <li><code>email</code> (string) - Customer's email address</li>
-                            <li><code>phone</code> (string) - Customer's phone number</li>
+                      <li><code>customer_id</code> (integer) - Existing customer in the same organization</li>
+                      <li><code>customer</code> (object) - Required when <code>customer_id</code> is not provided:
+                        <ul style="padding-left: 20px;">
+                          <li><code>name</code> (string) - Customer's full name</li>
+                          <li><code>email</code> (string) - Customer's email address</li>
+                          <li><code>phone</code> (string) - Customer's phone number</li>
+                        </ul>
+                      </li>
                         </ul>
                     </li>
                     <li><strong>products</strong> (array) - Array of products (minimum 1):
@@ -79,7 +84,7 @@
                 <br/>
                 <h4> Optional Parameters:</h4>
                 <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                      <li><strong>organization_id</strong> (integer) - Your organization ID</li>
+                    <li><strong>customer.name / customer.email / customer.phone</strong> (string) - Optional when <code>customer_id</code> is used. If provided, the existing customer record is updated with submitted fields.</li>
                     <li><strong>description</strong> (string) - Invoice description</li>
                     <li><strong>status</strong> (string) - draft, issued, paid, cancelled (default: "issued")</li>
                     <li><strong>date</strong> (string) - Invoice date (Y-m-d format)</li>
@@ -89,7 +94,24 @@
                 </ul>
             </div>
             
-            <x-docs.code-block language="json" label="request">
+            <x-docs.code-block language="json" label="request - existing customer (customer_id)">
+{
+  "organization_id": 1,
+  "customer_id": 45,
+  "customer": {
+    "phone": "+255712345678"
+  },
+  "products": [
+    {
+      "price_plan_id": 5,
+      "amount": 50000
+    }
+  ],
+  "currency": "TZS"
+}
+            </x-docs.code-block>
+
+            <x-docs.code-block language="json" label="request - new customer (without customer_id)">
 {
   "organization_id": 1,
   "customer": {
@@ -173,7 +195,8 @@
 {
   "success": false,
   "errors": {
-    "customer.email": ["The customer email must be a valid email address."],
+    "customer_id": ["The selected customer id is invalid."],
+    "customer.email": ["The customer email field is required when customer id is not present."],
     "products": ["The products field must have at least 1 items."],
     "currency": ["The currency must be 3 characters."]
   }

@@ -75,9 +75,9 @@ class OrganizationRegistrationController extends Controller
                 'tin_number'          => $request->tin_number,
                 'registration_number' => $request->registration_number,
                 'currency'            => [$currency->code],
-                'currency_id'         => $currency->id,
+                // 'currency_id'         => $currency->id,
                 'country_id'          => $request->country_id,
-                'timezone'            => 'Africa/Dar_es_Salaam',
+                // 'timezone'            => 'Africa/Dar_es_Salaam',
                 'status'              => 'active',
                 'account_type'        => $request->account_type,
             ]);
@@ -143,7 +143,7 @@ class OrganizationRegistrationController extends Controller
                 <p><strong>Login Email:</strong> {$user->email}<br>
                 <strong>Temporary Password:</strong> {$tempPassword}</p>
                 <p><a href='{$loginUrl}'>Click here to login</a></p>
-                <p>⚠️ Please change your password after your first login.</p>
+                <p> Please change your password after your first login.</p>
                 <p>Welcome aboard,<br>The {$appName} Team</p>
             ";
 
@@ -155,7 +155,7 @@ class OrganizationRegistrationController extends Controller
                 . "Login Email: {$user->email}\n"
                 . "Temporary Password: {$tempPassword}\n\n"
                 . "Login here: {$loginUrl}\n\n"
-                . "⚠️ Please change your password after first login.";
+                . "Please change your password after first login.";
 
             $whatsappSent = $notifier->sendWhatsApp($request->phone, $whatsappMessage);
 

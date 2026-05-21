@@ -31,6 +31,7 @@ use App\Models\AdvancePayment;
 use App\Models\InvoicePayment;
 use App\Models\Payment;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\Rule;
 use Stripe\Exception\ApiErrorException;
 
 use function Pest\Laravel\json;
@@ -158,10 +159,18 @@ class InvoiceController extends Controller
         // Validate required parameters
         $validator = Validator::make($request->all(), [
             'organization_id' => 'required|integer|exists:organizations,id',
-            'customer' => 'required|array',
-            'customer.name' => 'required|string',
-            'customer.email' => 'required|email',
-            'customer.phone' => 'required|string',
+            'customer_id' => [
+                'nullable',
+                'integer',
+                'required_without_all:customer.email,customer.phone',
+                Rule::exists('customers', 'id')->where(function ($query) use ($request) {
+                    $query->where('organization_id', $request->organization_id);
+                }),
+            ],
+            'customer' => 'required_without:customer_id|array',
+            'customer.name' => 'required_without:customer_id|string',
+            'customer.email' => 'required_without:customer_id|email',
+            'customer.phone' => 'required_without:customer_id|string',
             'products' => 'required|array|min:1',
             'products.*.price_plan_id' => 'required|integer|exists:price_plans,id',
             'products.*.amount' => 'required|numeric|min:0',
@@ -186,7 +195,8 @@ class InvoiceController extends Controller
             DB::beginTransaction();
 
             $organizationId = $request->organization_id;
-            $customerData = $request->customer;
+            $customerData = (array) $request->input('customer', []);
+            $customerId = $request->input('customer_id');
             $productsData = $request->products;
             $description = $request->description ?? 'Invoice for products';
             $currency = strtoupper((string) $request->currency);
@@ -201,19 +211,33 @@ class InvoiceController extends Controller
                 ->values()
                 ->all();
 
-            // Step 2: Check if customer exists in the organization by phone or email
-            $customer = Customer::where('organization_id', $organizationId)
-                ->where('email', $customerData['email'])
-                ->where('phone', $customerData['phone'])
-                ->first();
+            // Step 2: Resolve customer by customer_id when provided, otherwise create a new customer.
+            if ($customerId) {
+                $customer = Customer::where('id', $customerId)
+                    ->where('organization_id', $organizationId)
+                    ->first();
 
-            // If customer doesn't exist, create a new one
-            if (!$customer) {
+                if (!$customer) {
+                    throw new \InvalidArgumentException('Customer not found for the specified organization');
+                }
+
+                $customerUpdates = [];
+                foreach (['name', 'email', 'phone'] as $field) {
+                    if (array_key_exists($field, $customerData)) {
+                        $customerUpdates[$field] = $customerData[$field];
+                    }
+                }
+
+                if (!empty($customerUpdates)) {
+                    $customer->update($customerUpdates);
+                    $customer->refresh();
+                }
+            } else {
                 $customer = Customer::create([
                     'organization_id' => $organizationId,
-                    'name' => $customerData['name'],
-                    'email' => $customerData['email'],
-                    'phone' => $customerData['phone'],
+                    'name' => $customerData['name'] ?? null,
+                    'email' => $customerData['email'] ?? null,
+                    'phone' => $customerData['phone'] ?? null,
                     'status' => 'active',
                 ]);
             }
@@ -566,6 +590,13 @@ class InvoiceController extends Controller
                 'message' => 'Invoice created successfully',
                 'data' => $data,
             ], 201);
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Invoice creation failed: ' . $e->getMessage());
