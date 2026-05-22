@@ -15,6 +15,7 @@
         --radius: 14px;
         --sidebar-width: 280px;
         --navbar-height: 56px;
+        --anchor-offset: calc(var(--navbar-height) + 88px);
         --navbar-bg: #0f1e36;
     }
 
@@ -623,9 +624,18 @@
     }
 
     /* Section Styling */
-    .api-section {
+    .api-section,
+    .endpoint-card,
+    .auth-guide,
+    #webhook-overview {
         margin-bottom: 40px;
-        scroll-margin-top: 80px;
+        scroll-margin-top: var(--anchor-offset);
+    }
+
+    .endpoint-card,
+    .auth-guide,
+    #webhook-overview {
+        margin-bottom: 0;
     }
 
     .api-section h2 {
@@ -677,5 +687,5 @@
     .hidden { display: none !important; }
 
     /* Smooth scrolling */
-    html { scroll-padding-top: calc(var(--navbar-height) + 80px); }
+    html { scroll-padding-top: var(--anchor-offset); }
 </style>

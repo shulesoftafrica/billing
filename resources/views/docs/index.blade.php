@@ -57,6 +57,7 @@
                 @include('docs.sections.taxes')
                 @include('docs.sections.webhooks')
                 @include('docs.sections.organizations')
+                @include('docs.sections.payment-gateways')
                 @include('docs.sections.wallets')
             </div>
         </main>
