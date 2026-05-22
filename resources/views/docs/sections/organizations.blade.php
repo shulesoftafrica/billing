@@ -119,7 +119,7 @@
 
     <x-docs.endpoint id="integrate-organization-payment-gateway" method="POST"
         url="/api/v1/organizations/integrate-payment-gateway" title="Integrate Organization Payment Gateway"
-        description="Integrate a payment gateway with an organization. Currently supported: UCN, Stripe, and Flutterwave. PayPal returns a not implemented response.">
+        description="Integrate a payment gateway with an organization. Currently supported: UCN (Universal Control Number/ Lipa Namba) and Stripe.">
 
         <x-slot name="requestBody">
             <x-docs.code-block language="json" label="request">
