@@ -969,13 +969,13 @@
     </x-docs.endpoint>
 
     {{-- Payload Reference --}}
-    <div style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-top: 32px;">
-        <h3 style="margin-top: 0; color: var(--text-primary);"> Payload Reference</h3>
+    <div id="payload-reference" style="background: var(--surface-soft); padding: 24px; border-radius: 8px; margin-top: 32px;">
+        <h3 style="margin-top: 0; color: var(--text-primary);"> Webhok Payload Sample</h3>
 
-        <p>All events share a common envelope. Fields that don't apply to a given event are sent as <code>null</code>.
+        <p>This is the webhook sample payload structure you can expect for the <code>payment.success</code> event. Each event type has a similar structure with common fields and event-specific data nested inside.
         </p>
 
-        <h4 style="color: var(--text-primary);">Common Envelope Fields</h4>
+        {{-- <h4 style="color: var(--text-primary);">Common Envelope Fields</h4>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
             <thead>
                 <tr style="border-bottom: 2px solid var(--border-primary);">
@@ -1012,7 +1012,7 @@
                     </td>
                 </tr>
             </tbody>
-        </table>
+        </table> --}}
 
         <h4 style="color: var(--text-primary);">Complete <code>payment.success</code> Example</h4>
         <x-docs.code-block language="json">

@@ -130,7 +130,7 @@
                     <span class="method-badge method-delete">DELETE</span>
                     <span>Delete Webhook</span>
                 </a>
-                <a href="#test-webhook" class="nav-link">
+                <a href="#payload-reference" class="nav-link">
                     <span class="method-badge method-post">POST</span>
                     <span>Test Webhook</span>
                 </a>
