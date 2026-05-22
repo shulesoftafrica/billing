@@ -300,8 +300,8 @@ class OrganizationController extends Controller
             'secret_key' => 'I._avb?1ph',
 
         ];
-        // $merchantData = $this->createMerchantQR($organization, $bankAccount->account_number);
-        $merchantData = $forged;
+        $merchantData = $this->createMerchantQR($organization, $bankAccount->account_number);
+        // $merchantData = $forged;
 
         if (!is_array($merchantData)) {
             throw new Exception('Merchant creation failed: ' . $merchantData);
