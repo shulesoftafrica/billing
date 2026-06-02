@@ -434,7 +434,7 @@ class OrganizationController extends Controller
             return [
                 'header_response' => $headerResponse,
                 'merchant_code' => $content['merchantCode'] ?? null,
-                'qr_code' => $content['qrCode'] ?? null,
+                'qr_code' => $content['qrCodeBase64'] ?? null,
                 'terminal_id' => $content['terminalId'] ?? null,
                 'terminal_name' => $content['terminalName'] ?? null,
                 'secret_key' => $content['secretKey'] ?? null,
