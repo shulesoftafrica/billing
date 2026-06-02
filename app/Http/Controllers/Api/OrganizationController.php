@@ -493,21 +493,29 @@ class OrganizationController extends Controller
     /**
      * Generate secure hash (from Partner.php)
      */
-    private function generateSecureHash($payload)
+    private function generateSecureHash(string $payload)
     {
         try {
-            $username = 'ETZSHULESOFT';
-            $password = '$2a$10$jdNZI4uiE86yRhcFNrBenOo0nBQji9zqy9IVa.roj0ST5EhlE4sVe';
             $labId = 'KmiqL3yCLf1V68oRQrIv';
+            // Combine payload + lab key
+            $data = $payload . $labId;
 
-            $concatenated = $username . $password . $labId . $payload;
-            $hash = hash('sha512', $concatenated, true);
-            $hexString = bin2hex($hash);
+            // Get raw binary SHA-512 hash
+            $binaryHash = hash('sha512', $data, true);
+
+            // Convert binary hash to hex string (like Java's loop logic)
+            $hexString = '';
+            foreach (str_split($binaryHash) as $char) {
+                $hex = dechex(ord($char));
+                if (strlen($hex) < 2) {
+                    $hex = '0' . $hex;
+                }
+                $hexString .= $hex;
+            }
 
             return $hexString;
-        } catch (Exception $e) {
-            Log::error('Error generating secure hash', ['error' => $e->getMessage()]);
-            return '';
+        } catch (\Exception $e) {
+            return null;
         }
     }
 
