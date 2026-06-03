@@ -22,7 +22,7 @@ class OverviewController extends Controller
             $q->whereHas('customer', function ($q2) use ($orgId) {
                 $q2->where('organization_id', $orgId);
             });
-        })->where('status', 'paid')->sum('amount');
+        })->sum('amount');
 
         $totalInvoices  = Invoice::whereHas('customer', function ($q) use ($orgId) {
             $q->where('organization_id', $orgId);
@@ -36,7 +36,7 @@ class OverviewController extends Controller
             $q->whereHas('customer', function ($q2) use ($orgId) {
                 $q2->where('organization_id', $orgId);
             });
-        })->where('status', 'paid')->whereDate('created_at', today())->sum('amount');
+        })->whereDate('created_at', today())->sum('amount');
 
         $todaysCommission = round($todaysCollected * 0.01, 2);
 
