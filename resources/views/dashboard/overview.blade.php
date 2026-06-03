@@ -81,7 +81,7 @@
                     <div class="stat-value" style="font-size:1.25rem;color:#9333ea;">
                         TZS {{ number_format($stats['todays_commission'], 0) }}
                     </div>
-                    <div class="stat-sub">1% of today's collections</div>
+                    <div class="stat-sub">{{ number_format(($stats['commission_rate'] ?? 0) * 100, 1) }}% of today's collections</div>
                 </div>
             </div>
         </div>

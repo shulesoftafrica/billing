@@ -36,31 +36,40 @@ class OverviewController extends Controller
             $q->whereHas('customer', function ($q2) use ($orgId) {
                 $q2->where('organization_id', $orgId);
             });
-        })->whereDate('created_at', today())->sum('amount');
-
-        $todaysCommission = round($todaysCollected * 0.01, 2);
+        })->whereDate('created_at', now())->sum('amount');
 
         // ── Tier & Commission logic ─────────────────────────────────────────
-        $accruedReward     = round($totalCollected * 0.01, 2);
-        $marketSavings     = round(($totalCollected * 0.025) + $accruedReward, 2);
-        $silverThreshold   = 500_000_000;
+        $silverThreshold   = 250_000_000;
         $platinumThreshold = 1_000_000_000;
 
-        // Progress bar spans the full 0 → 1B journey
-        $floatBarPct = min(round(($totalCollected / $platinumThreshold) * 100, 2), 100);
+        if ($todaysCollected >= $platinumThreshold) {
+            $commissionRate = 0.015;
+        } elseif ($todaysCollected >= $silverThreshold) {
+            $commissionRate = 0.01;
+        } else {
+            $commissionRate = 0;
+        }
 
-        if ($totalCollected >= $platinumThreshold) {
+        $todaysCommission = round($todaysCollected * $commissionRate, 2);
+        $accruedReward    = $todaysCommission;
+        // Keep existing card key; now represents earned commission value.
+        $marketSavings    = $accruedReward;
+
+        // Progress bar spans the full 0 → 1B annual journey
+        $floatBarPct = min(round(($todaysCollected / $platinumThreshold) * 100, 2), 100);
+
+        if ($todaysCollected >= $platinumThreshold) {
             $tier          = 'platinum';
             $tierRemaining = 0;
             $tierNextLabel = 'Platinum Partner';
-        } elseif ($totalCollected >= $silverThreshold) {
+        } elseif ($todaysCollected >= $silverThreshold) {
             $tier          = 'silver';
-            $tierRemaining = $platinumThreshold - $totalCollected;
-            $tierNextLabel = 'Platinum Partner (1.0% p.a.)';
+            $tierRemaining = $platinumThreshold - $todaysCollected;
+            $tierNextLabel = 'Platinum Partner (1.5% p.a.)';
         } else {
             $tier          = 'standard';
-            $tierRemaining = $silverThreshold - $totalCollected;
-            $tierNextLabel = 'Silver Partner (0.5% p.a.)';
+            $tierRemaining = $silverThreshold - $todaysCollected;
+            $tierNextLabel = 'Silver Partner (1.0% p.a.)';
         }
         // ───────────────────────────────────────────────────────────────────
 
@@ -92,6 +101,8 @@ class OverviewController extends Controller
             'total_collected'    => $totalCollected,
             'total_invoices'     => $totalInvoices,
             'pending_invoices'   => $pendingInvoices,
+            'todaysCollected'   => $todaysCollected,
+            'commission_rate'    => $commissionRate,
             'todays_commission'  => $todaysCommission,
             'accrued_reward'     => $accruedReward,
             'market_savings'     => $marketSavings,
