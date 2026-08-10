@@ -414,7 +414,8 @@ class SubscriptionService
     public function getCustomerSubscriptions(int $customerId, ?string $status = null, $productId = null)
     {
         $query = Subscription::with(['pricePlan.product', 'invoice_item.invoice'])
-            ->where('customer_id', $customerId);
+            ->where('customer_id', $customerId)
+            ->whereNot('status', 'cancelled');
         if ($productId) {
             $query->whereHas('pricePlan', function ($q) use ($productId) {
                 $q->where('product_id', $productId);
