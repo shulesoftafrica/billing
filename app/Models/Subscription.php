@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Subscription extends Model
@@ -12,6 +12,7 @@ class Subscription extends Model
     protected $fillable = [
         'customer_id',
         'price_plan_id',
+        'quantity',
         'status',
         'start_date',
         'end_date',
@@ -50,9 +51,17 @@ class Subscription extends Model
         return $this->belongsTo(PricePlan::class);
     }
 
-    public function invoices(): HasMany
+    /**
+     * invoices has no subscription_id column — a subscription's invoices are
+     * only reachable through invoice_items (invoice_items.subscription_id /
+     * invoice_items.invoice_id). A plain hasMany(Invoice::class) here would
+     * assume a subscription_id FK on invoices that doesn't exist and always
+     * return empty; go through invoice_items instead.
+     */
+    public function invoices(): BelongsToMany
     {
-        return $this->hasMany(Invoice::class);
+        return $this->belongsToMany(Invoice::class, 'invoice_items', 'subscription_id', 'invoice_id')
+            ->withPivot('quantity', 'unit_price', 'total');
     }
     
     public function invoice_item(): HasOne

@@ -264,13 +264,17 @@ class PayloadBuilderService
         $periodStart = $subscription->current_period_start ?? $subscription->start_date;
         $periodEnd   = $subscription->current_period_end   ?? $subscription->end_date;
 
+        $quantity = $subscription->quantity ?? 1;
+
         return [
             'id'                   => $subscription->id,
             'status'               => $subscription->status,
             'price_plan_id'        => $subscription->price_plan_id,
             'price_plan_name'      => $subscription->pricePlan?->name,
             'billing_interval'     => $subscription->pricePlan?->billing_interval,
-            'amount'               => (float) ($subscription->pricePlan?->amount ?? 0),
+            'quantity'             => $quantity,
+            'unit_amount'          => (float) ($subscription->pricePlan?->amount ?? 0),
+            'amount'               => (float) ($subscription->pricePlan?->amount ?? 0) * $quantity,
             'currency'             => $subscription->pricePlan?->currency ?? 'TZS',
             'starts_at'            => $subscription->start_date?->toDateString(),
             'ends_at'              => $subscription->end_date?->toDateString(),

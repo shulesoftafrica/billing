@@ -25,15 +25,17 @@ class SubscriptionService
      *
      * @param int $customerId
      * @param array $planIds
+     * @param array $quantities Optional, keyed by plan_id. Missing/null entries default to 1
+     *                          (identical to the pre-existing behavior for callers that omit this).
      * @return Invoice
      * @throws \Exception
      */
-    public function createSubscriptionsWithInvoice(int $customerId, array $planIds): Invoice
+    public function createSubscriptionsWithInvoice(int $customerId, array $planIds, array $quantities = []): Invoice
     {
         // Validate input
         $this->validateInput($customerId, $planIds);
 
-        return DB::transaction(function () use ($customerId, $planIds) {
+        return DB::transaction(function () use ($customerId, $planIds, $quantities) {
             // Get customer and price plans
             $customer = Customer::findOrFail($customerId);
             $pricePlans = PricePlan::whereIn('id', $planIds)
@@ -61,13 +63,13 @@ class SubscriptionService
             }
 
             // Create subscriptions for each plan
-            $subscriptions = $this->createSubscriptions($customer, $pricePlans);
+            $subscriptions = $this->createSubscriptions($customer, $pricePlans, $quantities);
 
             // Create single invoice for all subscriptions
-            $invoice = $this->createInvoice($customer, $pricePlans);
+            $invoice = $this->createInvoice($customer, $pricePlans, $quantities);
 
             // Create invoice items for each plan (linked to subscriptions)
-            $this->createInvoiceItems($invoice, $pricePlans, $subscriptions);
+            $this->createInvoiceItems($invoice, $pricePlans, $subscriptions, $quantities);
 
             Log::info('Subscriptions created successfully', [
                 'customer_id' => $customerId,
@@ -182,9 +184,10 @@ class SubscriptionService
      *
      * @param Customer $customer
      * @param \Illuminate\Support\Collection $pricePlans
+     * @param array $quantities Optional, keyed by plan_id.
      * @return array
      */
-    private function createSubscriptions(Customer $customer, $pricePlans): array
+    private function createSubscriptions(Customer $customer, $pricePlans, array $quantities = []): array
     {
         $subscriptions = [];
 
@@ -196,6 +199,7 @@ class SubscriptionService
                 'start_date' => null,
                 'end_date' => null,
                 'next_billing_date' => null,
+                'quantity' => $quantities[$plan->id] ?? 1,
             ]);
 
             $subscriptions[] = $subscription;
@@ -209,12 +213,13 @@ class SubscriptionService
      *
      * @param Customer $customer
      * @param \Illuminate\Support\Collection $pricePlans
+     * @param array $quantities Optional, keyed by plan_id.
      * @return Invoice
      */
-    private function createInvoice(Customer $customer, $pricePlans): Invoice
+    private function createInvoice(Customer $customer, $pricePlans, array $quantities = []): Invoice
     {
         // Calculate totals
-        $subtotal = $pricePlans->sum('amount');
+        $subtotal = $pricePlans->sum(fn ($plan) => $plan->amount * ($quantities[$plan->id] ?? 1));
         $taxTotal = 0; // Tax calculation can be added later based on business rules
         $total = $subtotal + $taxTotal;
 
@@ -244,9 +249,10 @@ class SubscriptionService
      * @param Invoice $invoice
      * @param \Illuminate\Support\Collection $pricePlans
      * @param array $subscriptions
+     * @param array $quantities Optional, keyed by plan_id.
      * @return void
      */
-    private function createInvoiceItems(Invoice $invoice, $pricePlans, array $subscriptions): void
+    private function createInvoiceItems(Invoice $invoice, $pricePlans, array $subscriptions, array $quantities = []): void
     {
         // Create a map of plan_id to subscription for easy lookup
         $subscriptionMap = [];
@@ -255,13 +261,15 @@ class SubscriptionService
         }
 
         foreach ($pricePlans as $plan) {
+            $quantity = $quantities[$plan->id] ?? 1;
+
             InvoiceItem::create([
                 'invoice_id' => $invoice->id,
                 'subscription_id' => $subscriptionMap[$plan->id]->id,
                 'price_plan_id' => $plan->id,
-                'quantity' => 1,
+                'quantity' => $quantity,
                 'unit_price' => $plan->amount,
-                'total' => $plan->amount,
+                'total' => $plan->amount * $quantity,
             ]);
         }
     }

@@ -38,6 +38,10 @@ class SubscriptionController extends Controller
             'customer_id' => 'required|integer|exists:customers,id',
             'plan_ids' => 'required|array|min:1',
             'plan_ids.*' => 'required|integer|exists:price_plans,id',
+            // Optional, keyed by plan_id (e.g. {"12": 5}). Omitted or null plan_ids default to
+            // quantity 1, matching pre-existing behavior for callers that don't send this.
+            'quantities' => 'nullable|array',
+            'quantities.*' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -54,7 +58,8 @@ class SubscriptionController extends Controller
 
             $invoice = $this->subscriptionService->createSubscriptionsWithInvoice(
                 $request->input('customer_id'),
-                $planIds
+                $planIds,
+                $request->input('quantities', [])
             );
 
             // Get organization ID from the first price plan
@@ -403,7 +408,7 @@ class SubscriptionController extends Controller
                 'customer',
                 'pricePlan.product',
                 'invoices' => function ($query) {
-                    $query->orderBy('created_at', 'desc')->take(5);
+                    $query->orderBy('invoices.created_at', 'desc')->take(5);
                 }
             ])->findOrFail($id);
 
