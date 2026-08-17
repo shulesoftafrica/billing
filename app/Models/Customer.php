@@ -17,6 +17,9 @@ class Customer extends Model
         'organization_id',
         'name',
         'username',
+        // Source-system id (e.g. admin.clients.id) for migrated/backfilled
+        // records — lets a caller cross-reference this Customer back to the
+        // originating school without guessing from name/username alone.
         'external_client_id',
         'email',
         'phone',

@@ -140,6 +140,8 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1', 'api.l
     // Payment endpoints (Reconciliation)
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
+    // Record a payment received outside a real gateway (bank deposit, backfilled
+    // history) — requires payments:write. See PaymentController::store().
     Route::post('payments', [PaymentController::class, 'store']);
 });
 

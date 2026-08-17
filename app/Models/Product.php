@@ -14,6 +14,11 @@ class Product extends Model
         'description',
         'active',
         'unit',
+        // Opt-in: when true, SubscriptionService::enableSubscription() grants a
+        // shortened subscription period proportional to a partial payment
+        // instead of leaving the subscription pending until it's paid in full.
+        // Default false — this method is shared by every product on the
+        // platform, so only products that asked for this behavior turn it on.
         'prorate_partial_payments',
     ];
 

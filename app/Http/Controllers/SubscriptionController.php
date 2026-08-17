@@ -220,6 +220,9 @@ class SubscriptionController extends Controller
         }
 
         // Query control numbers by customer and products
+        // ControlNumber's real relation method is organizationPaymentGatewayIntegration
+        // (paymentGatewayIntegration doesn't exist on the model) — this was silently
+        // returning null for every control number until corrected.
         $controlNumbers = \App\Models\ControlNumber::where('customer_id', $customerId)
             ->whereIn('product_id', $productIds->toArray())
             ->with('organizationPaymentGatewayIntegration.paymentGateway')
