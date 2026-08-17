@@ -793,6 +793,55 @@ class SubscriptionService
                     'total_payments' => $totalPayments,
                     'invoiced_amount' => $balance,
                 ]);
+
+                // Opt-in only (Product::prorate_partial_payments, default false)
+                // — every other product on this shared platform (AI credits,
+                // LineShop, Talent, Parent Premium App, etc.) keeps the exact
+                // behavior above (recorded, subscription stays pending) unless
+                // explicitly turned on. Grants a fraction of the plan's full
+                // period proportional to cumulative amount paid so far
+                // (this payment + everything already recorded against this
+                // invoice), not just this single payment in isolation — a
+                // second top-up later recomputes from the new cumulative
+                // total rather than stacking days on top of a stale date.
+                $product = \App\Models\Product::find($productId);
+                if ($product && $product->prorate_partial_payments) {
+                    $cumulativePaid = $totalPaid + $totalPayments;
+                    $fractionPaid = $invoicedAmount > 0 ? min(1.0, $cumulativePaid / $invoicedAmount) : 0;
+
+                    if ($fractionPaid > 0) {
+                        $startDate = $this->resolveSubscriptionStartDate($customerId, $productId, $subscription->id);
+                        $fullEndDate = Carbon::parse($this->calculateEndDate($startDate, $subscription->pricePlan));
+                        $fullPeriodDays = max(1, $startDate->diffInDays($fullEndDate));
+                        $grantedDays = (int) floor($fullPeriodDays * $fractionPaid);
+                        $proratedEndDate = $startDate->copy()->addDays($grantedDays);
+
+                        $subscription->update([
+                            'status' => 'partial',
+                            'start_date' => $startDate,
+                            'end_date' => $proratedEndDate,
+                        ]);
+
+                        Log::info('Subscription partially activated (prorated)', [
+                            'subscription_id' => $subscription->id,
+                            'customer_id' => $customerId,
+                            'fraction_paid' => $fractionPaid,
+                            'granted_days' => $grantedDays,
+                            'end_date' => $proratedEndDate->toDateString(),
+                        ]);
+
+                        try {
+                            app(WebhookDispatchService::class)->dispatchSubscriptionCreated(
+                                $subscription->load(['customer', 'pricePlan.product'])
+                            );
+                        } catch (\Exception $e) {
+                            Log::warning('[enableSubscription] Failed to dispatch subscription.created webhook (proration)', [
+                                'subscription_id' => $subscription->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
+                }
             }
             return true;
         });

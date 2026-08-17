@@ -140,6 +140,7 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1', 'api.l
     // Payment endpoints (Reconciliation)
     Route::get('payments/by-invoice/{invoice_id}', [PaymentController::class, 'getByInvoice']);
     Route::get('payments', [PaymentController::class, 'getByDateRange']);
+    Route::post('payments', [PaymentController::class, 'store']);
 });
 
 /*

@@ -52,6 +52,7 @@ class CustomerController extends Controller
             'organization_id' => 'sometimes|exists:organizations,id', // Optional - auto-injected from token by middleware
             'name' => 'required|string|max:255',
             'username' => 'nullable|string|max:255|unique:customers,username,NULL,id,organization_id,' . $request->organization_id,
+            'external_client_id' => 'nullable|integer', // source-system id (e.g. admin.clients.id), for cross-system traceability on migrated records
             'email' => 'nullable|string|email|max:255|unique:customers,email,NULL,id,organization_id,' . $request->organization_id,
             'phone' => 'nullable|string|max:255|unique:customers,phone,NULL,id,organization_id,' . $request->organization_id,
             'status' => 'required|in:active,suspended',

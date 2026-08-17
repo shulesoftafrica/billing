@@ -222,14 +222,14 @@ class SubscriptionController extends Controller
         // Query control numbers by customer and products
         $controlNumbers = \App\Models\ControlNumber::where('customer_id', $customerId)
             ->whereIn('product_id', $productIds->toArray())
-            ->with('paymentGatewayIntegration.paymentGateway')
+            ->with('organizationPaymentGatewayIntegration.paymentGateway')
             ->get();
 
         return $controlNumbers->map(function ($cn) {
             return [
                 'reference' => $cn->reference,
                 'payment_link' => $cn->metadata['payment_link'] ?? null,
-                'gateway' => $cn->paymentGatewayIntegration->paymentGateway->name ?? 'Unknown',
+                'gateway' => $cn->organizationPaymentGatewayIntegration->paymentGateway->name ?? 'Unknown',
                 'expires_at' => $cn->expires_at,
             ];
         })->toArray();

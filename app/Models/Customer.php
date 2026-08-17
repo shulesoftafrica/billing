@@ -17,6 +17,7 @@ class Customer extends Model
         'organization_id',
         'name',
         'username',
+        'external_client_id',
         'email',
         'phone',
         'status',

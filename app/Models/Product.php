@@ -14,10 +14,12 @@ class Product extends Model
         'description',
         'active',
         'unit',
+        'prorate_partial_payments',
     ];
 
     protected $casts = [
         'active' => 'boolean',
+        'prorate_partial_payments' => 'boolean',
     ];
 
     protected $appends = ['status'];
