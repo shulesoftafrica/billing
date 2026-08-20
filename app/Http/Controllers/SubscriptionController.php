@@ -42,6 +42,11 @@ class SubscriptionController extends Controller
             // quantity 1, matching pre-existing behavior for callers that don't send this.
             'quantities' => 'nullable|array',
             'quantities.*' => 'nullable|integer|min:1',
+            // Optional. When mirroring a real, already-existing invoice from an external system
+            // (not creating a genuinely new subscription), the real historical amount owed —
+            // only honored for a single plan_id, see SubscriptionService::
+            // createSubscriptionsWithInvoice()'s docblock for why.
+            'total_override' => 'nullable|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -56,10 +61,13 @@ class SubscriptionController extends Controller
             // Remove duplicate plan IDs
             $planIds = array_unique($request->input('plan_ids'));
 
+            $totalOverride = $request->input('total_override');
+
             $invoice = $this->subscriptionService->createSubscriptionsWithInvoice(
                 $request->input('customer_id'),
                 $planIds,
-                $request->input('quantities', [])
+                $request->input('quantities', []),
+                $totalOverride !== null ? (float) $totalOverride : null
             );
 
             // Get organization ID from the first price plan

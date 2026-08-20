@@ -27,15 +27,27 @@ class SubscriptionService
      * @param array $planIds
      * @param array $quantities Optional, keyed by plan_id. Missing/null entries default to 1
      *                          (identical to the pre-existing behavior for callers that omit this).
+     * @param float|null $totalOverride When mirroring a real, already-existing invoice from an
+     *                          external source (e.g. a school's real safaribook billing history)
+     *                          rather than creating a genuinely new one, the invoice total must be
+     *                          the REAL historical amount, not price_plan.amount * quantity — those
+     *                          are two unrelated numbers (a school's real invoiced amount reflects
+     *                          whatever was actually agreed/billed at the time, which does not
+     *                          necessarily match today's live student count times the standard
+     *                          per-student rate). Only honored when exactly one plan is being
+     *                          created for — with multiple plans there's no well-defined way to
+     *                          attribute a single override total across separate line items, so it's
+     *                          silently ignored in that case rather than producing a nonsensical
+     *                          split.
      * @return Invoice
      * @throws \Exception
      */
-    public function createSubscriptionsWithInvoice(int $customerId, array $planIds, array $quantities = []): Invoice
+    public function createSubscriptionsWithInvoice(int $customerId, array $planIds, array $quantities = [], ?float $totalOverride = null): Invoice
     {
         // Validate input
         $this->validateInput($customerId, $planIds);
 
-        return DB::transaction(function () use ($customerId, $planIds, $quantities) {
+        return DB::transaction(function () use ($customerId, $planIds, $quantities, $totalOverride) {
             // Get customer and price plans
             $customer = Customer::findOrFail($customerId);
             $pricePlans = PricePlan::whereIn('id', $planIds)
@@ -65,11 +77,14 @@ class SubscriptionService
             // Create subscriptions for each plan
             $subscriptions = $this->createSubscriptions($customer, $pricePlans, $quantities);
 
+            // Only well-defined for a single plan -- see this method's docblock.
+            $effectiveOverride = ($totalOverride !== null && $pricePlans->count() === 1) ? $totalOverride : null;
+
             // Create single invoice for all subscriptions
-            $invoice = $this->createInvoice($customer, $pricePlans, $quantities);
+            $invoice = $this->createInvoice($customer, $pricePlans, $quantities, $effectiveOverride);
 
             // Create invoice items for each plan (linked to subscriptions)
-            $this->createInvoiceItems($invoice, $pricePlans, $subscriptions, $quantities);
+            $this->createInvoiceItems($invoice, $pricePlans, $subscriptions, $quantities, $effectiveOverride);
 
             Log::info('Subscriptions created successfully', [
                 'customer_id' => $customerId,
@@ -216,10 +231,10 @@ class SubscriptionService
      * @param array $quantities Optional, keyed by plan_id.
      * @return Invoice
      */
-    private function createInvoice(Customer $customer, $pricePlans, array $quantities = []): Invoice
+    private function createInvoice(Customer $customer, $pricePlans, array $quantities = [], ?float $totalOverride = null): Invoice
     {
         // Calculate totals
-        $subtotal = $pricePlans->sum(fn ($plan) => $plan->amount * ($quantities[$plan->id] ?? 1));
+        $subtotal = $totalOverride ?? $pricePlans->sum(fn ($plan) => $plan->amount * ($quantities[$plan->id] ?? 1));
         $taxTotal = 0; // Tax calculation can be added later based on business rules
         $total = $subtotal + $taxTotal;
 
@@ -252,7 +267,7 @@ class SubscriptionService
      * @param array $quantities Optional, keyed by plan_id.
      * @return void
      */
-    private function createInvoiceItems(Invoice $invoice, $pricePlans, array $subscriptions, array $quantities = []): void
+    private function createInvoiceItems(Invoice $invoice, $pricePlans, array $subscriptions, array $quantities = [], ?float $totalOverride = null): void
     {
         // Create a map of plan_id to subscription for easy lookup
         $subscriptionMap = [];
@@ -262,14 +277,18 @@ class SubscriptionService
 
         foreach ($pricePlans as $plan) {
             $quantity = $quantities[$plan->id] ?? 1;
+            // $totalOverride is only ever non-null here for a single-plan
+            // invoice (see createSubscriptionsWithInvoice()) — the real
+            // historical amount being mirrored, not a recomputed one.
+            $lineTotal = $totalOverride ?? ($plan->amount * $quantity);
 
             InvoiceItem::create([
                 'invoice_id' => $invoice->id,
                 'subscription_id' => $subscriptionMap[$plan->id]->id,
                 'price_plan_id' => $plan->id,
                 'quantity' => $quantity,
-                'unit_price' => $plan->amount,
-                'total' => $plan->amount * $quantity,
+                'unit_price' => $totalOverride !== null ? $lineTotal / max(1, $quantity) : $plan->amount,
+                'total' => $lineTotal,
             ]);
         }
     }
