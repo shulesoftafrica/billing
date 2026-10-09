@@ -81,11 +81,11 @@ Route::middleware(['auth:sanctum', 'organization.scope', 'throttle:60,1', 'api.l
     Route::apiResource('product-types', ProductTypeController::class);
     Route::apiResource('payment-gateways', PaymentGatewayController::class);
     Route::apiResource('bank-accounts', BankAccountController::class);
-    Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy']);
+    Route::apiResource('invoices', InvoiceController::class)->except(['update', 'destroy'])->where(['invoice' => '[0-9]+']);
     Route::get('invoices/{product_id}/product', [InvoiceController::class, 'getByProduct']);
     Route::post('invoices/by-subscriptions', [InvoiceController::class, 'getBySubscriptions']);
-    Route::get('invoices/{id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice']);
-    Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
+    Route::get('invoices/{id}/payment-gateways', [InvoiceController::class, 'getPaymentGatewaysByInvoice'])->whereNumber('id');
+    Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel'])->whereNumber('id');
     Route::post('invoices/plan-upgrade', [InvoiceController::class, 'upgradeSubscription']);
     Route::post('invoices/plan-downgrade', [InvoiceController::class, 'downgradeSubscription']);
     Route::apiResource('tax-rates', TaxRateController::class);

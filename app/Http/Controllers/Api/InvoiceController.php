@@ -40,13 +40,22 @@ class InvoiceController extends Controller
 {
     use ValidatePhoneNumber;
 
-    // EcoBank API Configuration
-    protected $username = 'ETZSHULESOFT';
-    protected $password = '$2a$10$jdNZI4uiE86yRhcFNrBenOo0nBQji9zqy9IVa.roj0ST5EhlE4sVe';
-    protected $labId = 'KmiqL3yCLf1V68oRQrIv';
+    // EcoBank API Configuration -- were hardcoded literals, security audit
+    // finding, moved to config/services.php's 'ecobank' section (same
+    // credentials duplicated from OrganizationController.php).
+    protected $username;
+    protected $password;
+    protected $labId;
     protected $baseUrl = 'https://payservice.ecobank.com';
     protected $origin = 'https://payservice.ecobank.com/PayPortal';
     protected $callBackUrl = 'https://api.safaribank.africa/api/v1/webhooks/ecobank/notification';
+
+    public function __construct()
+    {
+        $this->username = config('services.ecobank.username');
+        $this->password = config('services.ecobank.password');
+        $this->labId = config('services.ecobank.lab_id');
+    }
 
     /**
      * Display a listing of the resource.
@@ -834,12 +843,21 @@ class InvoiceController extends Controller
         $prefix = 'INV';
         $date = Carbon::now()->format('Ymd');
 
+        // "read the highest number, add one" is a race: two invoices created at the same moment both read the same
+        // maximum and the second insert failed on the unique index (60 'invoices_invoice_number_unique' errors).
+        // This method runs inside the create-invoice transaction, so a transaction-level advisory lock makes
+        // concurrent creators take turns; it is released automatically at commit or rollback, so it cannot leak.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::select('select pg_advisory_xact_lock(?)', [740100231]);
+        }
+
         $lastInvoice = Invoice::where('invoice_number', 'like', $prefix . $date . '%')
             ->orderBy('invoice_number', 'desc')
             ->first();
 
         if ($lastInvoice) {
-            $lastSequence = (int) substr($lastInvoice->invoice_number, -4);
+            // everything after INV<yyyymmdd> (not just 4 digits, so it keeps working past 9999 a day)
+            $lastSequence = (int) substr($lastInvoice->invoice_number, strlen($prefix . $date));
             $newSequence = $lastSequence + 1;
         } else {
             $newSequence = 1;
@@ -1726,6 +1744,23 @@ class InvoiceController extends Controller
                 return [
                     'success' => false,
                     'message' => 'Invalid invoice total for Stripe PaymentIntent',
+                ];
+            }
+
+            // Stripe refuses a charge below its minimum (USD/EUR 0.50, GBP 0.30). A small TZS invoice converts to
+            // less than that, and calling Stripe anyway produced a rejected request plus a second "unexpected error"
+            // log line each time (88 entries). Skip the card option for such an invoice; the control number still works.
+            $stripeMinimums = ['usd' => 50, 'eur' => 50, 'gbp' => 30];
+            if (isset($stripeMinimums[$stripeCurrency]) && $stripeAmount < $stripeMinimums[$stripeCurrency]) {
+                Log::info('Invoice total is below the minimum card payment amount; Stripe reference not created', [
+                    'invoice_id' => $invoice->id,
+                    'stripe_amount' => $stripeAmount,
+                    'currency' => $stripeCurrency,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Invoice total is below the minimum card payment amount',
                 ];
             }
 
