@@ -41,12 +41,20 @@ class InvoiceController extends Controller
     use ValidatePhoneNumber;
 
     // EcoBank API Configuration
-    protected $username = 'ETZSHULESOFT';
-    protected $password = '$2a$10$jdNZI4uiE86yRhcFNrBenOo0nBQji9zqy9IVa.roj0ST5EhlE4sVe';
-    protected $labId = 'KmiqL3yCLf1V68oRQrIv';
+    protected string $username;
+    protected string $password;
+    protected string $labId;
     protected $baseUrl = 'https://payservice.ecobank.com';
     protected $origin = 'https://payservice.ecobank.com/PayPortal';
     protected $callBackUrl = 'https://api.safaribank.africa/api/v1/webhooks/ecobank/notification';
+
+    public function __construct()
+    {
+        $this->username = config('services.ecobank.username');
+        $this->password = config('services.ecobank.password');
+        $this->labId = config('services.ecobank.lab_id');
+    }
+
 
     /**
      * Display a listing of the resource.
