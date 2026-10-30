@@ -63,10 +63,9 @@ return [
         'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
-
     'notification' => [
-        'endpoint'    => env('NOTIFICATION_API_URL', 'http://localhost/notification/public/api/notifications/send'),
-        'api_key'     => env('NOTIFICATION_API_KEY'),
+        'endpoint' => env('NOTIFICATION_API_URL', 'http://localhost/notification/public/api/notifications/send'),
+        'api_key' => env('NOTIFICATION_API_KEY'),
         'schema_name' => env('NOTIFICATION_SCHEMA_NAME'),
     ],
 

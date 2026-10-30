@@ -102,15 +102,15 @@ class DispatchWebhookCommand extends Command
     {
         $this->info("🔄 Resending webhook delivery #{$deliveryId}...");
 
-        $delivery = WebhookDelivery::with('webhook')->find($deliveryId);
+        $delivery = WebhookDelivery::with('customWebhook')->find($deliveryId);
 
         if (!$delivery) {
             $this->error("❌ Webhook delivery #{$deliveryId} not found");
             return Command::FAILURE;
         }
 
-        $this->info("Webhook: {$delivery->webhook->name}");
-        $this->info("URL: {$delivery->webhook->url}");
+        $this->info("Webhook: {$delivery->customWebhook->name}");
+        $this->info("URL: {$delivery->customWebhook->url}");
         $this->info("Event: {$delivery->event_type}");
         $this->info("Status: {$delivery->status}");
         $this->info("Attempts: {$delivery->attempt_count}");
@@ -154,12 +154,12 @@ class DispatchWebhookCommand extends Command
             ->where('next_retry_at', '<=', now());
 
         if ($productId) {
-            $query->whereHas('webhook', function ($q) use ($productId) {
+            $query->whereHas('customWebhook', function ($q) use ($productId) {
                 $q->where('product_id', $productId);
             });
         }
 
-        $failedDeliveries = $query->with('webhook')->get();
+        $failedDeliveries = $query->with('customWebhook')->get();
 
         if ($failedDeliveries->isEmpty()) {
             $this->info('ℹ️  No failed deliveries to retry');
@@ -265,14 +265,14 @@ class DispatchWebhookCommand extends Command
     {
         // Payment-based events
         if ($paymentId = $this->option('payment')) {
-            $payment = Payment::with(['invoice', 'customer', 'gateway'])->find($paymentId);
+            $payment = Payment::with(['invoices', 'customer', 'paymentGateway'])->find($paymentId);
             
             if (!$payment) {
                 $this->error("❌ Payment #{$paymentId} not found");
                 return null;
             }
 
-            $this->info("Payment: #{$payment->id} - {$payment->amount} {$payment->invoice->currency->code}");
+            $this->info("Payment: #{$payment->id} - {$payment->amount} {$payment->invoices->first()?->currency}");
 
             if (str_contains($eventType, 'payment.success')) {
                 return $this->payloadBuilderService->buildPaymentSuccessPayload($payment);
@@ -283,7 +283,7 @@ class DispatchWebhookCommand extends Command
 
         // Invoice-based events
         if ($invoiceId = $this->option('invoice')) {
-            $invoice = Invoice::with(['customer', 'items'])->find($invoiceId);
+            $invoice = Invoice::with(['customer', 'invoiceItems'])->find($invoiceId);
             
             if (!$invoice) {
                 $this->error("❌ Invoice #{$invoiceId} not found");
