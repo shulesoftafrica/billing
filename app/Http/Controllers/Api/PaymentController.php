@@ -110,16 +110,33 @@ class PaymentController extends BaseApiController
             ], 409);
         }
 
-        $payment = Payment::create([
-            'gateway_id' => $gateway->id,
-            'customer_id' => $subscription->customer_id,
-            'amount' => (float) $request->amount,
-            'notification_status' => 'n/a',
-            'gateway_reference' => $gatewayReference,
-            'status' => 'pending', // enableSubscription() flips this to 'cleared' itself once matched
-            'payment_reference' => $controlNumber->reference,
-            'paid_at' => $request->input('paid_at', now()),
-        ]);
+        // The exists() check above and this create() aren't atomic -- two
+        // concurrent requests with the same external_reference can both
+        // pass the check before either commits. gateway_reference's DB-level
+        // unique constraint still prevents an actual duplicate row (no
+        // double-charge/double-activation), but without this catch the
+        // loser of that race got an unhandled 500 instead of the documented
+        // clean 409 -- a reliability/correctness bug, not a financial one.
+        try {
+            $payment = Payment::create([
+                'gateway_id' => $gateway->id,
+                'customer_id' => $subscription->customer_id,
+                'amount' => (float) $request->amount,
+                'notification_status' => 'n/a',
+                'gateway_reference' => $gatewayReference,
+                'status' => 'pending', // enableSubscription() flips this to 'cleared' itself once matched
+                'payment_reference' => $controlNumber->reference,
+                'paid_at' => $request->input('paid_at', now()),
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ((string) $e->getCode() === '23000') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A payment with this external_reference has already been recorded.',
+                ], 409);
+            }
+            throw $e;
+        }
 
         $this->subscriptionService->enableSubscription(
             $invoiceItem->invoice_id,

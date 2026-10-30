@@ -100,16 +100,31 @@ class UCNPaymentService
                 $organizationId = $integration->organization_id;
 
                 // Step 5: Record payment
-                $payment = Payment::create([
-                    'gateway_id' => $paymentGateway->id,
-                    'customer_id' => $customer->id,
-                    'amount' => $amountPaid,
-                    'notification_status' => 'pending',
-                    'gateway_reference' => $cbaReferenceNo,
-                    'status' => 'pending',
-                    'payment_reference' => $ecTerminalId,
-                    'paid_at' => Carbon::now(),
-                ]);
+                // The existence check above (Step "Check for duplicate
+                // transaction") and this create() aren't atomic -- two
+                // concurrent identical webhook deliveries (gateways do
+                // retry/duplicate-deliver) can both pass the check.
+                // gateway_reference's DB-level unique constraint still
+                // prevents an actual duplicate row, but without this catch
+                // the loser of that race got a generic 500 instead of the
+                // intended 409 Duplicate transaction response.
+                try {
+                    $payment = Payment::create([
+                        'gateway_id' => $paymentGateway->id,
+                        'customer_id' => $customer->id,
+                        'amount' => $amountPaid,
+                        'notification_status' => 'pending',
+                        'gateway_reference' => $cbaReferenceNo,
+                        'status' => 'pending',
+                        'payment_reference' => $ecTerminalId,
+                        'paid_at' => Carbon::now(),
+                    ]);
+                } catch (\Illuminate\Database\QueryException $e) {
+                    if ((string) $e->getCode() === '23000') {
+                        return $this->failureResponse($cbaReferenceNo, '409', 'Duplicate transaction');
+                    }
+                    throw $e;
+                }
 
 
                 // Step 6: Get configuration for organization and payment gateway + know if service or prodct paid is subscription or usage

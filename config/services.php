@@ -28,6 +28,17 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Were hardcoded literals directly in OrganizationController.php
+    // (createMerchantQR(), marked "LIVE" in a comment) -- security audit
+    // finding, moved here. These must be rotated with Ecobank regardless,
+    // since they were already committed to git history.
+    'ecobank' => [
+        'username' => env('ECOBANK_USERNAME'),
+        'password' => env('ECOBANK_PASSWORD'),
+        'lab_id' => env('ECOBANK_LAB_ID'),
+        'request_token' => env('ECOBANK_REQUEST_TOKEN'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

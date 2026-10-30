@@ -335,10 +335,11 @@ class OrganizationController extends Controller
      */
     private function createMerchantQR($organization, $accountNumber)
     {
-        // UCN/Ecobank credentials (LIVE)
-        $username = 'ETZSHULESOFT';
-        $password = '$2a$10$jdNZI4uiE86yRhcFNrBenOo0nBQji9zqy9IVa.roj0ST5EhlE4sVe';
-        $labId = 'KmiqL3yCLf1V68oRQrIv';
+        // UCN/Ecobank credentials (LIVE) -- moved to config/services.php's
+        // 'ecobank' section, see that file's comment for why.
+        $username = config('services.ecobank.username');
+        $password = config('services.ecobank.password');
+        $labId = config('services.ecobank.lab_id');
         $baseUrl = 'https://payservice.ecobank.com';
         $origin = 'https://payservice.ecobank.com/PayPortal';
         $callBackUrl = config('app.url') . '/api/ecobank/notification';
@@ -346,7 +347,7 @@ class OrganizationController extends Controller
         $headerRequest = [
             "requestId" => time() . random_int(1000, 9999),
             "affiliateCode" => "ETZ",
-            "requestToken" => "/4mZF42iofzo7BDu0YtbwY6swLwk46Z91xItybhYwQGFpaZNOpsznL/9fca5LkeV",
+            "requestToken" => config('services.ecobank.request_token'),
             "sourceCode" => "ECOBANK_QR_API",
             "sourceChannelId" => "KANZAN",
             "requestType" => "CREATE_MERCHANT"
