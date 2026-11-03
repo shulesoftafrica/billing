@@ -114,6 +114,18 @@ class RetryWebhooksCommand extends Command
 
                     $delivery->update(['status' => 'superseded', 'next_retry_at' => null]);
 
+                    // Carry the attempt history over to the replacement delivery. Without
+                    // this every retry restarts at attempt 1, so an unreachable endpoint is
+                    // retried forever and never reaches the webhook's retry_count limit.
+                    if ($newDelivery->status === 'pending') {
+                        $attempts   = $delivery->attempt_count + $newDelivery->attempt_count;
+                        $maxRetries = $delivery->customWebhook->retry_count ?? 3;
+
+                        $newDelivery->update($attempts < $maxRetries
+                            ? ['attempt_count' => $attempts, 'next_retry_at' => now()->addMinutes(5 * pow(3, $attempts - 1))]
+                            : ['attempt_count' => $attempts, 'status' => 'failed', 'next_retry_at' => null]);
+                    }
+
                     if ($newDelivery->http_status_code === 429) {
                         $bad++;
                         $this->handleRateLimit($webhookId, $label);
