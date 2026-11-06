@@ -13,6 +13,12 @@ use Illuminate\Support\Facades\Log;
 
 class RetryWebhooksCommand extends Command
 {
+    /** deliveries older than this are never retried (stale events must not be replayed) */
+    private const RETRY_MAX_AGE_DAYS = 3;
+
+    /** deliveries retried per run, oldest first */
+    private const RETRY_BATCH_SIZE = 200;
+
     protected $signature = 'webhooks:retry
                             {--product= : Limit to a specific product ID}
                             {--dry-run  : Show what would be sent without actually sending}';
@@ -64,7 +70,16 @@ class RetryWebhooksCommand extends Command
         $this->info('');
         $this->info('─── Phase 1: Retry failed/pending deliveries ───');
 
-        $query = WebhookDelivery::pendingRetry()->with('customWebhook');
+        // Two limits, both learned the hard way. On 28-29 Oct webhooks 2 and 3 pointed at a domain that did not resolve, and
+        // a dispatch loop left about 750,000 'pending' deliveries (one payment repeated 333,218 times). Loading them all
+        // with ->get() exhausted the 1 GB memory limit on every run (exit 137, so no retry ever completed), and retrying
+        // them once the URL was fixed would replay stale payment.success / subscription.* events into the receiver and
+        // could credit customers twice. So only recent deliveries are retried, and only a batch per run.
+        $query = WebhookDelivery::pendingRetry()
+            ->where('created_at', '>=', now()->subDays(self::RETRY_MAX_AGE_DAYS))
+            ->with('customWebhook')
+            ->orderBy('id')
+            ->limit(self::RETRY_BATCH_SIZE);
 
         if ($productId) {
             $query->whereHas('customWebhook', fn ($q) => $q->where('product_id', $productId));
